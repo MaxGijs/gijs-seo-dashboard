@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/gsc-snapshot",
       "schedule": "17 5 * * *"
+    },
+    {
+      "path": "/api/cron/experiment-eval",
+      "schedule": "45 5 * * *"
     }
   ]
 }
