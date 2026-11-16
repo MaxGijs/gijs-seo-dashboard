@@ -576,3 +576,11 @@ img, svg { display: block; max-width: 100%; }
 .timeline-dot { position: absolute; top: 0; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--white); border: 2px solid var(--accent-600); }
 .timeline-step:first-child .timeline-dot { background: var(--accent-600); }
 @media (max-width: 760px) { .finding { grid-template-columns: minmax(0, 1fr); } .kpis-inline { gap: 10px 18px; } }
+
+/* ── Datacontract in het zijpaneel ──────────────────────────────────────── */
+.scope-line { display: flex; gap: 8px; align-items: flex-start; font-size: var(--fs-xs); color: var(--text-subtle); margin: 4px 0 10px; }
+.scope-line svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; color: var(--accent-700); }
+.scope-changes { border: 1px solid var(--accent-100); background: var(--accent-050); border-radius: var(--radius-md); padding: 10px 12px; font-size: var(--fs-sm); color: var(--grey-800); margin-bottom: 12px; }
+.scope-changes ul { margin-top: 4px; padding-left: 18px; list-style: disc; display: grid; gap: 2px; }
+.panel-loading-title { font-weight: 700; color: var(--green-800); font-size: var(--fs-md); margin-bottom: 4px; }
+.calc-scope th { color: var(--green-800) !important; }

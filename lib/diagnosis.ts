@@ -1,9 +1,10 @@
-import type { AdviceDetail, GscRow, Signal, SignalKind } from "./types"
+import type { ActionType, AdviceDetail, GscRow, MetricSet, Signal } from "./types"
 import type { CtrModel } from "./ctr"
 import { gainFromMove } from "./ctr"
 import { capitalize, dateShort, normalize, num, pct, pos } from "./format"
 import { isBrandQuery, toPath } from "./signals"
 import { ageDays, assessPage, coverageNl, OPBOUW_DAGEN, phaseOf } from "./pages"
+import { measurePlan, SUCCESS_METRIC, type MeasurePlan, type SuccessMetric } from "./measure"
 
 export type FindingTone = "feit" | "aanwijzing" | "check" | "spoed"
 export interface Finding { tone: FindingTone; text: string }
@@ -20,7 +21,9 @@ export interface Diagnosis {
   steps: Step[]
   expected: string[]
   measurement: string[]
-  successMetric: "position" | "ctr"
+  successMetric: SuccessMetric
+  actionType: ActionType
+  plan: MeasurePlan
 }
 
 const STOP = new Set(["de", "het", "een", "in", "van", "voor", "en", "met", "op", "bij", "te", "wat", "hoe", "is", "je", "mijn", "uw", "aan", "of"])
@@ -69,9 +72,6 @@ function gainRange(gain: number) {
   return "geen meetbare extra clicks op korte termijn"
 }
 
-function successMetricFor(kind: SignalKind): "position" | "ctr" {
-  return kind === "ctr" || kind === "pagina" ? "ctr" : "position"
-}
 
 export interface DiagnosisContext {
   model: CtrModel
@@ -86,9 +86,11 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   const pagePaths = new Set(ctx.pages.map(p => toPath(p.keys[0])))
   const pageRow = (path: string) => ctx.pages.find(p => toPath(p.keys[0]) === path)
 
-  // ── Cijfers: actuele detaildata gaat voor, anders de cijfers van het signaal
-  const cur = (q ? detail?.queryTotals?.cur : detail?.pageTotals?.cur) || null
-  const prev = (q ? detail?.queryTotals?.prev : detail?.pageTotals?.prev) || null
+  // ── Cijfers: na het datacontract (lib/contract.ts) staan de live cijfers al in het signaal.
+  // Alleen als het signaal niet verzoend is, vallen we terug op de ruwe detaildata.
+  const reconciled = signal.scope?.source === "live" || signal.kind === "dubbel" || signal.kind === "techniek"
+  const cur = reconciled ? null : (q ? detail?.queryTotals?.cur : detail?.pageTotals?.cur) || null
+  const prev = reconciled ? null : (q ? detail?.queryTotals?.prev : detail?.pageTotals?.prev) || null
   const m = {
     position: cur?.position ?? signal.metrics.position,
     impressions: cur?.impressions ?? signal.metrics.impressions,
@@ -108,6 +110,15 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     { label: "Clicks", value: num(m.clicks), sub: m.prevClicks !== undefined ? `vorige 28 d: ${num(m.prevClicks)}` : undefined },
     { label: "Doorklik (CTR)", value: pct(m.ctr), sub: m.position ? `verwacht ±${pct(ctx.model.at(m.position))}` : undefined },
   ]
+
+  if (signal.kind === "techniek" && signal.tech) {
+    const byProv = new Map<string, number>()
+    for (const p of signal.tech.pages) byProv.set(p.provincie || "overig", (byProv.get(p.provincie || "overig") || 0) + 1)
+    facts.splice(0, facts.length,
+      { label: signal.tech.type === "sitemap-fout" ? "Foute URL's" : "Niet geïndexeerd", value: num(signal.tech.pages.length) },
+      ...[...byProv.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([prov, n]) => ({ label: capitalize(prov), value: num(n) })),
+    )
+  }
 
   // ── Wat speelt er
   const subjectText = q ? `"${q}"` : target || signal.headline
@@ -133,6 +144,13 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     case "dubbel":
       situation = `Meerdere eigen pagina's gaan over hetzelfde onderwerp: ${(signal.relatedPages || []).join(", ")}.`
       break
+    case "techniek": {
+      const t = signal.tech
+      situation = t?.type === "sitemap-fout"
+        ? `${num(t.pages.length)} URL's uit de sitemap geven een foutmelding. Google probeert ze te bezoeken en treft een lege pagina aan. Dat kost crawlbudget en vertrouwen, en de bedoelde pagina's krijgen geen bezoek.`
+        : `${num(t?.pages.length || 0)} belangrijke pagina's zijn niet geïndexeerd en staan langer live dan de opbouwfase. Zolang Google ze niet opneemt, kunnen ze nergens op ranken.`
+      break
+    }
     case "analyse":
       situation = m.impressions
         ? `${capitalize(subjectText)} staat gemiddeld op positie ${pos(m.position)}, met ${num(m.impressions)} vertoningen en ${num(m.clicks)} clicks in 28 dagen.`
@@ -167,7 +185,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
         findings.push({ tone: "aanwijzing", text: `De pagina die bij dit zoekwoord hoort, ${intended.path}, staat maar op positie ${pos(intended.position)} (${num(intended.impressions)} vertoningen). Google verspreidt het zoekwoord over andere pagina's, waardoor geen enkele pagina hoog komt.` })
         steps.push({
           title: `Maak ${intended.path} de hoofdpagina voor "${q}"`,
-          detail: `Laat ${others.join(", ")} naar ${intended.path} linken met de linktekst "${q}". Zo weet Google welke pagina het antwoord is. Haal "${q}" niet uit die pagina's weg; ze blijven nuttig voor hun eigen wijk of onderwerp.`,
+          detail: `Laat ${others.join(", ")} naar ${intended.path} linken, met natuurlijke linkteksten als "${q}" of "isolatie in ${capitalize(intended.path.split("/").pop()!.replace(/-/g, " "))}". Zo weet Google welke pagina het antwoord is. Haal "${q}" niet uit die pagina's weg; ze blijven nuttig voor hun eigen wijk of onderwerp.`,
         })
       } else if (rivals.length) {
         findings.push({
@@ -275,6 +293,35 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     findings.push({ tone: "feit", text: `Deze pagina verschijnt vooral voor: ${pq.slice(0, 3).map(r => `"${r.query}" (positie ${pos(r.position)})`).join(", ")}.` })
   }
 
+  // ── Technische signalen uit de pagina-audit
+  if (signal.kind === "techniek" && signal.tech) {
+    const t = signal.tech
+    if (t.type === "sitemap-fout") {
+      const same = t.pages.filter(p => p.plaats && p.gemeente && p.plaats === p.gemeente)
+      const statuses = [...new Set(t.pages.map(p => p.status ?? "geen antwoord"))]
+      findings.push({ tone: "spoed", text: `${num(t.pages.length)} URL's in de sitemap geven HTTP ${statuses.join("/")} (nachtelijke controle).` })
+      if (same.length >= t.pages.length * 0.6) {
+        findings.push({ tone: "aanwijzing", text: `${num(same.length)} van de ${num(t.pages.length)} zijn plaatspagina's met dezelfde naam als de gemeente, zoals ${same[0].path}. De gemeentepagina zelf (${same[0].path.split("/").slice(0, -1).join("/")}) werkt wel. Dit wijst op één fout in hoe de sitemap wordt opgebouwd.` })
+      }
+      findings.push({ tone: "feit", text: `Voorbeelden: ${t.pages.slice(0, 4).map(p => p.path).join(", ")}${t.pages.length > 4 ? ` en ${num(t.pages.length - 4)} andere` : ""}.` })
+      steps.push({
+        title: same.length ? "Haal plaatspagina's met dezelfde naam als de gemeente uit de sitemap" : "Haal de foutieve URL's uit de sitemap",
+        detail: "Zoek in de code die de sitemap opbouwt waar plaatsen worden toegevoegd en sla een plaats over als die dezelfde naam heeft als de gemeente. Laat dit doen door wie de site beheert; dit dashboard wijzigt de site niet.",
+      })
+      steps.push({
+        title: "Stuur de oude URL's door naar de gemeentepagina (301)",
+        detail: "Google kent de URL's al. Een permanente doorverwijzing naar de gemeentepagina voorkomt dat bezoekers en Google op een foutpagina landen.",
+      })
+      steps.push({ title: "Dien de sitemap opnieuw in via Search Console", detail: "Daarna controleert het dashboard elke nacht of alle URL's 200 of 301 geven." })
+    } else {
+      findings.push({ tone: "spoed", text: `${num(t.pages.length)} pagina's buiten de opbouwfase zijn niet geïndexeerd.` })
+      for (const p of t.pages.slice(0, 5)) findings.push({ tone: "feit", text: `${p.path}: ${p.reason || "niet geïndexeerd"}.` })
+      steps.push({ title: "Vraag indexering aan in Search Console", detail: "Open de URL-inspectie per pagina en kies ‘Indexering aanvragen’. Begin bij de pagina's met de meeste zakelijke waarde." })
+      steps.push({ title: "Link vanaf de navigatie of een overzichtspagina naar deze pagina's", detail: "Pagina's zonder interne links worden later of niet opgenomen." })
+      steps.push({ title: "Controleer of de inhoud uniek genoeg is", detail: "‘Gecrawld, niet geïndexeerd’ betekent vaak dat Google de pagina te veel vindt lijken op een andere." })
+    }
+  }
+
   // ── Concrete stappen per type
   const linkSources = (): string[] => {
     const out: string[] = []
@@ -316,9 +363,22 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     steps.push({ title: `Pas de title van ${target} níet aan voor ${place}`, detail: "Een landelijke onderwerppagina wordt zwakker als je er één plaatsnaam in zet." })
   }
 
+  // Title en H1 alleen aanpassen als het de moeite waard is en de pagina niet breder moet blijven.
+  // Eén longtail-zoekwoord mag een brede pagina niet overnemen (overoptimalisatie).
+  const broadPage = !!target && (target.startsWith("/maatregelen/") || target === "/" || target.split("/").filter(Boolean).length === 1)
+  const protectTitle = signal.gain < 1 || opbouwFase || (broadPage && (signal.intent === "informatief" || tokens(q || "").length >= 3))
   const onPageSteps = () => {
     if (!q || !target || !audit?.ok) return
     if (localMismatch) { localSteps(); return }
+    if (protectTitle && (titleMissing.length || h1Missing.length)) {
+      const why = opbouwFase ? "de pagina zit nog in de opbouwfase" : signal.gain < 1 ? "de verwachte winst is minder dan één click per maand" : `${target} moet een breder onderwerp blijven dekken dan dit ene zoekwoord`
+      findings.push({ tone: "aanwijzing", text: `Title en H1 niet aanpassen voor "${q}": ${why}. Een exacte longtail in title én H1 kan de pagina voor haar hoofdonderwerp juist verzwakken.` })
+      steps.push({
+        title: `Beantwoord "${q}" in een eigen alinea op ${target}`,
+        detail: "Een tussenkop en een kort, concreet antwoord in de tekst helpt Google het zoekwoord te koppelen, zonder de title en H1 van de pagina te veranderen.",
+      })
+      return
+    }
     if (titleMissing.length) {
       const suggestion = `${capitalize(q)}${place && !normalize(q).includes(normalize(place)) ? ` in ${place}` : ""} | Gijs`
       steps.push({
@@ -340,7 +400,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     if (sources.length) {
       steps.push({
         title: `Link vanaf ${sources.join(" en ")} naar ${target}`,
-        detail: `Gebruik een linktekst als "${q}"${place ? ` of "${q.replace(new RegExp(place, "i"), "").trim() || q} in ${place}"` : ""}. Interne links vanaf gerelateerde pagina's zijn de snelste manier om een pagina een paar posities te laten stijgen.`,
+        detail: `Gebruik natuurlijke, wisselende linkteksten, bijvoorbeeld "${q}"${place ? ` of "${q.replace(new RegExp(place, "i"), "").trim() || q} in ${place}"` : ""} of de naam van de pagina, niet overal exact hetzelfde zoekwoord. Interne links vanaf gerelateerde pagina's zijn de snelste manier om een pagina een paar posities te laten stijgen.`,
       })
     } else {
       steps.push({ title: `Voeg interne links naar ${target} toe`, detail: `Vanaf pagina's die over hetzelfde onderwerp gaan, met de linktekst "${q}".` })
@@ -410,6 +470,8 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
       onPageSteps(); linkStep()
       break
     }
+    case "techniek":
+      break
     case "dubbel": {
       const rel = signal.relatedPages || []
       const main = signal.page || rel[0]
@@ -422,8 +484,8 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
         if (c.redirected) findings.push({ tone: "feit", text: `${c.path} verwijst al door naar ${c.finalPath}.` })
         else if (c.status) findings.push({ tone: "feit", text: `${c.path} bestaat als losse pagina (HTTP ${c.status}).` })
       }
-      if (checks.length === rel.length && unique.length === 1) {
-        const oldUrls = rel.filter(p => p !== unique[0])
+      if (signal.resolved || (checks.length === rel.length && unique.length === 1)) {
+        const oldUrls = rel.filter(p => p !== (unique.length === 1 ? unique[0] : main))
         findings.push({ tone: "aanwijzing", text: "Search Console toont een oude URL nog enkele weken na een doorverwijzing. Dat verdwijnt vanzelf." })
         steps.push({
           title: "Niets aanpassen: de doorverwijzing staat al",
@@ -433,7 +495,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
       }
       steps.push({
         title: `Kies ${main} als hoofdpagina`,
-        detail: `Dit is de pagina met de beste positie${pageRow(main) ? ` (${pos(pageRow(main)!.position)})` : ""}.`,
+        detail: `Dit is de pagina met de meeste vertoningen die niet doorverwijst${m.position ? ` (positie ${pos(m.position)})` : pageRow(main) ? ` (${pos(pageRow(main)!.position)})` : ""}.`,
       })
       steps.push({
         title: `Stuur ${others.join(" en ")} door naar ${main}`,
@@ -450,6 +512,8 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   if (signal.kind === "ctr" || signal.kind === "pagina") {
     const exp = m.position ? ctx.model.at(m.position) : 0
     expected.push(`Als de doorklik naar het gemiddelde voor positie ${pos(m.position)} gaat (±${pct(exp)}), levert dat ${gainText} op.`)
+  } else if (signal.kind === "techniek") {
+    expected.push("Geen directe clicks, wel een randvoorwaarde: zolang Google op foutpagina's of niet-geïndexeerde pagina's stuit, hebben inhoudelijke verbeteringen minder effect.")
   } else if (signal.kind === "dubbel") {
     expected.push(`Eén sterke pagina in plaats van twee halve: naar verwachting stijgt de hoofdpagina, goed voor ${gainText}.`)
   } else if (signal.kind === "trend-dalend" || signal.kind === "daler") {
@@ -462,22 +526,29 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   }
   expected.push("Indicatief, op basis van de gemiddelde doorklik per positie. Google verwerkt aanpassingen meestal binnen 2 tot 6 weken.")
 
-  // ── Meetplan
-  const successMetric = successMetricFor(signal.kind)
-  const measurement = [
-    "Als je het advies als uitgevoerd markeert, wordt de nulmeting vastgelegd: positie, vertoningen, clicks en doorklik.",
-    "Daarna meet het dashboard automatisch na 14, 28 en 56 dagen.",
-    successMetric === "ctr"
-      ? "Geslaagd als de doorklik na 56 dagen minstens 20% hoger ligt dan bij de nulmeting."
-      : "Geslaagd als de gemiddelde positie na 56 dagen minstens 0,5 beter is dan bij de nulmeting.",
-  ]
+  // ── Soort aanpassing en meetplan (succescriterium past bij de aanpassing)
+  const spoedFound = findings.some(f => f.tone === "spoed")
+  const indexIssue = findings.some(f => f.tone === "spoed" && /^Indexering/.test(f.text))
+  const alreadyResolved = signal.kind === "dubbel" && steps[0]?.title.startsWith("Niets aanpassen")
+  const actionType: ActionType =
+    alreadyResolved ? "geen"
+    : signal.kind === "techniek" ? (signal.tech?.type === "niet-geindexeerd" ? "indexering" : "technisch")
+    : spoedFound && !indexIssue ? "technisch"
+    : indexIssue ? "indexering"
+    : brand ? "merk"
+    : signal.kind === "dubbel" ? "consolidatie"
+    : signal.kind === "ctr" || signal.kind === "pagina" ? "snippet"
+    : "ranking"
+  const successMetric = SUCCESS_METRIC[actionType]
+  const plan = measurePlan(actionType, { page: target, query: q, count: signal.tech?.pages.length })
+  const measurement = [plan.success]
 
   // ── Oordeel: eerlijk over bewijs
-  const spoed = findings.some(f => f.tone === "spoed")
-  const alreadyHandled = signal.kind === "dubbel" && steps[0]?.title.startsWith("Niets aanpassen")
+  const spoed = spoedFound
+  const alreadyHandled = alreadyResolved
   let verdict: Diagnosis["verdict"]
   if (alreadyHandled) {
-    verdict = { kind: "afwachten", label: "Al opgelost", text: "De doorverwijzing staat al. Wijs dit advies af of markeer het als onvoldoende bewijs; er hoeft niets te gebeuren." }
+    verdict = { kind: "afwachten", label: "Al opgelost", text: `${signal.resolved || "De doorverwijzing staat al."} Er hoeft niets te gebeuren: controleer en sluit dit advies.` }
   } else if (spoed) {
     verdict = { kind: "spoed", label: "Spoed", text: "Er is een technische blokkade gevonden. Los die eerst op; daarna pas inhoudelijke aanpassingen." }
   } else if (opbouwFase && ["daler", "trend-dalend", "pagina", "analyse"].includes(signal.kind)) {
@@ -491,7 +562,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   }
 
   const importance = {
-    gainText: capitalize(gainText),
+    gainText: signal.kind === "techniek" ? "Randvoorwaarde: geen directe clicks, wel nodig voordat andere verbeteringen effect hebben" : capitalize(gainText),
     relativeText: signal.priorityRank
       ? `Prioriteit ${signal.priority}: nummer ${signal.priorityRank} van ${ctx.signalCount} signalen, gerangschikt op verwachte winst × bewijskracht × zoekintentie.`
       : "Eigen analyse: geen automatische prioriteit.",
@@ -502,22 +573,42 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   return {
     situation, target, facts,
     history: (detail?.history || []).map(h => ({ weekStart: h.weekStart, position: h.position, impressions: h.impressions })),
-    importance, verdict, findings, steps: steps.slice(0, 5), expected, measurement, successMetric,
+    importance, verdict, findings, steps: steps.slice(0, 5), expected, measurement, successMetric, actionType, plan,
   }
 }
 
-export function baselineFrom(signal: Signal, detail: AdviceDetail | null, successMetric: "position" | "ctr") {
-  const cur = (signal.query ? detail?.queryTotals?.cur : detail?.pageTotals?.cur) || null
-  return {
-    position: cur?.position ?? signal.metrics.position ?? null,
-    impressions: cur?.impressions ?? signal.metrics.impressions ?? null,
-    clicks: cur?.clicks ?? signal.metrics.clicks ?? null,
-    ctr: cur?.ctr ?? signal.metrics.ctr ?? null,
+// Nulmeting: legt vast wat bij dit soort aanpassing gemeten wordt, met de scope erbij.
+export function baselineFrom(signal: Signal, detail: AdviceDetail | null, diag: Pick<Diagnosis, "successMetric" | "actionType" | "target">, targetRow?: (MetricSet & { path: string }) | null) {
+  const m = signal.metrics
+  const base: Record<string, unknown> = {
+    position: m.position ?? null,
+    impressions: m.impressions ?? null,
+    clicks: m.clicks ?? null,
+    ctr: m.ctr ?? null,
     window: "28d",
-    windowEnd: detail?.window?.endDate ?? null,
-    successMetric,
-    source: cur ? "search-console" : "signaal",
+    windowStart: signal.scope?.window?.startDate ?? detail?.window?.startDate ?? null,
+    windowEnd: signal.scope?.window?.endDate ?? detail?.window?.endDate ?? null,
+    scope: signal.scope?.kind ?? null,
+    successMetric: diag.successMetric,
+    actionType: diag.actionType,
+    source: signal.scope?.source === "live" ? "search-console" : signal.scope?.source ?? "signaal",
+    capturedAt: new Date().toISOString(),
+    predictedGain: signal.estimate ? Math.round(signal.estimate.gain * 10) / 10 : null,
   }
+  if (signal.query && diag.target) {
+    base.targetPage = diag.target
+    base.pairPosition = targetRow?.position ?? null
+    base.pairImpressions = targetRow?.impressions ?? null
+  }
+  if (signal.kind === "dubbel") {
+    base.pages = (detail?.relatedTotals || []).map(t => ({ path: t.path, impressions: t.cur?.impressions ?? 0, clicks: t.cur?.clicks ?? 0, position: t.cur?.position ?? null }))
+    base.mainPage = signal.page ?? null
+  }
+  if (signal.kind === "techniek" && signal.tech) {
+    base.paths = signal.tech.pages.map(p => p.path)
+    base.count = signal.tech.pages.length
+  }
+  return base
 }
 
 export function buildClaudePrompt(signal: Signal, diag: Diagnosis) {

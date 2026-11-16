@@ -8,12 +8,13 @@ import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
 import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
 
-type TypeFilter = "alle" | "kansen" | "dalingen" | "snippet" | "analyse"
+type TypeFilter = "alle" | "techniek" | "kansen" | "dalingen" | "snippet" | "analyse"
 const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
   { id: "alle", label: "Alle", kinds: [] },
+  { id: "techniek", label: "Technisch", kinds: ["techniek"] },
   { id: "kansen", label: "Kansen", kinds: ["kans", "stijger", "trend-stijgend"] },
   { id: "dalingen", label: "Dalingen", kinds: ["daler", "trend-dalend"] },
-  { id: "snippet", label: "Techniek en zoekresultaat", kinds: ["ctr", "pagina", "dubbel"] },
+  { id: "snippet", label: "Zoekresultaat en dubbele pagina's", kinds: ["ctr", "pagina", "dubbel"] },
   { id: "analyse", label: "Eigen analyses", kinds: ["analyse"] },
 ]
 
@@ -23,6 +24,8 @@ function cardMeta(t: Task) {
   const col = columnOf(t.status)
   if (col === "beoordelen") {
     if (t.snoozed && t.snoozeUntil) return { icon: <Clock aria-hidden />, text: `Terug op ${dateShort(t.snoozeUntil)}` }
+    if (t.signal.kind === "techniek") return { icon: <TrendingUp aria-hidden />, text: "Technische blokkade" }
+    if (t.signal.resolved) return { icon: <TrendingUp aria-hidden />, text: "Al opgelost" }
     return { icon: <TrendingUp aria-hidden />, text: gainShort(t.signal.gain) }
   }
   if (col === "gepland") return { icon: <CalendarClock aria-hidden />, text: t.updatedAt ? `Gepland ${dateShort(t.updatedAt)}` : "Gepland" }

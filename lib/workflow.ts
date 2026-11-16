@@ -50,6 +50,7 @@ export const KIND_META: Record<SignalKind, { label: string; tone: Tone }> = {
   pagina: { label: "Geen clicks", tone: "warning" },
   dubbel: { label: "Dubbele pagina's", tone: "warning" },
   analyse: { label: "Eigen analyse", tone: "info" },
+  techniek: { label: "Technisch", tone: "error" },
 }
 
 // Fallback voor statusregels van vóór de momentopname (bv. het eerder gezette "onderzoeken")
@@ -64,6 +65,7 @@ function signalFromRecord(r: AdviceRecord): Signal {
   else if (prefix === "stijger") kind = "stijger"
   else if (prefix === "kans") kind = "kans"
   else if (prefix === "dubbel") kind = "dubbel"
+  else if (prefix === "techniek") kind = "techniek"
   else if (prefix === "probleem") {
     if (subject.startsWith("page:")) { kind = "pagina"; subject = subject.slice(5); page = subject }
     else kind = "ctr"
@@ -71,7 +73,7 @@ function signalFromRecord(r: AdviceRecord): Signal {
     if (subject.startsWith("page:")) { page = subject.slice(5); subject = page }
     else if (subject.startsWith("query:")) { query = subject.slice(6); subject = query }
   }
-  if (!page && kind !== "dubbel") query = query ?? subject
+  if (!page && kind !== "dubbel" && kind !== "techniek") query = query ?? subject
   return {
     key: r.advice_key,
     kind,

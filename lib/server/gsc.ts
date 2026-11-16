@@ -16,6 +16,13 @@ export function dateWindow(days: number, offset = 0) {
   return { startDate: fmt(start), endDate: fmt(end) }
 }
 
+// Service-account (voor nachtelijke taken zonder ingelogde gebruiker)
+export function serviceSearchConsole() {
+  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
+  const auth = new google.auth.GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/webmasters.readonly"] })
+  return google.searchconsole({ version: "v1", auth })
+}
+
 export function userSearchConsole(accessToken: string) {
   const oauth2 = new google.auth.OAuth2()
   oauth2.setCredentials({ access_token: accessToken })
@@ -25,7 +32,7 @@ export function userSearchConsole(accessToken: string) {
 export interface GscRow { keys: string[]; clicks: number; impressions: number; ctr: number; position: number }
 
 export async function gscQuery(
-  sc: ReturnType<typeof userSearchConsole>,
+  sc: ReturnType<typeof userSearchConsole> | ReturnType<typeof serviceSearchConsole>,
   body: Record<string, unknown>
 ): Promise<GscRow[]> {
   const res = await sc.searchanalytics.query({ siteUrl: SITE_URL, requestBody: body } as any)

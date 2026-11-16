@@ -2,6 +2,7 @@ import type { Evidence, GscRow, Priority, Signal, SignalKind, Streak } from "./t
 import { buildCtrModel, clicksAt, gainFromMove, type CtrModel } from "./ctr"
 import { num, pos, pct } from "./format"
 import { actionFor, classifyPage, classifyQuery, estimateFor, INTENT_META, placeIn, regionSegments } from "./intent"
+import { assessPage, type PageRow } from "./pages"
 
 export function toPath(url: string) {
   const p = url.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "")
@@ -11,7 +12,7 @@ export function toPath(url: string) {
 // De sleutelvorm is gelijk aan de eerdere versie, zodat al opgeslagen statussen blijven kloppen.
 const LEGACY_TYPE: Record<SignalKind, string> = {
   "trend-dalend": "trend", "trend-stijgend": "trend", daler: "daler", stijger: "stijger",
-  kans: "kans", ctr: "probleem", pagina: "probleem", dubbel: "dubbel", analyse: "analyse",
+  kans: "kans", ctr: "probleem", pagina: "probleem", dubbel: "dubbel", analyse: "analyse", techniek: "techniek",
 }
 
 export function signalKey(kind: SignalKind, subject: string) {
@@ -25,6 +26,7 @@ export function signalKey(kind: SignalKind, subject: string) {
     case "pagina": return `probleem:page:${subject}`
     case "dubbel": return `dubbel:${subject}`
     case "analyse": return `analyse:${subject}`
+    case "techniek": return `techniek:${subject}`
   }
 }
 
@@ -53,6 +55,7 @@ export interface SignalInput {
   prevKeywords: GscRow[]   // vorige 28 dagen
   pages: GscRow[]          // huidige 28 dagen
   streaks: Streak[]
+  inventory?: PageRow[]    // pagina-inventaris (sitemap + nachtelijke HTTP- en indexeringscontrole)
 }
 
 export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] {
@@ -200,12 +203,23 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     if (slug.length < 5) continue
     bySlug.set(slug, [...(bySlug.get(slug) || []), p])
   }
+  const inv = new Map((input.inventory || []).map(r => [r.path, r]))
   for (const [slug, rows] of bySlug) {
     const paths = rows.map(r => toPath(r.keys[0]))
     const parents = new Set(paths.map(p => p.split("/").slice(0, -1).join("/")))
     if (rows.length < 2 || parents.size < 2) continue
-    rows.sort((a, b) => a.position - b.position)
-    const best = rows[0]
+    // Waar komt elke URL uit volgens de nachtelijke HTTP-controle?
+    const finalOf = (p: string) => inv.get(p)?.http_final_path || p
+    const known = paths.every(p => inv.get(p)?.http_checked_at)
+    const finals = new Set(paths.map(finalOf))
+    const resolvedText = known && finals.size === 1
+      ? `${paths.filter(p => finalOf(p) !== p).join(" en ")} verwijst al door naar ${[...finals][0]} (nachtelijke controle).`
+      : null
+    // Hoofdpagina: meeste vertoningen onder de pagina's die niet doorverwijzen
+    const live = rows.filter(r => finalOf(toPath(r.keys[0])) === toPath(r.keys[0]))
+    const pool = live.length ? live : rows
+    pool.sort((a, b) => b.impressions - a.impressions || a.position - b.position)
+    const best = pool[0]
     const total = rows.reduce((s, r) => s + r.impressions, 0)
     drafts.push({
       key: signalKey("dubbel", slug),
@@ -220,6 +234,7 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
       evidence: "redelijk",
       evidenceReason: "Gebaseerd op overeenkomende paden; het zijpaneel controleert per zoekwoord of ze elkaar echt in de weg zitten.",
       urgency: 1.1,
+      resolved: resolvedText,
     })
   }
 
@@ -233,19 +248,62 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     d.action = actionFor(d, d.intent, d.place)
   }
 
+  // Technische blokkades uit de pagina-audit: gegroepeerd, en altijd boven inhoudelijke kansen
+  const techDrafts: Draft[] = []
+  if (input.inventory?.length) {
+    const errors = input.inventory.filter(r => r.in_sitemap && r.http_status && r.http_status >= 400)
+    if (errors.length) {
+      const sameName = errors.filter(r => r.page_type === "plaats" && r.plaats === r.gemeente).length
+      techDrafts.push({
+        key: signalKey("techniek", "sitemap-fouten"),
+        kind: "techniek",
+        headline: `${num(errors.length)} sitemap-URL's geven een foutmelding`,
+        title: `Google stuit op ${num(errors.length)} foutpagina's uit je eigen sitemap`,
+        summary: "Technische blokkade: deze URL's staan in de sitemap maar bestaan niet. Gaat vóór inhoudelijke optimalisaties.",
+        metrics: {}, gain: 0, evidence: "sterk",
+        evidenceReason: "Zelf gecontroleerd: elke URL is vannacht opgevraagd en gaf een foutcode.",
+        action: sameName >= errors.length * 0.6
+          ? `Haal de ${num(errors.length)} plaatspagina's met dezelfde naam als de gemeente uit de sitemap en stuur ze door naar de gemeentepagina`
+          : `Haal de ${num(errors.length)} foutieve URL's uit de sitemap of herstel de pagina's`,
+        tech: { type: "sitemap-fout", pages: errors.map(r => ({ path: r.path, status: r.http_status ?? null, provincie: r.provincie, gemeente: r.gemeente, plaats: r.plaats })) },
+      })
+    }
+    const unindexed = input.inventory.filter(r => !(r.http_status && r.http_status >= 400)).map(r => ({ r, a: assessPage(r) }))
+      .filter(x => x.a.status === "niet-geindexeerd" && x.a.priority === "hoog")
+    if (unindexed.length) {
+      techDrafts.push({
+        key: signalKey("techniek", "niet-geindexeerd"),
+        kind: "techniek",
+        headline: `${num(unindexed.length)} belangrijke ${unindexed.length === 1 ? "pagina" : "pagina's"} niet geïndexeerd`,
+        title: "Buiten de opbouwfase en nog niet in Google",
+        summary: "Zonder indexering kan een pagina nergens op ranken.",
+        metrics: {}, gain: 0, evidence: "sterk",
+        evidenceReason: "Volgens de URL-inspectie van Google (pagina-audit).",
+        action: unindexed.length === 1 ? `Zorg dat Google ${unindexed[0].r.path} indexeert` : `Zorg dat Google deze ${num(unindexed.length)} pagina's indexeert, te beginnen bij ${unindexed[0].r.path}`,
+        tech: { type: "niet-geindexeerd", pages: unindexed.map(x => ({ path: x.r.path, status: x.r.http_status ?? null, provincie: x.r.provincie, gemeente: x.r.gemeente, plaats: x.r.plaats, reason: x.a.reason })) },
+      })
+    }
+  }
+
   // Score en prioriteit. Prioriteit is relatief: de beste kansen in jóuw huidige data,
   // gewogen naar verwachte winst, bewijskracht, urgentie en zoekintentie (zakelijke waarde).
-  const scored = drafts.map(d => {
-    const intentWeight = INTENT_META[d.intent || "informatief"].weight
-    const score = (d.gain + (d.metrics.impressions || 0) * 0.002) * EVIDENCE_WEIGHT[d.evidence] * (d.urgency || 1) * intentWeight
-    return { ...d, score }
-  }).sort((a, b) => b.score - a.score)
+  const scored = [
+    // Technische blokkades eerst, op volgorde van omvang
+    ...techDrafts.map(d => ({ ...d, score: 10000 + (d.tech?.pages.length || 0) })),
+    ...drafts.map(d => {
+      const intentWeight = INTENT_META[d.intent || "informatief"].weight
+      // Al opgelost: blijft zichtbaar als "controleer en sluit", maar telt niet mee in de wachtrij
+      const score = d.resolved ? 0 : (d.gain + (d.metrics.impressions || 0) * 0.002) * EVIDENCE_WEIGHT[d.evidence] * (d.urgency || 1) * intentWeight
+      return { ...d, score }
+    }),
+  ].sort((a, b) => b.score - a.score)
 
   return scored.map((d, i) => {
-    let priority: Priority = i < 3 ? "hoog" : i < 8 ? "middel" : "laag"
+    let priority: Priority = d.kind === "techniek" ? "hoog" : i < 3 ? "hoog" : i < 8 ? "middel" : "laag"
     if (d.evidence === "zwak" && priority === "hoog") priority = "middel"
     if (isBrandQuery(d.query) && priority === "hoog") priority = "middel"
-    if (d.gain < 0.2 && priority !== "laag") priority = d.evidence === "sterk" ? "middel" : "laag"
+    if (d.resolved) priority = "laag"
+    if (d.kind !== "techniek" && d.gain < 0.2 && priority !== "laag") priority = d.evidence === "sterk" ? "middel" : "laag"
     const { urgency, ...rest } = d
     void urgency
     return { ...rest, legacyType: LEGACY_TYPE[d.kind], priority, priorityRank: i + 1, generatedAt: now }

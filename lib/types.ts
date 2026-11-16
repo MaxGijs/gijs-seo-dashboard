@@ -11,7 +11,28 @@ export interface Streak {
 
 export type SignalKind =
   | "trend-dalend" | "trend-stijgend" | "daler" | "stijger"
-  | "kans" | "ctr" | "pagina" | "dubbel" | "analyse"
+  | "kans" | "ctr" | "pagina" | "dubbel" | "analyse" | "techniek"
+
+// Waar een cijfer over gaat. Search Console telt per zoekwoord (alle eigen pagina's samen,
+// elke zoekopdracht één keer) anders dan per pagina (elke getoonde pagina telt mee).
+export type ScopeKind = "zoekwoord" | "pagina" | "zoekwoord-pagina" | "paginagroep" | "inventaris"
+export interface MetricScope {
+  kind: ScopeKind
+  query?: string
+  page?: string
+  pages?: string[]
+  window?: { startDate: string; endDate: string } | null
+  source: "lijst" | "live" | "inventaris"
+}
+
+// Soort aanpassing: bepaalt nulmeting en succescriterium
+export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen"
+
+// Technisch signaal uit de pagina-audit (gegroepeerd)
+export interface TechIssue {
+  type: "sitemap-fout" | "niet-geindexeerd"
+  pages: { path: string; status: number | null; provincie: string | null; gemeente: string | null; plaats: string | null; reason?: string }[]
+}
 
 export type Priority = "hoog" | "middel" | "laag"
 export type Intent = "merk" | "lokaal" | "commercieel" | "informatief"
@@ -29,6 +50,7 @@ export interface Estimate {
   high: number
   source: "eigen" | "benchmark" | "gemengd"
   scenario?: string
+  scopeRows?: { label: string; value: string }[]   // extra regels die de scope van de som uitleggen
   expectedClicks: number   // verwachte clicks per 28 d in het doelscenario
   noise: number            // natuurlijke schommeling (±√clicks)
 }
@@ -67,6 +89,9 @@ export interface Signal {
   action?: string             // concrete taak in één zin
   place?: string | null       // plaatsnaam uit het zoekwoord (regio-segment)
   estimate?: Estimate
+  scope?: MetricScope         // waar metrics over gaan (datacontract)
+  resolved?: string | null    // al opgelost (bv. doorverwijzing staat): uitleg
+  tech?: TechIssue            // alleen bij kind "techniek"
 }
 
 export type Status =
@@ -144,6 +169,7 @@ export interface AdviceDetail {
   intendedPage?: string | null
   pageInfo?: import("./pages").PageRow | null
   audit?: PageAudit
+  relatedTotals?: { path: string; cur: MetricSet | null }[]
   redirects?: { path: string; status?: number; finalPath?: string; redirected: boolean; error?: string }[]
   errors: string[]
 }

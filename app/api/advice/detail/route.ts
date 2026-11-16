@@ -125,7 +125,12 @@ export async function GET(request: Request) {
 
   // Gerelateerde pagina's (bv. dubbele onderwerpen): bestaan ze nog of verwijzen ze al door?
   if (related.length) {
-    result.redirects = await Promise.all(related.map(p => checkRedirect(toUrl(p), toPath)))
+    const [redirects, totals] = await Promise.all([
+      Promise.all(related.map(p => checkRedirect(toUrl(p), toPath))),
+      Promise.all(related.map(p => safe(`pagina ${p}`, () => gscQuery(sc, { ...cur, dimensions: ["page"], dimensionFilterGroups: pFilter(p), rowLimit: 1 }), []))),
+    ])
+    result.redirects = redirects
+    result.relatedTotals = related.map((p, i) => ({ path: p, cur: metric(totals[i][0]) }))
   }
 
   result.errors = errors

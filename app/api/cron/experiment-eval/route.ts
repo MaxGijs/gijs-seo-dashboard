@@ -1,133 +1,199 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { dateWindow, gscQuery, serviceSearchConsole, toUrl } from "@/lib/server/gsc"
+
+export const maxDuration = 120
 
 function getSupabase() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
 function daysAgo(n: number) {
   return new Date(Date.now() - n * 86400000).toISOString().split("T")[0]
 }
 
-// Gemiddelde cijfers over de laatste 7 dagen rond het meetmoment — stabieler dan één losse dag.
-async function measure(supabase: any, query: string | null, page: string | null) {
-  if (query) {
-    const { data, error } = await supabase
-      .from("seo_daily_keywords")
-      .select("position, impressions, clicks, ctr")
-      .eq("query", query)
-      .gte("snapshot_date", daysAgo(7))
-    if (error || !data || data.length === 0) return null
-    const n = data.length
-    return {
-      position: Math.round((data.reduce((s: number, r: any) => s + r.position, 0) / n) * 10) / 10,
-      impressions: data.reduce((s: number, r: any) => s + r.impressions, 0),
-      clicks: data.reduce((s: number, r: any) => s + r.clicks, 0),
-      ctr: Math.round((data.reduce((s: number, r: any) => s + r.ctr, 0) / n) * 1000) / 1000,
-      measuredAt: new Date().toISOString().split("T")[0],
-      sampleDays: n,
-    }
+const today = () => new Date().toISOString().split("T")[0]
+type Result = Record<string, any> & { measuredAt: string; summary: string }
+type Verdict = "succesvol" | "niet_succesvol" | "onduidelijk"
+
+// ── Metingen per soort aanpassing ───────────────────────────────────────────
+
+// Zoekwoord, pagina of zoekwoord-paginacombinatie, live uit Search Console (laatste 7 dagen,
+// zelfde vertraging als de rest van het dashboard). Valt terug op de dagelijkse snapshots.
+async function measureSearch(supabase: any, query: string | null, page: string | null): Promise<Result | null> {
+  const win = dateWindow(7, 0)
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && (query || page)) {
+    try {
+      const filters: any[] = []
+      if (query) filters.push({ dimension: "query", operator: "equals", expression: query })
+      if (page) filters.push({ dimension: "page", operator: "equals", expression: toUrl(page) })
+      const rows = await gscQuery(serviceSearchConsole(), { ...win, dimensions: query ? ["query"] : ["page"], dimensionFilterGroups: [{ filters }], rowLimit: 1 })
+      const r = rows[0]
+      const scope = query && page ? "zoekwoord-pagina" : query ? "zoekwoord" : "pagina"
+      if (!r) return { measuredAt: today(), window: win, scope, position: null, impressions: 0, clicks: 0, ctr: 0, sampleDays: 7, summary: "Geen vertoningen in de meetweek" }
+      return {
+        measuredAt: today(), window: win, scope, sampleDays: 7,
+        position: Math.round(r.position * 10) / 10, impressions: r.impressions, clicks: r.clicks, ctr: Math.round(r.ctr * 1000) / 1000,
+        summary: `positie ${r.position.toFixed(1).replace(".", ",")} · ${r.impressions} vertoningen (7 d)`,
+      }
+    } catch { /* terugvallen op snapshots */ }
   }
-  if (page) {
-    const fullUrl = `https://www.groeninjestraat.nl${page === "/" ? "/" : page}`
-    const { data, error } = await supabase
-      .from("seo_daily_pages")
-      .select("position, impressions, clicks, ctr")
-      .eq("page", fullUrl)
-      .gte("snapshot_date", daysAgo(7))
-    if (error || !data || data.length === 0) return null
-    const n = data.length
-    return {
-      position: Math.round((data.reduce((s: number, r: any) => s + r.position, 0) / n) * 10) / 10,
-      impressions: data.reduce((s: number, r: any) => s + r.impressions, 0),
-      clicks: data.reduce((s: number, r: any) => s + r.clicks, 0),
-      ctr: Math.round((data.reduce((s: number, r: any) => s + r.ctr, 0) / n) * 1000) / 1000,
-      measuredAt: new Date().toISOString().split("T")[0],
-      sampleDays: n,
-    }
+  if (!query && !page) return null
+  const table = query ? "seo_daily_keywords" : "seo_daily_pages"
+  const { data } = await supabase.from(table).select("position, impressions, clicks, ctr")
+    .eq(query ? "query" : "page", query || toUrl(page!)).gte("snapshot_date", daysAgo(7))
+  if (!data?.length) return null
+  const imp = data.reduce((s: number, r: any) => s + r.impressions, 0)
+  const clicks = data.reduce((s: number, r: any) => s + r.clicks, 0)
+  const position = data.reduce((s: number, r: any) => s + r.position * Math.max(r.impressions, 1), 0) / data.reduce((s: number, r: any) => s + Math.max(r.impressions, 1), 0)
+  return {
+    measuredAt: today(), scope: query ? "zoekwoord" : "pagina", sampleDays: data.length, source: "snapshot",
+    position: Math.round(position * 10) / 10, impressions: imp, clicks, ctr: imp ? Math.round((clicks / imp) * 1000) / 1000 : 0,
+    summary: `positie ${position.toFixed(1).replace(".", ",")} · ${imp} vertoningen (${data.length} d)`,
   }
-  return null
 }
 
-// GET /api/cron/experiment-eval — dagelijks: vult result_14d/28d/56d in voor experimenten
-// waarvan die termijn verstreken is, en beoordeelt bij de 56-dagen-meting of het advies
-// succesvol was (positie verbeterd t.o.v. de nulmeting).
+async function pageRows(supabase: any, paths: string[]) {
+  const rows: any[] = []
+  for (let i = 0; i < paths.length; i += 200) {
+    const { data } = await supabase.from("seo_pages").select("path, in_sitemap, http_status, http_final_path, http_checked_at, index_verdict, last_crawl_time").in("path", paths.slice(i, i + 200))
+    rows.push(...(data || []))
+  }
+  return rows
+}
+
+// Technisch: elke URL geeft 200 of een bedoelde 301 en staat niet meer als fout in de sitemap
+async function measureTechnical(supabase: any, exp: any): Promise<{ result: Result; verdict: Verdict | null }> {
+  const paths: string[] = exp.baseline?.paths || []
+  const rows = await pageRows(supabase, paths)
+  const stillBroken = rows.filter(r => r.in_sitemap && (!r.http_status || r.http_status >= 400)).length
+  const recrawled = rows.filter(r => r.last_crawl_time && r.last_crawl_time.slice(0, 10) >= exp.changed_at).length
+  const result: Result = {
+    measuredAt: today(), scope: "inventaris", total: paths.length, stillBroken, recrawled,
+    summary: `${stillBroken} van ${paths.length} nog fout · ${recrawled} opnieuw gecrawld`,
+  }
+  return { result, verdict: stillBroken === 0 ? "succesvol" : null }
+}
+
+// Indexering: alle betrokken pagina's geïndexeerd
+async function measureIndexing(supabase: any, exp: any): Promise<{ result: Result; verdict: Verdict | null }> {
+  const paths: string[] = exp.baseline?.paths || (exp.page ? [exp.page] : [])
+  const rows = await pageRows(supabase, paths)
+  const indexed = rows.filter(r => r.index_verdict === "PASS").length
+  return {
+    result: { measuredAt: today(), scope: "inventaris", total: paths.length, indexed, summary: `${indexed} van ${paths.length} geïndexeerd` },
+    verdict: paths.length && indexed === paths.length ? "succesvol" : null,
+  }
+}
+
+// Samenvoegen: oude URL's verwijzen door naar de hoofdpagina, en de hoofdpagina heeft
+// over 28 dagen minstens 90% van de vertoningen die beide pagina's samen hadden.
+async function measureConsolidation(supabase: any, exp: any): Promise<{ result: Result; final: Verdict }> {
+  const main: string = exp.baseline?.mainPage || exp.page
+  const before: { path: string; impressions: number }[] = exp.baseline?.pages || []
+  const others = before.map(p => p.path).filter(p => p !== main)
+  const rows = await pageRows(supabase, others)
+  const redirected = rows.filter(r => r.http_final_path === main).length
+  let mainImp: number | null = null
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && main) {
+    try {
+      const r = await gscQuery(serviceSearchConsole(), { ...dateWindow(28, 0), dimensions: ["page"], dimensionFilterGroups: [{ filters: [{ dimension: "page", operator: "equals", expression: toUrl(main) }] }], rowLimit: 1 })
+      mainImp = r[0]?.impressions ?? 0
+    } catch { /* geen live data */ }
+  }
+  const sumBefore = before.reduce((s, p) => s + (p.impressions || 0), 0)
+  const result: Result = {
+    measuredAt: today(), scope: "paginagroep", redirected, others: others.length, mainImpressions: mainImp, sumBefore,
+    summary: `${redirected} van ${others.length} doorverwezen · hoofdpagina ${mainImp ?? "?"} van ${sumBefore} vertoningen (28 d)`,
+  }
+  const ok = redirected === others.length && mainImp !== null && mainImp >= sumBefore * 0.9
+  const bad = redirected < others.length || (mainImp !== null && mainImp < sumBefore * 0.6)
+  return { result, final: ok ? "succesvol" : bad ? "niet_succesvol" : "onduidelijk" }
+}
+
+function finalSearchVerdict(exp: any, m: Result): Verdict | null {
+  const b = exp.baseline || {}
+  if (b.successMetric === "ctr") {
+    if (typeof b.ctr !== "number" || typeof m.ctr !== "number") return null
+    const improved = m.ctr >= Math.max(b.ctr * 1.2, b.ctr + 0.002)
+    return improved ? "succesvol" : m.ctr < b.ctr * 0.8 ? "niet_succesvol" : "onduidelijk"
+  }
+  // Positie: bij een zoekwoord met doelpagina vergelijken we de zoekwoord-paginacombinatie
+  // (verscheen de doelpagina bij de nulmeting nog niet voor het zoekwoord, dan geldt positie 100 als start)
+  const pair = !!(exp.query && exp.page && b.targetPage)
+  const base = pair ? (typeof b.pairPosition === "number" ? b.pairPosition : 100) : (b.position ?? b.positionNow)
+  if (typeof base !== "number" || typeof m.position !== "number") return null
+  return m.position < base - 0.5 ? "succesvol" : m.position > base + 0.5 ? "niet_succesvol" : "onduidelijk"
+}
+
+// GET /api/cron/experiment-eval — dagelijks: meet experimenten na 14, 28 en 56 dagen,
+// met het succescriterium dat bij de soort aanpassing hoort.
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization")
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ ok: false, error: "Supabase not configured" }, { status: 500 })
   }
 
   const supabase = getSupabase()
-  const results = { checked: 0, measured14: 0, measured28: 0, measured56: 0, finalized: 0 }
+  const results = { checked: 0, measured: 0, finalized: 0 }
 
   try {
     const { data: experiments, error } = await supabase
       .from("seo_experiments")
       .select("*")
-      .or(`result_14d.is.null,result_28d.is.null,result_56d.is.null`)
+      .is("outcome", null)
       .lte("changed_at", daysAgo(14))
     if (error) throw error
 
     for (const exp of experiments || []) {
       results.checked++
-      const changedAt = exp.changed_at
-      const ageDays = Math.floor((Date.now() - new Date(changedAt).getTime()) / 86400000)
+      const ageDays = Math.floor((Date.now() - new Date(exp.changed_at).getTime()) / 86400000)
+      const metric: string = exp.baseline?.successMetric || "position"
+      const milestones = ([[14, "result_14d"], [28, "result_28d"], [56, "result_56d"]] as const).filter(([d, col]) => ageDays >= d && !exp[col])
+      if (!milestones.length) continue
       const update: Record<string, any> = {}
+      let verdict: Verdict | null = null
 
-      if (!exp.result_14d && ageDays >= 14) {
-        const m = await measure(supabase, exp.query, exp.page)
-        if (m) { update.result_14d = m; results.measured14++ }
-      }
-      if (!exp.result_28d && ageDays >= 28) {
-        const m = await measure(supabase, exp.query, exp.page)
-        if (m) { update.result_28d = m; results.measured28++ }
-      }
-      if (!exp.result_56d && ageDays >= 56) {
-        const m = await measure(supabase, exp.query, exp.page)
-        if (m) {
-          update.result_56d = m
-          results.measured56++
-          // Eindbeoordeling volgens het meetplan uit het advies:
-          // - positie: minstens 0,5 beter dan de nulmeting (lager getal = betere positie)
-          // - doorklik (CTR): minstens 20% hoger dan de nulmeting
-          const useCtr = exp.baseline?.successMetric === "ctr"
-          const baselinePos = exp.baseline?.position ?? exp.baseline?.positionNow
-          const baselineCtr = exp.baseline?.ctr
-          let verdict: string | null = null
-          if (useCtr && typeof baselineCtr === "number" && typeof m.ctr === "number") {
-            const improved = m.ctr >= Math.max(baselineCtr * 1.2, baselineCtr + 0.002)
-            const worsened = m.ctr < baselineCtr * 0.8
-            verdict = improved ? "succesvol" : worsened ? "niet_succesvol" : "onduidelijk"
-          } else if (typeof baselinePos === "number" && typeof m.position === "number") {
-            const improved = m.position < baselinePos - 0.5
-            const worsened = m.position > baselinePos + 0.5
-            verdict = improved ? "succesvol" : worsened ? "niet_succesvol" : "onduidelijk"
-          }
-          if (verdict) {
-            update.outcome = verdict
-
-            if (update.outcome !== "onduidelijk") {
-              await supabase.from("seo_advice_status").update({
-                status: update.outcome,
-                updated_at: new Date().toISOString(),
-              }).eq("advice_key", exp.advice_key)
-              results.finalized++
-            }
+      for (const [days, col] of milestones) {
+        if (metric === "technisch") {
+          const { result, verdict: v } = await measureTechnical(supabase, exp)
+          update[col] = result
+          // Technisch: geslaagd zodra alles hersteld is; eindoordeel na 28 dagen
+          if (v) verdict = v
+          else if (days >= 28) verdict = "niet_succesvol"
+        } else if (metric === "indexering") {
+          const { result, verdict: v } = await measureIndexing(supabase, exp)
+          update[col] = result
+          if (v) verdict = v
+          else if (days >= 56) verdict = "niet_succesvol"
+        } else if (metric === "consolidatie") {
+          const { result, final } = await measureConsolidation(supabase, exp)
+          update[col] = result
+          if (days >= 56) verdict = final
+        } else if (metric === "geen") {
+          update[col] = { measuredAt: today(), summary: "Geen meting nodig" }
+          verdict = "onduidelijk"
+        } else {
+          const m = await measureSearch(supabase, exp.query, exp.page)
+          if (m) {
+            update[col] = m
+            if (days >= 56) verdict = finalSearchVerdict(exp, m)
           }
         }
+        if (update[col]) results.measured++
       }
 
-      if (Object.keys(update).length > 0) {
-        await supabase.from("seo_experiments").update(update).eq("id", exp.id)
+      if (verdict) {
+        update.outcome = verdict
+        if (verdict !== "onduidelijk") {
+          await supabase.from("seo_advice_status").update({ status: verdict, updated_at: new Date().toISOString() }).eq("advice_key", exp.advice_key)
+          results.finalized++
+        }
       }
+      if (Object.keys(update).length) await supabase.from("seo_experiments").update(update).eq("id", exp.id)
     }
 
     return NextResponse.json({ ok: true, ...results })

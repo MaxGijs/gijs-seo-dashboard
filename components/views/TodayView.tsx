@@ -20,7 +20,7 @@ function nextMeasurement(e: Experiment) {
 
 export default function TodayView() {
   const { user, loading, overview, prevOverview, tasks, experiments, newSinceLastVisit, lastVisit, openTask } = useWorkspace()
-  const { toReview, snoozed, active, evaluating } = useTaskGroups()
+  const { toReview, snoozed, active, evaluating, resolved } = useTaskGroups()
   const first = user.name?.split(" ")[0] || ""
 
   const clicks = sum(overview, "clicks"), prevClicks = sum(prevOverview, "clicks")
@@ -88,7 +88,7 @@ export default function TodayView() {
       <div className="section-head">
         <div>
           <h2 className="section-title">Prioriteit vandaag</h2>
-          <p className="section-sub">De drie signalen met de meeste verwachte winst, gewogen naar bewijskracht.</p>
+          <p className="section-sub">Technische blokkades eerst, daarna de signalen met de meeste verwachte winst, gewogen naar bewijskracht en zoekintentie.</p>
         </div>
         {!loading && toReview.length > 3 && (
           <Link href="/taken" className="section-link">Alle {toReview.length} signalen<ArrowRight aria-hidden /></Link>
@@ -108,6 +108,15 @@ export default function TodayView() {
           </div>
         ) : focus.map((t, i) => <FocusCard key={t.key} task={t} rank={i + 1} isNew={newSinceLastVisit.has(t.key)} onOpen={() => openTask(t.key)} />)}
       </div>
+      {!loading && resolved.length > 0 && (
+        <p className="slim-note">
+          <CheckCircle2 aria-hidden />
+          <span>
+            {resolved.length === 1 ? "1 signaal is" : `${resolved.length} signalen zijn`} al opgelost en telt niet mee:{" "}
+            {resolved.map((t, i) => <span key={t.key}>{i > 0 && ", "}<button className="link-btn" style={{ display: "inline" }} onClick={() => openTask(t.key)}>{t.signal.headline}</button></span>)}. Controleer en sluit.
+          </span>
+        </p>
+      )}
 
       {/* Lopend werk en metingen: compact zolang er niets loopt */}
       {loading ? null : active.length === 0 && measurements.length === 0 ? (
@@ -191,7 +200,9 @@ function FocusCard({ task, rank, isNew, onOpen }: { task: Task; rank: number; is
         <span className="focus-title">{s.action || (s.query ? `"${s.query}"` : <Breakable text={s.headline} />)}</span>
         <span className="focus-subject">{s.query ? <b>&ldquo;{s.query}&rdquo;</b> : <b><Breakable text={s.headline} /></b>} · {s.title}</span>
         <span className="focus-why">
-          <span><TrendingUp aria-hidden />{gainShort(s.gain)}</span>
+          {s.kind === "techniek"
+            ? <span><TrendingUp aria-hidden />Randvoorwaarde: gaat vóór kansen</span>
+            : <span><TrendingUp aria-hidden />{gainShort(s.gain)}</span>}
           {s.metrics.impressions !== undefined && <span><Eye aria-hidden />{num(s.metrics.impressions)} vertoningen</span>}
           <span><ShieldCheck aria-hidden />Bewijs {s.evidence}</span>
         </span>

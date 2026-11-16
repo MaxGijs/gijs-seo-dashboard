@@ -6,6 +6,7 @@ import { buildCtrModel, type CtrModel } from "./ctr"
 import { buildAdhocSignal, buildSignals, toPath } from "./signals"
 import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
 import { today } from "./format"
+import type { PageRow } from "./pages"
 
 // ── Data-ophalen ─────────────────────────────────────────────────────────────
 
@@ -67,6 +68,8 @@ interface WorkspaceValue {
   overview: GscRow[]
   prevOverview: GscRow[]
   dataUntil: string | null
+  listWindow: { startDate: string; endDate: string } | null
+  inventory: PageRow[]
   ctrModel: CtrModel
   signals: Signal[]
   tasks: Task[]
@@ -117,6 +120,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [overview, setOverview] = useState<GscRow[]>([])
   const [prevOverview, setPrevOverview] = useState<GscRow[]>([])
   const [streaks, setStreaks] = useState<Streak[]>([])
+  const [inventory, setInventory] = useState<PageRow[]>([])
+  const [listWindow, setListWindow] = useState<{ startDate: string; endDate: string } | null>(null)
   const [records, setRecords] = useState<AdviceRecord[]>([])
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [reloadTick, setReloadTick] = useState(0)
@@ -155,14 +160,17 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       getJson(`/api/trends?type=streaks`),
       getJson(`/api/advice`),
       getJson(`/api/experiments`),
+      getJson(`/api/pages`),
     ])
 
     Promise.all([core, stored])
-      .then(([[kw, prevKw, pg, ov, prevOv], [tr, adv, exp]]) => {
+      .then(([[kw, prevKw, pg, ov, prevOv], [tr, adv, exp, inv]]) => {
         if (cancelled) return
         setKeywords(kw.rows || [])
         setPrevKeywords(prevKw.rows || [])
         setPages(pg.rows || [])
+        setListWindow(kw.startDate && kw.endDate ? { startDate: kw.startDate, endDate: kw.endDate } : null)
+        setInventory(inv.status === "fulfilled" ? inv.value.rows || [] : [])
         setOverview(ov.rows || [])
         setPrevOverview(prevOv.rows || [])
         setStreaks(tr.status === "fulfilled" ? tr.value.rows || [] : [])
@@ -183,8 +191,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
 
   const ctrModel = useMemo(() => buildCtrModel(keywords), [keywords])
   const signals = useMemo(
-    () => (loading ? [] : buildSignals({ keywords, prevKeywords, pages, streaks }, ctrModel)),
-    [loading, keywords, prevKeywords, pages, streaks, ctrModel]
+    () => (loading ? [] : buildSignals({ keywords, prevKeywords, pages, streaks, inventory }, ctrModel)),
+    [loading, keywords, prevKeywords, pages, streaks, inventory, ctrModel]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks])
@@ -309,7 +317,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
             description: opts.experiment.description,
             baseline: opts.experiment.baseline,
             query: task.signal.query ?? null,
-            page: task.signal.kind === "dubbel" ? task.signal.page ?? null : task.signal.query ? null : task.signal.page ?? null,
+            // Bij een zoekwoord met doelpagina meten we de zoekwoord-paginacombinatie
+            page: (opts.experiment.baseline.targetPage as string | undefined) ?? (task.signal.kind === "dubbel" ? task.signal.page ?? null : task.signal.query ? null : task.signal.page ?? null),
           }),
         })
         setExperiments(es => [exp.experiment, ...es])
@@ -325,7 +334,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const value: WorkspaceValue = {
     user,
     loading, error, authError, storageError,
-    keywords, prevKeywords, pages, overview, prevOverview, dataUntil,
+    keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory,
     ctrModel, signals, tasks, visibleTasks, experiments,
     newSinceLastVisit, lastVisit,
     setStatus, openTask, openSubject, closePanel, panelTask,
@@ -346,13 +355,15 @@ export function sortByPriority(a: Task, b: Task) {
 export function useTaskGroups() {
   const { visibleTasks } = useWorkspace()
   return useMemo(() => {
-    const toReview = visibleTasks.filter(t => columnOf(t.status) === "beoordelen" && !t.snoozed).sort(sortByPriority)
+    // Al opgeloste signalen (bv. doorverwijzing staat al) tellen niet mee in de wachtrij: controleer en sluit
+    const resolved = visibleTasks.filter(t => columnOf(t.status) === "beoordelen" && !!t.signal.resolved && t.current)
+    const toReview = visibleTasks.filter(t => columnOf(t.status) === "beoordelen" && !t.snoozed && !(t.signal.resolved && t.current)).sort(sortByPriority)
     const snoozed = visibleTasks.filter(t => t.snoozed)
     const active = visibleTasks.filter(t => ["gepland", "uitvoering"].includes(columnOf(t.status)))
       .sort((a, b) => (a.status === "in_uitvoering" ? -1 : 0) - (b.status === "in_uitvoering" ? -1 : 0) || sortByPriority(a, b))
     const evaluating = visibleTasks.filter(t => columnOf(t.status) === "evalueren")
     const done = visibleTasks.filter(t => columnOf(t.status) === "afgerond")
-    return { toReview, snoozed, active, evaluating, done }
+    return { toReview, snoozed, active, evaluating, done, resolved }
   }, [visibleTasks])
 }
 

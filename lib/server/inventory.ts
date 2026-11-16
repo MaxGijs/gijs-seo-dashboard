@@ -1,6 +1,5 @@
-import { google } from "googleapis"
 import { getSupabase } from "./guard"
-import { SITE_ORIGIN, SITE_URL, toPath } from "./gsc"
+import { serviceSearchConsole, SITE_ORIGIN, SITE_URL, toPath } from "./gsc"
 import { classifyPath, LAUNCH_DATES } from "@/lib/pages"
 
 // ── Sitemap → pagina-inventaris ─────────────────────────────────────────────
@@ -87,7 +86,8 @@ export async function checkHttpStatus({ budgetMs = 40000, concurrency = 10 } = {
   const supabase = getSupabase()
   const rows: { path: string; url: string }[] = []
   for (let from = 0; from < 20000; from += 1000) {
-    const { data, error } = await supabase.from("seo_pages").select("path, url").eq("in_sitemap", true)
+    // Sitemap-pagina's én URL's die Google nog toont (bv. oude adressen): zo zien we ook doorverwijzingen
+    const { data, error } = await supabase.from("seo_pages").select("path, url").or("in_sitemap.eq.true,imp_28d.gt.0")
       .order("http_checked_at", { ascending: true, nullsFirst: true }).range(from, from + 999)
     if (error) throw new Error(`ophalen: ${error.message}`)
     rows.push(...(data || []))
@@ -130,12 +130,6 @@ export async function checkHttpStatus({ budgetMs = 40000, concurrency = 10 } = {
 
 // ── Indexeringscontrole (URL Inspection API) ────────────────────────────────
 // Quotum van Google: 2.000 inspecties per dag en 600 per minuut per property.
-
-function serviceSearchConsole() {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
-  const auth = new google.auth.GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/webmasters.readonly"] })
-  return google.searchconsole({ version: "v1", auth })
-}
 
 export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 6, staleDays = 7 } = {}) {
   const started = Date.now()

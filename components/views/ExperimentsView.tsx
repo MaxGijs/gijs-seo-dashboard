@@ -84,7 +84,14 @@ export default function ExperimentsView() {
               const task = byKey.get(e.advice_key)
               const base = e.baseline || {}
               const metric: "position" | "ctr" = base.successMetric === "ctr" ? "ctr" : "position"
-              const basePos = base.position ?? base.positionNow
+              // Technisch, indexering en samenvoegen worden niet op positie gemeten
+              const other = ["technisch", "indexering", "consolidatie", "geen"].includes(base.successMetric)
+              const pair = !!(e.query && e.page && base.targetPage)
+              const basePos = pair ? (base.pairPosition ?? null) : base.position ?? base.positionNow
+              const baseText = base.successMetric === "technisch" ? `${num(base.count ?? base.paths?.length)} fout`
+                : base.successMetric === "indexering" ? `${num(base.paths?.length ?? 1)} niet geïndexeerd`
+                : base.successMetric === "consolidatie" ? `${num((base.pages || []).reduce((a: number, p: any) => a + (p.impressions || 0), 0))} vert.`
+                : "—"
               const subject = task ? (task.signal.query ? `"${task.signal.query}"` : task.signal.headline) : e.query ? `"${e.query}"` : e.page || e.advice_key
               const ms: { label: string; days: number; d: Record<string, any> | null }[] = [
                 { label: "Na 14 dagen", days: 14, d: e.result_14d }, { label: "Na 28 dagen", days: 28, d: e.result_28d }, { label: "Na 56 dagen", days: 56, d: e.result_56d },
@@ -98,19 +105,19 @@ export default function ExperimentsView() {
                     </div>
                     <p className="exp-title">{subject}</p>
                     <p className="exp-desc">{e.description}</p>
-                    <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {metric === "ctr" ? "doorklik" : "positie"}</p>
+                    <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {other ? ({ technisch: "HTTP-status en sitemap", indexering: "indexeringsstatus", consolidatie: "doorverwijzing en vertoningen", geen: "niets" } as Record<string, string>)[base.successMetric] : metric === "ctr" ? "doorklik" : pair ? `positie van ${e.page}` : "positie"}</p>
                   </div>
                   <div className="exp-measures">
                     <div className="measure">
                       <p className="measure-label">Nulmeting</p>
-                      <p className="measure-value">{metric === "ctr" ? pct(base.ctr) : `pos. ${pos(basePos)}`}</p>
-                      <p className="measure-sub">{num(base.clicks)} clicks / 28 d</p>
+                      <p className="measure-value">{other ? baseText : metric === "ctr" ? pct(base.ctr) : basePos === null && pair ? "niet zichtbaar" : `pos. ${pos(basePos)}`}</p>
+                      <p className="measure-sub">{other ? "bij uitvoeren" : `${num(base.clicks)} clicks / 28 d`}</p>
                     </div>
                     {ms.map(m => m.d ? (
                       <div className="measure" key={m.label}>
                         <p className="measure-label">{m.label}</p>
-                        <p className="measure-value">{metric === "ctr" ? pct(m.d.ctr) : `pos. ${pos(m.d.position)}`}</p>
-                        <p className="measure-sub"><Delta base={metric === "ctr" ? base.ctr : basePos} value={metric === "ctr" ? m.d.ctr : m.d.position} metric={metric} /> · {num(m.d.clicks)} clicks / {m.d.sampleDays ?? 7} d</p>
+                        <p className="measure-value">{other ? (m.d.summary?.split(" · ")[0] ?? "gemeten") : metric === "ctr" ? pct(m.d.ctr) : `pos. ${pos(m.d.position)}`}</p>
+                        {other ? <p className="measure-sub">{m.d.summary?.split(" · ").slice(1).join(" · ")}</p> : <p className="measure-sub"><Delta base={metric === "ctr" ? base.ctr : basePos} value={metric === "ctr" ? m.d.ctr : m.d.position} metric={metric} /> · {num(m.d.clicks)} clicks / {m.d.sampleDays ?? 7} d</p>}
                       </div>
                     ) : (
                       <div className="measure is-pending" key={m.label}>

@@ -135,5 +135,7 @@ export function actionFor(s: Pick<Signal, "kind" | "query" | "page" | "relatedPa
       return `Controleer of ${(s.relatedPages || []).join(" en ")} al naar één pagina verwijzen`
     case "analyse":
       return `Bekijk de diagnose van ${q} en beslis of er een taak van moet komen`
+    case "techniek":
+      return `Los de technische blokkade op${s.page ? ` op ${s.page}` : ""}`
   }
 }

@@ -5,12 +5,13 @@ import {
   AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
   FlaskConical, MessageSquareText, Play, RotateCcw, ShieldCheck,
   ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
-  Users, Calculator,
+  Users, Calculator, Database,
 } from "lucide-react"
 import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
 import { INTENT_META } from "@/lib/intent"
 import { useWorkspace } from "@/lib/workspace"
 import { baselineFrom, buildClaudePrompt, buildDiagnosis, type Diagnosis, type FindingTone } from "@/lib/diagnosis"
+import { reconcile } from "@/lib/contract"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
@@ -33,7 +34,7 @@ const FINDING_TAG: Record<FindingTone, { label: string; tone: "info" | "warning"
 type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback"
 
 function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { getDetail, ctrModel, pages, signals, setStatus, toast, dataUntil } = useWorkspace()
+  const { getDetail, ctrModel, pages, signals, setStatus, toast, dataUntil, listWindow } = useWorkspace()
   const [detail, setDetail] = useState<AdviceDetail | null>(null)
   const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading")
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -44,16 +45,18 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
   const [promptText, setPromptText] = useState("")
   const closeRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const signal = task.signal
+  const raw = task.signal
+  const needsDetail = raw.kind !== "techniek"
 
   useEffect(() => {
     let cancelled = false
+    if (!needsDetail) { setDetailState("ready"); return }
     setDetailState("loading")
-    getDetail(signal)
+    getDetail(raw)
       .then(d => { if (!cancelled) { setDetail(d); setDetailState("ready") } })
       .catch(e => { if (!cancelled) { setDetailError(e?.message || "onbekende fout"); setDetailState("error") } })
     return () => { cancelled = true }
-  }, [getDetail, signal])
+  }, [getDetail, raw, needsDetail])
 
   // Focus, Escape en scroll-lock
   useEffect(() => {
@@ -75,34 +78,47 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = overflow; previous?.focus?.() }
   }, [onClose])
 
-  const diag: Diagnosis = useMemo(
-    () => buildDiagnosis(signal, detail, { model: ctrModel, pages, signalCount: signals.length }),
-    [signal, detail, ctrModel, pages, signals.length]
+  // Datacontract: pas als de live controle klaar is, worden cijfers, schatting en oordeel
+  // in één keer opgebouwd. Tot die tijd tonen we geen voorlopig oordeel.
+  const rec = useMemo(
+    () => (detailState === "loading" ? null : reconcile(raw, detailState === "ready" ? detail : null, ctrModel, listWindow)),
+    [raw, detail, detailState, ctrModel, listWindow]
   )
+  const signal = rec?.signal ?? raw
+  const diag: Diagnosis | null = useMemo(() => {
+    if (!rec) return null
+    const d = buildDiagnosis(rec.signal, detailState === "ready" ? detail : null, { model: ctrModel, pages, signalCount: signals.length })
+    if (rec.blocked) d.verdict = { kind: "afwachten", label: "Niet te bevestigen", text: rec.blocked }
+    return d
+  }, [rec, detail, detailState, ctrModel, pages, signals.length])
 
   // Belangrijkste bevindingen eerst; controles die in orde zijn en losse feiten inklapbaar
   const findings = useMemo(() => {
     const order: Record<FindingTone, number> = { spoed: 0, aanwijzing: 1, feit: 2, check: 3 }
     const quiet = (f: { tone: FindingTone; text: string }) =>
       f.tone === "feit" && /in orde|^Positie per week|^Title tag|^Meta description|^H1|^Interne links naar/i.test(f.text)
+    if (!diag) return { main: [], rest: [] }
     const sorted = [...diag.findings].sort((a, b) => order[a.tone] - order[b.tone])
     const main = sorted.filter(f => !quiet(f)).slice(0, 4)
     const rest = sorted.filter(f => !main.includes(f))
     return { main, rest }
-  }, [diag.findings])
+  }, [diag])
 
   const column = columnOf(task.status)
-  const target = diag.target
+  const target = diag?.target ?? null
+  const blocked = !!rec?.blocked
 
   const run = async (to: Status, opts: Parameters<typeof setStatus>[2], message: string) => {
     setBusy(true)
-    const ok = await setStatus(task, to, opts)
+    // De verzoende versie (live cijfers en scope) wordt als momentopname bewaard
+    const ok = await setStatus({ ...task, signal }, to, opts)
     setBusy(false)
     if (ok) { toast(message); setMode(null); setText(""); setFormError(null) }
     return ok
   }
 
   const copyToClaude = async () => {
+    if (!diag) return
     const prompt = buildClaudePrompt(signal, diag)
     try {
       await navigator.clipboard.writeText(prompt)
@@ -116,28 +132,52 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
 
   const latestExperiment: Experiment | undefined = task.experiments[0]
 
+  const header = (
+    <header className="panel-head">
+      <div className="panel-head-top">
+        <div className="panel-tags">
+          <KindLabel signal={raw} />
+          <StatusBadge task={task} />
+          {raw.kind !== "analyse" && <PriorityMeter priority={raw.priority} />}
+          {raw.intent && <IntentBadge intent={raw.intent} />}
+        </div>
+        <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
+      </div>
+      <h2 className="panel-title" id="panel-title">{raw.query ? `"${raw.query}"` : <Breakable text={raw.headline} />}</h2>
+      <p className="panel-subtitle">
+        {target ? (
+          <a href={`${SITE}${target}`} target="_blank" rel="noopener noreferrer">{target}<ExternalLink aria-hidden /></a>
+        ) : !diag ? "Pagina en cijfers worden live gecontroleerd…" : raw.kind === "techniek" ? "Uit de pagina-audit (nachtelijke controle)" : "Geen rankende pagina gevonden"}
+        {dataUntil && raw.kind !== "techniek" && <> · laatste 28 dagen t/m {dateShort(rec?.signal.scope?.window?.endDate || dataUntil)}</>}
+      </p>
+    </header>
+  )
+
+  if (!diag) {
+    return (
+      <>
+        <div className="panel-overlay" onClick={onClose} aria-hidden />
+        <div className="panel" role="dialog" aria-modal="true" aria-labelledby="panel-title" aria-busy="true" ref={panelRef}>
+          {header}
+          <div className="panel-body">
+            <section className="psec panel-loading" aria-live="polite">
+              <p className="panel-loading-title">Analyse wordt voltooid</p>
+              <p className="muted">Search Console, de pagina zelf en de pagina-audit worden live gecontroleerd. Het advies verschijnt pas als alle cijfers uit dezelfde periode en scope komen.</p>
+              <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                <Skeleton height={92} /><Skeleton height={18} /><Skeleton height={18} width="85%" /><Skeleton height={18} width="70%" />
+              </div>
+            </section>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       <div className="panel-overlay" onClick={onClose} aria-hidden />
       <div className="panel" role="dialog" aria-modal="true" aria-labelledby="panel-title" ref={panelRef}>
-        <header className="panel-head">
-          <div className="panel-head-top">
-            <div className="panel-tags">
-              <KindLabel signal={signal} />
-              <StatusBadge task={task} />
-              {signal.kind !== "analyse" && <PriorityMeter priority={signal.priority} />}
-              {signal.intent && <IntentBadge intent={signal.intent} />}
-            </div>
-            <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
-          </div>
-          <h2 className="panel-title" id="panel-title">{signal.query ? `"${signal.query}"` : <Breakable text={signal.headline} />}</h2>
-          <p className="panel-subtitle">
-            {target ? (
-              <a href={`${SITE}${target}`} target="_blank" rel="noopener noreferrer">{target}<ExternalLink aria-hidden /></a>
-            ) : detailState === "loading" ? "Rankende pagina wordt opgezocht…" : "Geen rankende pagina gevonden"}
-            {dataUntil && <> · laatste 28 dagen t/m {dateShort(dataUntil)}</>}
-          </p>
-        </header>
+        {header}
 
         <div className="panel-body">
           {!task.current && signal.kind !== "analyse" && (
@@ -158,7 +198,8 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
               <p className="summary-task">{signal.action || diag.steps[0]?.title || diag.situation}</p>
               {diag.verdict.kind !== "inplannen" && <p className="summary-note">{diag.verdict.text}</p>}
               <dl className="summary-meta">
-                <div><dt>Verwachte winst</dt><dd>{signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
+                <div><dt>Soort aanpassing</dt><dd>{diag.plan.label}</dd></div>
+                <div><dt>Verwachte winst</dt><dd>{signal.kind === "techniek" ? "randvoorwaarde" : signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
                 <div><dt>Bewijskracht</dt><dd>{capitalizeFirst(signal.evidence)}</dd></div>
                 {signal.priorityRank ? <div><dt>Prioriteit</dt><dd>#{signal.priorityRank} van {signals.length}</dd></div> : null}
               </dl>
@@ -178,6 +219,24 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                 </div>
               ))}
             </div>
+            <p className="scope-line"><Database aria-hidden /><span>{rec!.scopeText}</span></p>
+            {rec!.changes.length > 0 && (
+              <div className="scope-changes">
+                <p><b>Bijgewerkt na de live controle.</b> Cijfers, schatting en oordeel zijn opnieuw berekend:</p>
+                <ul>{rec!.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
+              </div>
+            )}
+            {signal.kind === "techniek" && signal.tech && (
+              <details className="evidence-details">
+                <summary>Alle {signal.tech.pages.length} betrokken URL&apos;s</summary>
+                <table className="mini-table" style={{ marginTop: 10 }}>
+                  <thead><tr><th>URL</th><th className="num">{signal.tech.type === "sitemap-fout" ? "HTTP" : "Status"}</th></tr></thead>
+                  <tbody>{signal.tech.pages.map(p => (
+                    <tr key={p.path}><td className="truncate" style={{ maxWidth: 380 }}>{p.path}</td><td className="num">{signal.tech!.type === "sitemap-fout" ? (p.status ?? "—") : (p.reason?.split(".")[0] || "niet geïndexeerd")}</td></tr>
+                  ))}</tbody>
+                </table>
+              </details>
+            )}
             {diag.history.length >= 2 && <Sparkline points={diag.history} />}
             {detail && (detail.queryPages?.cur?.length || detail.pageQueries?.length) ? (
               <details className="evidence-details">
@@ -185,7 +244,8 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                 <div style={{ display: "grid", gap: 16, marginTop: 12 }}>
                   {!!detail.queryPages?.cur?.length && (
                     <div>
-                      <p className="eyebrow" style={{ marginBottom: 6 }}>Eigen pagina&apos;s die op dit zoekwoord verschijnen</p>
+                      <p className="eyebrow" style={{ marginBottom: 4 }}>Eigen pagina&apos;s die op dit zoekwoord verschijnen</p>
+                      <p className="field-hint" style={{ marginBottom: 8 }}>Per pagina geteld: toont Google twee eigen pagina&apos;s in één zoekopdracht, dan telt die bij beide mee. Opgeteld ({num(detail.queryPages.cur.reduce((a, p) => a + p.impressions, 0))}) is daardoor meer dan het zoekwoordtotaal ({num(signal.metrics.impressions)}).</p>
                       <table className="mini-table">
                         <thead><tr><th>Pagina</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">Clicks</th></tr></thead>
                         <tbody>{detail.queryPages.cur.map(p => (
@@ -266,15 +326,11 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
               <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
               {signal.intent && <li className="why-item"><Users aria-hidden /><span>Zoekintentie <b>{INTENT_META[signal.intent].label.toLowerCase()}</b>: deze zoeker {INTENT_META[signal.intent].explain}.</span></li>}
             </ul>
-            <div className="timeline" aria-label="Meetplan">
-              {[
-                { l: "Nulmeting", s: "bij uitvoeren" },
-                { l: "14 dagen", s: "eerste meting" },
-                { l: "28 dagen", s: "tussenmeting" },
-                { l: "56 dagen", s: "eindoordeel" },
-              ].map(t => <div className="timeline-step" key={t.l}><span className="timeline-dot" aria-hidden /><b>{t.l}</b><span>{t.s}</span></div>)}
+            <p className="field-hint" style={{ marginTop: 14 }}>Meetplan voor: <b>{diag.plan.label.toLowerCase()}</b>. De nulmeting legt {diag.plan.baselineText} vast.</p>
+            <div className="timeline" aria-label="Meetplan" style={{ gridTemplateColumns: `repeat(${diag.plan.timeline.length}, minmax(0, 1fr))` }}>
+              {diag.plan.timeline.map(t => <div className="timeline-step" key={t.l}><span className="timeline-dot" aria-hidden /><b>{t.l}</b><span>{t.s}</span></div>)}
             </div>
-            <p className="field-hint" style={{ marginTop: 8 }}>{diag.measurement[diag.measurement.length - 1]}</p>
+            <p className="field-hint" style={{ marginTop: 8 }}><b>Succes:</b> {diag.plan.success}</p>
             <details className="evidence-details">
               <summary>Hoe is deze schatting berekend?</summary>
               <div style={{ marginTop: 12 }}>
@@ -338,14 +394,14 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                 placeholder={diag.steps[0] ? `Bijvoorbeeld: ${diag.steps[0].title.toLowerCase()}` : "Beschrijf de aanpassing"} autoFocus />
               {formError && <p className="field-error">{formError}</p>}
               <p className="field-hint">
-                Nulmeting die wordt vastgelegd: positie {pos(baselineFrom(signal, detail, diag.successMetric).position)}, {num(baselineFrom(signal, detail, diag.successMetric).impressions)} vertoningen, {num(baselineFrom(signal, detail, diag.successMetric).clicks)} clicks. Metingen op {dateShort(addDays(today(), 14))}, {dateShort(addDays(today(), 28))} en {dateShort(addDays(today(), 56))}.
+                Nulmeting die wordt vastgelegd: {diag.plan.baselineText}{signal.kind !== "techniek" && signal.metrics.position ? ` (nu positie ${pos(signal.metrics.position)}, ${num(signal.metrics.impressions)} vertoningen, ${num(signal.metrics.clicks)} clicks${rec!.targetRow ? `; ${target} zelf op positie ${pos(rec!.targetRow.position)}` : ""})` : ""}. {diag.plan.success}
               </p>
               <div className="inline-form-actions">
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
-                <button className="btn btn-primary btn-sm" disabled={busy || detailState === "loading"} onClick={() => {
+                <button className="btn btn-primary btn-sm" disabled={busy || blocked} onClick={() => {
                   if (!text.trim()) { setFormError("Beschrijf kort wat je hebt aangepast, zodat je later weet wat er gemeten wordt."); return }
-                  run("uitgevoerd", { experiment: { description: text.trim(), baseline: baselineFrom(signal, detail, diag.successMetric) } }, "Uitgevoerd. De meting is gestart.")
-                }}>{detailState === "loading" ? "Nulmeting laden…" : "Opslaan en meting starten"}</button>
+                  run("uitgevoerd", { experiment: { description: text.trim(), baseline: baselineFrom(signal, detail, diag, rec!.targetRow) } }, "Uitgevoerd. De meting is gestart.")
+                }}>Opslaan en meting starten</button>
               </div>
             </div>
           )}
@@ -375,14 +431,17 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
           {mode === null && (
             <>
               <div className="panel-actions">
-                {column === "beoordelen" && (<>
-                  <button className="btn btn-primary" disabled={busy} onClick={() => run("goedgekeurd", {}, "Ingepland. Je vindt de taak onder Gepland.")}><ThumbsUp aria-hidden />Inplannen als taak</button>
+                {column === "beoordelen" && diag.actionType === "geen" && (<>
+                  <button className="btn btn-primary" disabled={busy} onClick={() => run("afgewezen", { note: `Al opgelost: ${signal.resolved || diag.verdict.text}` }, "Gesloten als al opgelost")}><CheckCircle2 aria-hidden />Controleren en sluiten</button>
+                </>)}
+                {column === "beoordelen" && diag.actionType !== "geen" && (<>
+                  <button className="btn btn-primary" disabled={busy || blocked} title={blocked ? "Eerst moeten de cijfers bevestigd zijn" : undefined} onClick={() => run("goedgekeurd", {}, "Ingepland. Je vindt de taak onder Gepland.")}><ThumbsUp aria-hidden />Inplannen als taak</button>
                   <button className="btn btn-secondary" disabled={busy} onClick={() => setMode("snooze")}><Clock aria-hidden />Uitstellen</button>
                   <span className="grow" />
                   <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => setMode("reject")}><ThumbsDown aria-hidden />Afwijzen</button>
                 </>)}
                 {column === "gepland" && (<>
-                  <button className="btn btn-primary" disabled={busy} onClick={() => run("in_uitvoering", {}, "Gestart. De taak staat onder In uitvoering.")}><Play aria-hidden />Start uitvoering</button>
+                  <button className="btn btn-primary" disabled={busy || blocked} onClick={() => run("in_uitvoering", {}, "Gestart. De taak staat onder In uitvoering.")}><Play aria-hidden />Start uitvoering</button>
                   <button className="btn btn-secondary" disabled={busy} onClick={() => setMode("execute")}><CheckCircle2 aria-hidden />Direct als uitgevoerd markeren</button>
                   <span className="grow" />
                   <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run("nieuw", {}, "Teruggezet naar Te beoordelen")}><ArrowLeft aria-hidden />Terug</button>
@@ -447,9 +506,17 @@ function ExperimentSummary({ exp }: { exp: Experiment }) {
       <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.outcome && <Badge tone={exp.outcome === "succesvol" ? "success" : exp.outcome === "niet_succesvol" ? "error" : "neutral"}>{exp.outcome === "onduidelijk" ? "Geen duidelijk effect" : exp.outcome === "succesvol" ? "Succesvol" : "Niet succesvol"}</Badge>}</div>
       <p style={{ fontSize: "var(--fs-sm)", marginBottom: 10 }}>{exp.description}</p>
       <div className="exp-measures">
-        <div className="measure"><p className="measure-label">Nulmeting</p><p className="measure-value">pos. {pos(basePos)}</p><p className="measure-sub">{num(base.clicks)} clicks / 28 d</p></div>
+        <div className="measure"><p className="measure-label">Nulmeting</p>
+          {["technisch", "indexering"].includes(base.successMetric)
+            ? <><p className="measure-value">{num(base.count ?? base.paths?.length)} URL&apos;s</p><p className="measure-sub">bij uitvoeren</p></>
+            : <><p className="measure-value">pos. {pos(base.targetPage ? base.pairPosition ?? basePos : basePos)}</p><p className="measure-sub">{base.targetPage ? `${base.targetPage.split("/").pop()} · ` : ""}{num(base.clicks)} clicks / 28 d</p></>}
+        </div>
         {milestones.map(m => m.data ? (
-          <div className="measure" key={m.label}><p className="measure-label">{m.label}</p><p className="measure-value">pos. {pos(m.data.position)}</p><p className="measure-sub">{num(m.data.clicks)} clicks / {m.data.sampleDays ?? 7} d</p></div>
+          <div className="measure" key={m.label}><p className="measure-label">{m.label}</p>
+            {typeof m.data.position === "number"
+              ? <><p className="measure-value">pos. {pos(m.data.position)}</p><p className="measure-sub">{num(m.data.clicks)} clicks / {m.data.sampleDays ?? 7} d</p></>
+              : <><p className="measure-value">{m.data.summary?.split(" · ")[0] ?? "gemeten"}</p><p className="measure-sub">{m.data.summary?.split(" · ").slice(1).join(" · ")}</p></>}
+          </div>
         ) : (
           <div className="measure is-pending" key={m.label}><p className="measure-label">{m.label}</p><p className="measure-value subtle">—</p><p className="measure-sub">{dateShort(addDays(exp.changed_at, m.days))}</p></div>
         ))}
@@ -480,9 +547,10 @@ function EstimateTable({ e }: { e: Estimate }) {
       <p className="calc-title"><Calculator aria-hidden />Zo komt deze schatting tot stand</p>
       <table className="calc-table">
         <tbody>
-          <tr><th>Vertoningen (28 dagen)</th><td>{num(e.impressions)}</td></tr>
+          {e.scopeRows?.map(r => <tr key={r.label} className="calc-scope"><th>{r.label}</th><td>{r.value}</td></tr>)}
+          <tr><th>Vertoningen in de som (28 dagen)</th><td>{num(e.impressions)}</td></tr>
           {e.basis === "positie" ? (<>
-            <tr><th>Nu: positie {pos(e.fromPosition)}</th><td>verwachte doorklik {pct(e.ctrFrom, 2)}</td></tr>
+            <tr><th>Nu{e.scopeRows?.length ? " (zoekwoord als geheel)" : ""}: positie {pos(e.fromPosition)}</th><td>verwachte doorklik {pct(e.ctrFrom, 2)}</td></tr>
             <tr><th>Scenario: {e.scenario || `positie ${pos(e.toPosition)}`}</th><td>verwachte doorklik {pct(e.ctrTo, 2)}</td></tr>
             <tr className="calc-sum"><th>Berekening</th><td>{num(e.impressions)} × ({pct(e.ctrTo, 2)} − {pct(e.ctrFrom, 2)}) = <b>{num(e.gain, 1)} clicks</b></td></tr>
           </>) : (<>
