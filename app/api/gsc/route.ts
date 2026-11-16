@@ -13,8 +13,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type") || "keywords"
   const days = parseInt(searchParams.get("days") || "28")
+  const offset = parseInt(searchParams.get("offset") || "0")
 
   const endDate = new Date()
+  endDate.setDate(endDate.getDate() - offset)
   const startDate = new Date()
   startDate.setDate(endDate.getDate() - days)
   const fmt = (d: Date) => d.toISOString().split("T")[0]
