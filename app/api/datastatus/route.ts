@@ -3,7 +3,7 @@ import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard
 
 export const maxDuration = 30
 
-const JOBS = ["gsc-snapshot", "inventaris", "http-controle", "indexering", "experimenten"] as const
+const JOBS = ["gsc-snapshot", "inventaris", "http-controle", "indexering", "experimenten", "actualiteiten", "content-metingen"] as const
 
 // GET /api/datastatus — laatste synchronisaties, dekking en fouten, voor het datastatusscherm
 export async function GET() {

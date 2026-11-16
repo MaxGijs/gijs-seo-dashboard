@@ -21,6 +21,8 @@ const JOB_META: Record<string, { label: string; what: string; maxAgeH: number }>
   "http-controle": { label: "HTTP-controle", what: "Live statuscode en doorverwijzing van elke URL", maxAgeH: 30 },
   indexering: { label: "Indexeringscontrole", what: "URL-inspectie van Google (max. 2.000 per dag)", maxAgeH: 30 },
   experimenten: { label: "Experimentmetingen", what: "Metingen na 14, 28 en 56 dagen", maxAgeH: 30 },
+  actualiteiten: { label: "Contentkansen", what: "Nieuws van Rijksoverheid en Milieu Centraal, webtrends (maandag), zoekdata en seizoen", maxAgeH: 30 },
+  "content-metingen": { label: "Contentmetingen", what: "Gepubliceerde artikelen na 7, 30 en 90 dagen", maxAgeH: 30 },
 }
 
 function ago(iso: string | null) {
@@ -51,6 +53,8 @@ function summary(job: string, d: any): string {
     case "http-controle": return `${num(d.gecontroleerd)} gecontroleerd, ${num(d.fouten)} fouten, ${num(d.doorverwijzingen)} doorverwijzingen${d.resterend ? `, ${num(d.resterend)} resterend` : ""}`
     case "indexering": return `${num(d.gecontroleerd)} gecontroleerd${d.mislukt ? `, ${num(d.mislukt)} mislukt` : ""}${d.resterend !== null && d.resterend !== undefined ? `, ${num(d.resterend)} nog te doen` : ""}${d.quotum ? " · dagquotum bereikt" : ""}`
     case "experimenten": return `${num(d.checked)} bekeken, ${num(d.measured)} metingen, ${num(d.finalized)} afgerond`
+    case "actualiteiten": return `${num(d.bronnen - (d.bronnenMislukt || 0))}/${num(d.bronnen)} bronnen, ${num(d.relevant)} relevante berichten${d.webVondsten ? `, ${num(d.webVondsten)} webvondsten` : ""}, ${num(d.nieuweKansen)} nieuwe kansen`
+    case "content-metingen": return `${num(d.gepubliceerd)} gepubliceerd, ${num(d.metingen)} nieuwe metingen`
     default: return ""
   }
 }

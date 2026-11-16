@@ -3,11 +3,11 @@
 
 import type { Priority } from "./types"
 
-export type PageType = "home" | "overzicht" | "provincie" | "gemeente" | "plaats" | "maatregel" | "overig"
+export type PageType = "home" | "overzicht" | "provincie" | "gemeente" | "plaats" | "maatregel" | "artikel" | "overig"
 
 export const PAGE_TYPE_LABEL: Record<PageType, string> = {
   home: "Homepage", overzicht: "Regio-overzicht", provincie: "Provinciepagina", gemeente: "Gemeentepagina",
-  plaats: "Plaats- of wijkpagina", maatregel: "Maatregelpagina", overig: "Overige pagina",
+  plaats: "Plaats- of wijkpagina", maatregel: "Maatregelpagina", artikel: "Artikel of blog", overig: "Overige pagina",
 }
 
 // Lanceringsdatums per provincie (opgegeven door Max, 16 nov 2026).
@@ -26,10 +26,14 @@ export function prettySlug(slug: string) {
   return slug.split("-").map((w, i) => (i > 0 && PARTICLES.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ")
 }
 
+export const ARTICLE_SECTIONS = new Set(["blog", "blogs", "nieuws", "artikelen", "artikel", "kennis", "kennisbank", "actueel", "inspiratie", "verhalen"])
+
 export function classifyPath(path: string): { type: PageType; provincie: string | null; gemeente: string | null; plaats: string | null } {
   const parts = path.split("/").filter(Boolean)
   if (parts.length === 0) return { type: "home", provincie: null, gemeente: null, plaats: null }
   if (parts[0] === "maatregelen") return { type: "maatregel", provincie: null, gemeente: null, plaats: null }
+  // Blogs, nieuws en kennisartikelen (de site heeft nog geen vaste sectie; deze paden worden herkend zodra ze er zijn)
+  if (ARTICLE_SECTIONS.has(parts[0]) && parts.length >= 2) return { type: "artikel", provincie: null, gemeente: null, plaats: null }
   if (parts[0] === "regio") {
     if (parts.length === 1) return { type: "overzicht", provincie: null, gemeente: null, plaats: null }
     const provincie = parts[1]

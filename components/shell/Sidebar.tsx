@@ -2,7 +2,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CalendarCheck, Database, FlaskConical, KanbanSquare, LineChart, LogOut } from "lucide-react"
+import { useEffect, useState } from "react"
+import { CalendarCheck, Database, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
@@ -12,6 +13,13 @@ export const NAV = [
   { href: "/taken", label: "Mijn taken", icon: KanbanSquare },
   { href: "/analyses", label: "SEO-analyses", icon: LineChart },
   { href: "/experimenten", label: "Experimenten", icon: FlaskConical },
+] as const
+
+export const CONTENT_NAV = [
+  { href: "/content", label: "Contentkansen", icon: Newspaper },
+] as const
+
+const SYSTEM_NAV = [
   { href: "/data", label: "Datastatus", icon: Database },
 ] as const
 
@@ -19,9 +27,14 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
   const pathname = usePathname()
   const { loading, dataUntil } = useWorkspace()
   const { toReview, evaluating } = useTaskGroups()
+  const [contentNew, setContentNew] = useState(0)
+  useEffect(() => {
+    fetch("/api/content?count=1", { cache: "no-store" }).then(r => (r.ok ? r.json() : null)).then(j => setContentNew(j?.nieuw || 0)).catch(() => {})
+  }, [pathname])
   const counts: Record<string, number> = {
     "/taken": loading ? 0 : toReview.length,
     "/experimenten": loading ? 0 : evaluating.length,
+    "/content": contentNew,
   }
   const first = user.name?.split(" ")[0] || "Jij"
 
@@ -30,27 +43,31 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
       <Link href="/" className="sidebar-brand" aria-label="Gijs Intelligence, naar Vandaag">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-gijs.png" alt="Gijs" width={53} height={30} />
-        <span className="sidebar-brand-text"><strong>Intelligence</strong><span>SEO-werkruimte</span></span>
+        <span className="sidebar-brand-text"><strong>Intelligence</strong><span>SEO en content</span></span>
       </Link>
 
       <nav>
-        <p className="nav-label eyebrow">Werkruimte</p>
-        <ul className="sidebar-nav">
-          {NAV.map(item => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
-            const Icon = item.icon
-            const count = counts[item.href]
-            return (
-              <li key={item.href}>
-                <Link href={item.href} className={`nav-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={item.label}>
-                  <Icon aria-hidden />
-                  <span>{item.label}</span>
-                  {count ? <em className="nav-count" style={{ fontStyle: "normal" }} aria-label={`${count} openstaand`}>{count}</em> : null}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
+        {([["SEO", NAV], ["Content", CONTENT_NAV], ["Systeem", SYSTEM_NAV]] as const).map(([label, items]) => (
+          <div key={label} className="nav-group">
+            <p className="nav-label eyebrow">{label}</p>
+            <ul className="sidebar-nav">
+              {items.map(item => {
+                const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)
+                const Icon = item.icon
+                const count = counts[item.href]
+                return (
+                  <li key={item.href}>
+                    <Link href={item.href} className={`nav-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} title={item.label}>
+                      <Icon aria-hidden />
+                      <span>{item.label}</span>
+                      {count ? <em className="nav-count" style={{ fontStyle: "normal" }} aria-label={`${count} openstaand`}>{count}</em> : null}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className="sidebar-foot">
