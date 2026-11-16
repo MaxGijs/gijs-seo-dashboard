@@ -31,6 +31,15 @@ interface Streak {
   impressions: number
 }
 
+interface Experiment {
+  advice_key: string
+  description: string
+  changed_at: string
+  outcome: string | null
+  query: string | null
+  page: string | null
+}
+
 function getActions(keywords: Row[], prevKeywords: Row[], pages: PageRow[], streaks: Streak[]): Action[] {
   const actions: Action[] = []
   const prevMap = new Map(prevKeywords.map(k => [k.keys[0], k]))
@@ -153,13 +162,14 @@ function getActions(keywords: Row[], prevKeywords: Row[], pages: PageRow[], stre
   return actions.sort((a, b) => b.score - a.score).slice(0, 8)
 }
 
-const typeConfig: Record<ActionType, { label: string; color: string; bg: string; border: string; dot: string }> = {
-  kans: { label: "Kans", color: "#04815f", bg: "#f0f9f6", border: "#a9e4d2", dot: "#06a77d" },
-  probleem: { label: "Actie nodig", color: "#b23225", bg: "#fbecea", border: "#f5c6c3", dot: "#e53e3e" },
-  win: { label: "Win", color: "#1b5348", bg: "#f0f9f6", border: "#a9e4d2", dot: "#17bf92" },
-  stijger: { label: "Stijgende trend", color: "#04815f", bg: "#f0f9f6", border: "#a9e4d2", dot: "#06a77d" },
-  daler: { label: "Dalende trend", color: "#b23225", bg: "#fbecea", border: "#f5c6c3", dot: "#e53e3e" },
-  trend: { label: "Meerweken-trend", color: "#133e35", bg: "#f0f9f6", border: "#06a77d", dot: "#06a77d" },
+// Accentkleur per type (links op de kaart) — de kaart zelf is altijd wit/licht, zoals een nette taken-lijst.
+const typeConfig: Record<ActionType, { label: string; accent: string }> = {
+  kans: { label: "Kans", accent: "#06a77d" },
+  probleem: { label: "Actie nodig", accent: "#e5533d" },
+  win: { label: "Win", accent: "#17bf92" },
+  stijger: { label: "Stijgende trend", accent: "#06a77d" },
+  daler: { label: "Dalende trend", accent: "#e5533d" },
+  trend: { label: "Meerweken-trend", accent: "#133e35" },
 }
 
 const statusConfig: Record<Status, { label: string; color: string; bg: string }> = {
@@ -204,6 +214,38 @@ const nextSteps: Record<Status, { label: string; to: Status }[]> = {
   onvoldoende_bewijs: [{ label: "Heropenen", to: "nieuw" }],
 }
 
+function buildAnalysisPrompt(action: Action, priorExperiments: Experiment[]): string {
+  const lines = [
+    `Ik beheer het SEO-dashboard van groeninjestraat.nl (zonnepanelen, isolatie en warmtepompen, regio Twente/Overijssel). Help me met een diagnose en concreet advies voor dit signaal uit Google Search Console.`,
+    ``,
+    `SIGNAAL`,
+    `Type: ${typeConfig[action.type].label}`,
+    `${action.title}`,
+    `${action.body}`,
+    ``,
+    `CIJFERS`,
+    ...Object.entries(action.metrics).map(([k, v]) => `- ${k}: ${v}`),
+  ]
+  if (action.query) lines.push(``, `Zoekwoord: "${action.query}"`)
+  if (action.page) lines.push(``, `Pagina: ${action.page}`)
+
+  if (priorExperiments.length > 0) {
+    lines.push(``, `EERDERE AANPASSINGEN OP DIT ONDERWERP`)
+    priorExperiments.forEach(e => {
+      lines.push(`- ${e.changed_at}: ${e.description}${e.outcome ? ` (resultaat: ${e.outcome})` : " (resultaat nog niet bekend)"}`)
+    })
+  }
+
+  lines.push(
+    ``,
+    `VRAAG`,
+    `1. Wat zijn mogelijke oorzaken van dit signaal? Onderscheid feiten, hypotheses en wat ik zelf nog moet checken (bv. door de pagina te bekijken).`,
+    `2. Is dit signaal sterk genoeg om nu actie op te ondernemen, of is er te weinig bewijs?`,
+    `3. Geef één concrete, uitvoerbare verbeteractie — geen algemene SEO-tips, maar iets specifiek voor deze pagina of dit zoekwoord.`,
+  )
+  return lines.join("\n")
+}
+
 export default function Advisor({
   keywords, prevKeywords, pages, streaks, loading,
 }: {
@@ -211,7 +253,9 @@ export default function Advisor({
 }) {
   const actions = loading ? [] : getActions(keywords, prevKeywords, pages, streaks)
   const [statuses, setStatuses] = useState<Record<string, Status>>({})
+  const [experiments, setExperiments] = useState<Experiment[]>([])
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/advice")
@@ -221,6 +265,11 @@ export default function Advisor({
         for (const row of data.rows || []) map[row.advice_key] = row.status
         setStatuses(map)
       })
+      .catch(() => {})
+
+    fetch("/api/experiments")
+      .then(r => r.json())
+      .then(data => setExperiments(data.rows || []))
       .catch(() => {})
   }, [])
 
@@ -261,6 +310,23 @@ export default function Advisor({
     } finally {
       setBusyKey(null)
     }
+  }
+
+  // Geen API-kosten: stelt een complete analyse-prompt samen, zet 'm op het klembord en
+  // opent claude.ai — jij plakt en verstuurt zelf, met je eigen (gratis/Pro) Claude-gebruik.
+  async function analyzeWithClaude(action: Action) {
+    const prior = experiments.filter(e =>
+      (action.query && e.query === action.query) || (action.page && e.page === action.page)
+    )
+    const prompt = buildAnalysisPrompt(action, prior)
+    try {
+      await navigator.clipboard.writeText(prompt)
+      setCopiedKey(action.key)
+      setTimeout(() => setCopiedKey(k => (k === action.key ? null : k)), 2500)
+    } catch {
+      // Klembord niet beschikbaar (bv. geen https of geen toestemming) — open gewoon, gebruiker plakt handmatig.
+    }
+    window.open("https://claude.ai/new", "_blank")
   }
 
   return (
@@ -309,38 +375,58 @@ export default function Advisor({
             const steps = nextSteps[status]
             return (
               <div key={a.key} style={{
-                background: cfg.bg, border: `1px solid ${cfg.border}`,
-                borderRadius: 12, padding: "12px 14px",
+                background: "#fff", borderRadius: 14,
+                borderLeft: `4px solid ${cfg.accent}`,
+                boxShadow: "0 1px 2px rgba(19,62,53,0.06)",
+                padding: "13px 16px",
                 display: "flex", gap: 12, alignItems: "flex-start"
               }}>
                 <div style={{
-                  width: 22, height: 22, borderRadius: "50%",
-                  background: "#133e35", color: "#fff", flexShrink: 0,
+                  width: 22, height: 22, borderRadius: 7,
+                  background: "#f0f3f1", color: "#133e35", flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 10, fontWeight: 700, marginTop: 1
                 }}>{i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
                     <span style={{
-                      fontSize: 10, fontWeight: 700, color: cfg.color,
+                      fontSize: 10, fontWeight: 700, color: cfg.accent,
                       letterSpacing: ".06em", textTransform: "uppercase"
                     }}>{cfg.label}</span>
                     <span style={{
                       fontSize: 10, fontWeight: 700, color: sCfg.color, background: sCfg.bg,
-                      borderRadius: 999, padding: "2px 8px", letterSpacing: ".02em"
+                      borderRadius: 999, padding: "2px 9px", letterSpacing: ".02em"
                     }}>{sCfg.label}</span>
                   </div>
                   <p style={{ fontSize: 13, fontWeight: 600, color: "#133e35", margin: "0 0 2px" }}>{a.title}</p>
-                  <p style={{ fontSize: 12, color: "#4a4f4d", margin: "0 0 8px" }}>{a.body}</p>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <p style={{ fontSize: 12, color: "#6b716e", margin: "0 0 10px" }}>{a.body}</p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      onClick={() => analyzeWithClaude(a)}
+                      style={{
+                        fontSize: 11, fontWeight: 700, color: "#fff",
+                        background: "#133e35", border: "1px solid #133e35",
+                        borderRadius: 999, padding: "5px 12px", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 5,
+                      }}
+                    >
+                      🔍 Analyseer met Claude
+                    </button>
+                    {copiedKey === a.key && (
+                      <span style={{ fontSize: 11, color: "#0d7a63", fontWeight: 600 }}>
+                        Prompt gekopieerd — plak 'm in het nieuwe tabblad
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                     {steps.map(step => (
                       <button
                         key={step.to}
                         disabled={busyKey === a.key}
                         onClick={() => updateStatus(a, step.to)}
                         style={{
-                          fontSize: 11, fontWeight: 600, color: "#133e35",
-                          background: "#fff", border: "1px solid #d7ddda",
+                          fontSize: 11, fontWeight: 600, color: "#4a4f4d",
+                          background: "#fff", border: "1px solid #e1e5e3",
                           borderRadius: 999, padding: "4px 10px", cursor: "pointer",
                           opacity: busyKey === a.key ? 0.5 : 1,
                         }}
