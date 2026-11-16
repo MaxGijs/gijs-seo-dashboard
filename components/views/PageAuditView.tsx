@@ -60,10 +60,10 @@ export default function PageAuditView() {
   }
 
   const runSync = async () => {
-    setBusy("sync"); setProgress("Sitemap wordt ingelezen…")
+    setBusy("sync"); setProgress("Sitemap inlezen en alle pagina's live controleren…")
     try {
       const r = await post("sync")
-      toast(`Inventaris bijgewerkt: ${num(r.sitemap)} pagina's in de sitemap, ${num(r.metVertoningen)} met vertoningen.`)
+      toast(`Inventaris bijgewerkt: ${num(r.sitemap)} pagina's in de sitemap, ${num(r.metVertoningen)} met vertoningen${r.http ? `, ${num(r.http.fouten)} geven een foutcode` : ""}.`)
       await load()
     } catch (e: any) { toast(`Bijwerken mislukt: ${e.message}`, "error") }
     setBusy(null); setProgress(null)

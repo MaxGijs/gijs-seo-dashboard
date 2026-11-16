@@ -64,6 +64,9 @@ export interface PageRow {
   last_crawl_time: string | null
   inspected_at: string | null
   inspect_error: string | null
+  http_status?: number | null
+  http_final_path?: string | null
+  http_checked_at?: string | null
 }
 
 export type PageStatus =
@@ -100,6 +103,10 @@ const COVERAGE_NL: Record<string, string> = {
   "Blocked by robots.txt": "Geblokkeerd door robots.txt",
   "Server error (5xx)": "Serverfout (5xx)",
 }
+// Google geeft de status in de taal van het verzoek (nl-NL) terug; we herkennen beide talen.
+export const isRedirectState = (s: string | null) => !!s && /redirect|doorverw|doorgestuurd|omleiding/i.test(s)
+export const isCrawledNotIndexed = (s: string | null) => !!s && /crawled|gecrawld/i.test(s)
+
 export function coverageNl(state: string | null) {
   if (!state) return null
   return COVERAGE_NL[state] || state
@@ -159,13 +166,32 @@ export function assessPage(p: PageRow): PageAssessment {
   const canonicalElsewhere = p.google_canonical && !samePath(p.google_canonical, p.path)
 
   if (!p.in_sitemap) {
-    if (p.coverage_state === "Page with redirect" || p.page_fetch_state === "REDIRECT_ERROR") {
+    if (isRedirectState(p.coverage_state) || p.page_fetch_state === "REDIRECT_ERROR") {
       return { status: "doorverwezen", priority: "laag", monitor: true, reason: "Deze oude URL verwijst door. Search Console toont hem nog enkele weken.", next: "Niets doen; verdwijnt vanzelf." }
     }
     return {
       status: "buiten-sitemap", priority: p.imp_28d >= 50 ? "middel" : "laag", monitor: p.imp_28d < 50,
       reason: `Google toont deze URL (${p.imp_28d} vertoningen in 28 dagen), maar hij staat niet in de sitemap.`,
       next: "Controleer of deze pagina bewust buiten de sitemap valt of moet doorverwijzen naar een nieuwe pagina.",
+    }
+  }
+
+  // Live controle gaat voor: een pagina die nu een fout geeft, kan niet ranken — ook als Google hem nog niet gecrawld heeft.
+  if (p.http_status && p.http_status >= 400) {
+    const parent = p.path.split("/").slice(0, -1).join("/") || "/"
+    return {
+      status: "technisch", priority: "hoog", monitor: false,
+      reason: `De pagina geeft nu een ${p.http_status}${p.http_status === 404 ? " (bestaat niet)" : ""}, maar staat wel in de sitemap. Google stuit hier op een foutpagina.`,
+      next: p.page_type === "plaats" && p.plaats === p.gemeente
+        ? `Haal deze URL uit de sitemap of verwijs door (301) naar de gemeentepagina ${parent}.`
+        : "Haal de URL uit de sitemap of herstel de pagina.",
+    }
+  }
+  if (p.http_final_path && p.http_final_path !== p.path) {
+    return {
+      status: "technisch", priority: "middel", monitor: false,
+      reason: `Deze URL staat in de sitemap, maar verwijst door naar ${p.http_final_path}.`,
+      next: `Zet ${p.http_final_path} in de sitemap in plaats van deze URL.`,
     }
   }
 
@@ -186,7 +212,7 @@ export function assessPage(p: PageRow): PageAssessment {
   if (inspected && !indexed) {
     const state = coverageNl(p.coverage_state) || "Niet geïndexeerd"
     if (opbouw) {
-      const late = (age ?? 0) >= 28 && p.coverage_state !== "Crawled - currently not indexed"
+      const late = (age ?? 0) >= 28 && !isCrawledNotIndexed(p.coverage_state)
       return {
         status: "niet-geindexeerd", priority: late ? "middel" : "laag", monitor: !late,
         reason: `${state}. De pagina staat ${age} dagen live; voor een nieuwe pagina is dat ${late ? "lang" : "normaal"}.`,
@@ -196,7 +222,7 @@ export function assessPage(p: PageRow): PageAssessment {
     return {
       status: "niet-geindexeerd", priority: "hoog", monitor: false,
       reason: `${state}, terwijl de pagina al ${age ?? "?"} dagen bestaat.`,
-      next: p.coverage_state === "Crawled - currently not indexed"
+      next: isCrawledNotIndexed(p.coverage_state)
         ? "Google vond de pagina niet waardevol genoeg: voeg unieke lokale inhoud toe of voeg samen met een verwante pagina."
         : "Versterk interne links naar deze pagina en vraag indexering aan in Search Console.",
     }

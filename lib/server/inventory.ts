@@ -80,6 +80,54 @@ export async function syncInventory() {
   }
 }
 
+// ── Live HTTP-status van alle sitemap-pagina's (geen Google-quotum nodig) ───
+
+export async function checkHttpStatus({ budgetMs = 40000, concurrency = 10 } = {}) {
+  const started = Date.now()
+  const supabase = getSupabase()
+  const rows: { path: string; url: string }[] = []
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase.from("seo_pages").select("path, url").eq("in_sitemap", true)
+      .order("http_checked_at", { ascending: true, nullsFirst: true }).range(from, from + 999)
+    if (error) throw new Error(`ophalen: ${error.message}`)
+    rows.push(...(data || []))
+    if (!data || data.length < 1000) break
+  }
+  const queue = [...rows]
+  const results: { path: string; http_status: number | null; http_final_path: string | null; http_checked_at: string }[] = []
+  async function worker() {
+    while (queue.length && Date.now() - started < budgetMs) {
+      const page = queue.shift()!
+      let status: number | null = null, finalPath: string | null = null
+      for (const method of ["HEAD", "GET"]) {
+        try {
+          const ctrl = new AbortController()
+          const t = setTimeout(() => ctrl.abort(), 8000)
+          const res = await fetch(page.url, { method, redirect: "follow", cache: "no-store", signal: ctrl.signal, headers: { "User-Agent": "GijsSEODashboard/1.0 (+statuscontrole, alleen lezen)" } })
+          clearTimeout(t)
+          if (method === "GET") { try { await res.body?.cancel() } catch {} }
+          status = res.status
+          finalPath = toPath(res.url || page.url)
+          if (res.status !== 405) break
+        } catch { status = null }
+      }
+      results.push({ path: page.path, http_status: status, http_final_path: finalPath, http_checked_at: new Date().toISOString() })
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker))
+  // Alleen de statusvelden bijwerken (upsert op bestaande rijen)
+  for (const part of chunk(results, 500)) {
+    const { error } = await supabase.rpc("seo_pages_set_http", { rows: part })
+    if (error) throw new Error(`statussen opslaan: ${error.message}`)
+  }
+  return {
+    gecontroleerd: results.length,
+    fouten: results.filter(r => r.http_status === null || r.http_status >= 400).length,
+    doorverwijzingen: results.filter(r => r.http_final_path && r.http_final_path !== r.path).length,
+    resterend: rows.length - results.length,
+  }
+}
+
 // ── Indexeringscontrole (URL Inspection API) ────────────────────────────────
 // Quotum van Google: 2.000 inspecties per dag en 600 per minuut per property.
 

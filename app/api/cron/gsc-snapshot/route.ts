@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { google } from "googleapis"
 import { createClient } from "@supabase/supabase-js"
-import { inspectBatch, syncInventory } from "@/lib/server/inventory"
+import { checkHttpStatus, inspectBatch, syncInventory } from "@/lib/server/inventory"
 
 const SITE_URL = "https://www.groeninjestraat.nl/"
 // GSC data heeft vaak 2-3 dagen vertraging voor het compleet/stabiel is.
@@ -108,6 +108,7 @@ export async function GET(request: Request) {
     // Pagina-inventaris bijwerken en een batch indexeringscontroles (los van de snapshot: een fout
     // hierin mag de dagelijkse snapshot niet laten mislukken).
     try { results.inventaris = await syncInventory() } catch (e: any) { results.inventaris = { fout: e.message } }
+    try { results.http = await checkHttpStatus({ budgetMs: 60000 }) } catch (e: any) { results.http = { fout: e.message } }
     try { results.indexering = await inspectBatch({ budgetMs: 200000, max: 1500 }) } catch (e: any) { results.indexering = { fout: e.message } }
 
     return NextResponse.json({ ok: true, ...results })
