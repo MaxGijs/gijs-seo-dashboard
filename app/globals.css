@@ -515,3 +515,32 @@ img, svg { display: block; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ── Paneel: taak, genummerde secties, rekensom ───────────────────────── */
+.panel-task { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-md); background: var(--accent-050); border: 1px solid var(--accent-100); font-size: var(--fs-sm); color: var(--grey-800); }
+.panel-task svg { width: 17px; height: 17px; color: var(--accent-700); flex-shrink: 0; margin-top: 1px; }
+.panel-task b { color: var(--green-800); }
+.psec-num { width: 20px; height: 20px; border-radius: 6px; background: var(--grey-100); color: var(--green-800); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-left: -2px; }
+.psec-title > svg:has(+ .psec-num) { display: none; }
+.tcard-sub.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.focus-subject { font-size: var(--fs-sm); color: var(--text-muted); }
+.focus-subject b { color: var(--green-800); font-weight: 600; }
+.slim-note { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: var(--radius-lg); border: 1px dashed var(--grey-300); color: var(--text-muted); font-size: var(--fs-sm); background: transparent; }
+.slim-note svg { width: 18px; height: 18px; color: var(--accent-700); flex-shrink: 0; }
+.split-single { grid-template-columns: minmax(0, 1fr); }
+.secondary-stack { display: grid; gap: 12px; }
+.evidence-details { margin-top: 12px; }
+.evidence-details summary { cursor: pointer; font-weight: 600; color: var(--accent-700); font-size: var(--fs-sm); }
+.evidence-details summary:hover { color: var(--green-800); }
+.impact-headline { display: flex; gap: 10px; align-items: center; font-size: var(--fs-md); margin-bottom: 12px; }
+.impact-headline svg { width: 18px; height: 18px; color: var(--accent-700); }
+.calc { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; background: var(--grey-050); margin-bottom: 14px; }
+.calc-title { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--green-800); font-size: var(--fs-sm); margin-bottom: 8px; }
+.calc-title svg { width: 16px; height: 16px; color: var(--accent-700); }
+.calc-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.calc-table th { text-align: left; font-weight: 400; color: var(--text-muted); padding: 6px 12px 6px 0; vertical-align: top; }
+.calc-table td { text-align: right; padding: 6px 0; font-variant-numeric: tabular-nums; color: var(--grey-800); }
+.calc-table tr + tr th, .calc-table tr + tr td { border-top: 1px solid var(--border-subtle); }
+.calc-sum th, .calc-sum td { color: var(--green-800); font-weight: 600; }
+.calc-notes { margin-top: 10px; display: grid; gap: 6px; font-size: var(--fs-xs); color: var(--text-muted); list-style: disc; padding-left: 16px; }
+@media (max-width: 760px) { .calc-table th, .calc-table td { display: block; text-align: left; padding: 2px 0; } .calc-table tr { display: block; padding: 6px 0; } .calc-table tr + tr th, .calc-table tr + tr td { border-top: 0; } .calc-table tr + tr { border-top: 1px solid var(--border-subtle); } }

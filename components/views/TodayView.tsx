@@ -6,7 +6,7 @@ import { ArrowRight, ArrowUpRight, CalendarClock, CheckCircle2, Eye, FlaskConica
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import type { Experiment, Task } from "@/lib/types"
 import { addDays, dateLong, dateShort, gainShort, greeting, num, plural, signedPct, today } from "@/lib/format"
-import { Breakable, EmptyState, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
+import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
 
 function sum(rows: { clicks: number; impressions: number }[], key: "clicks" | "impressions") {
   return rows.reduce((s, r) => s + r[key], 0)
@@ -108,53 +108,46 @@ export default function TodayView() {
         ) : focus.map((t, i) => <FocusCard key={t.key} task={t} rank={i + 1} isNew={newSinceLastVisit.has(t.key)} onOpen={() => openTask(t.key)} />)}
       </div>
 
-      {/* Lopend werk en metingen */}
-      <div className="split">
-        <section className="card" aria-labelledby="lopend">
-          <div className="card-head">
-            <div>
-              <h2 className="card-title" id="lopend"><ListTodo aria-hidden />Lopende taken</h2>
-              <p className="card-sub">Ingepland of in uitvoering</p>
-            </div>
-            {active.length > 0 && <Link href="/taken" className="section-link">Naar bord<ArrowRight aria-hidden /></Link>}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            {loading ? (
-              <div className="card-body"><Skeleton height={36} /></div>
-            ) : active.length === 0 ? (
-              <EmptyState compact icon={<Play />} title="Nog geen taken" text="Open een signaal hierboven en kies 'Inplannen als taak'." />
-            ) : (
-              <div className="row-list">
+      {/* Lopend werk en metingen: compact zolang er niets loopt */}
+      {loading ? null : active.length === 0 && measurements.length === 0 ? (
+        <p className="slim-note"><Play aria-hidden />Nog geen lopende taken of metingen. Plan een advies hierboven in; zodra je het als uitgevoerd markeert, start de meting automatisch.</p>
+      ) : (
+        <div className={`split${active.length === 0 || measurements.length === 0 ? " split-single" : ""}`}>
+          {active.length > 0 ? (
+            <section className="card" aria-labelledby="lopend">
+              <div className="card-head">
+                <div>
+                  <h2 className="card-title" id="lopend"><ListTodo aria-hidden />Lopende taken</h2>
+                  <p className="card-sub">Ingepland of in uitvoering</p>
+                </div>
+                <Link href="/taken" className="section-link">Naar bord<ArrowRight aria-hidden /></Link>
+              </div>
+              <div className="row-list" style={{ marginTop: 12 }}>
                 {active.slice(0, 6).map(t => (
                   <button key={t.key} className="row-item" onClick={() => openTask(t.key)}>
                     <span className="row-icon tone-accent" aria-hidden>{t.status === "in_uitvoering" ? <Play /> : <CalendarClock />}</span>
                     <span style={{ minWidth: 0 }}>
-                      <span className="row-title truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}</span>
-                      <span className="row-sub truncate" style={{ display: "block" }}>{t.signal.title}</span>
+                      <span className="row-title truncate" style={{ display: "block" }}>{t.signal.query ? `"${t.signal.query}"` : t.signal.headline}</span>
+                      <span className="row-sub truncate" style={{ display: "block" }}>{t.signal.action || t.signal.title}</span>
                     </span>
                     <StatusBadge task={t} />
                   </button>
                 ))}
               </div>
-            )}
-          </div>
-        </section>
-
-        <section className="card" aria-labelledby="metingen">
-          <div className="card-head">
-            <div>
-              <h2 className="card-title" id="metingen"><FlaskConical aria-hidden />Metingen</h2>
-              <p className="card-sub">Effect van wat je hebt aangepast</p>
-            </div>
-            {measurements.length > 0 && <Link href="/experimenten" className="section-link">Alle experimenten<ArrowRight aria-hidden /></Link>}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            {loading ? (
-              <div className="card-body"><Skeleton height={36} /></div>
-            ) : measurements.length === 0 ? (
-              <EmptyState compact icon={<FlaskConical />} title="Nog geen metingen" text="Zodra je een taak als uitgevoerd markeert, legt het dashboard een nulmeting vast en meet het na 14, 28 en 56 dagen opnieuw." />
-            ) : (
-              <div className="row-list">
+            </section>
+          ) : (
+            <p className="slim-note"><ListTodo aria-hidden />Geen lopende taken. Plan een advies hierboven in.</p>
+          )}
+          {measurements.length > 0 ? (
+            <section className="card" aria-labelledby="metingen">
+              <div className="card-head">
+                <div>
+                  <h2 className="card-title" id="metingen"><FlaskConical aria-hidden />Metingen</h2>
+                  <p className="card-sub">Effect van wat je hebt aangepast</p>
+                </div>
+                <Link href="/experimenten" className="section-link">Alle experimenten<ArrowRight aria-hidden /></Link>
+              </div>
+              <div className="row-list" style={{ marginTop: 12 }}>
                 {measurements.map(({ e, next, task }) => (
                   <button key={e.id} className="row-item" onClick={() => openTask(e.advice_key)}>
                     <span className={`row-icon ${e.outcome === "succesvol" ? "tone-success" : e.outcome === "niet_succesvol" ? "tone-error" : "tone-info"}`} aria-hidden>
@@ -171,10 +164,12 @@ export default function TodayView() {
                   </button>
                 ))}
               </div>
-            )}
-          </div>
-        </section>
-      </div>
+            </section>
+          ) : (
+            <p className="slim-note"><FlaskConical aria-hidden />Nog geen metingen. Die starten zodra je een taak als uitgevoerd markeert.</p>
+          )}
+        </div>
+      )}
     </>
   )
 }
@@ -188,11 +183,12 @@ function FocusCard({ task, rank, isNew, onOpen }: { task: Task; rank: number; is
         <span className="focus-meta">
           <KindLabel signal={s} />
           <PriorityMeter priority={s.priority} />
+          {s.intent && <IntentBadge intent={s.intent} />}
           {task.status !== "nieuw" && <StatusBadge task={task} />}
           {isNew && <span className="new-dot">Nieuw</span>}
         </span>
-        <span className="focus-title">{s.query ? `"${s.query}"` : <Breakable text={s.headline} />}</span>
-        <span className="focus-text">{s.title}</span>
+        <span className="focus-title">{s.action || (s.query ? `"${s.query}"` : <Breakable text={s.headline} />)}</span>
+        <span className="focus-subject">{s.query ? <b>&ldquo;{s.query}&rdquo;</b> : <b><Breakable text={s.headline} /></b>} · {s.title}</span>
         <span className="focus-why">
           <span><TrendingUp aria-hidden />{gainShort(s.gain)}</span>
           {s.metrics.impressions !== undefined && <span><Eye aria-hidden />{num(s.metrics.impressions)} vertoningen</span>}

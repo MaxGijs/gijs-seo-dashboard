@@ -1,6 +1,7 @@
 import type { Evidence, GscRow, Priority, Signal, SignalKind, Streak } from "./types"
 import { buildCtrModel, clicksAt, gainFromMove, type CtrModel } from "./ctr"
 import { num, pos, pct } from "./format"
+import { actionFor, classifyPage, classifyQuery, estimateFor, INTENT_META, placeIn, regionSegments } from "./intent"
 
 export function toPath(url: string) {
   const p = url.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "")
@@ -222,10 +223,21 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     })
   }
 
-  // Score en prioriteit. Prioriteit is relatief: de beste kansen in jóuw huidige data.
+  // Intentie, controleerbare schatting en concrete taak per signaal
+  const regions = regionSegments(input.pages.map(p => toPath(p.keys[0])))
+  for (const d of drafts) {
+    d.intent = d.query ? classifyQuery(d.query, regions, isBrandQuery(d.query)) : classifyPage(d.page || "/")
+    d.place = d.query ? placeIn(d.query, regions) : null
+    d.estimate = estimateFor(d, model)
+    if (d.estimate) d.gain = d.estimate.gain
+    d.action = actionFor(d, d.intent, d.place)
+  }
+
+  // Score en prioriteit. Prioriteit is relatief: de beste kansen in jóuw huidige data,
+  // gewogen naar verwachte winst, bewijskracht, urgentie en zoekintentie (zakelijke waarde).
   const scored = drafts.map(d => {
-    const brand = isBrandQuery(d.query) ? 0.3 : 1
-    const score = (d.gain + (d.metrics.impressions || 0) * 0.002) * EVIDENCE_WEIGHT[d.evidence] * (d.urgency || 1) * brand
+    const intentWeight = INTENT_META[d.intent || "informatief"].weight
+    const score = (d.gain + (d.metrics.impressions || 0) * 0.002) * EVIDENCE_WEIGHT[d.evidence] * (d.urgency || 1) * intentWeight
     return { ...d, score }
   }).sort((a, b) => b.score - a.score)
 
@@ -255,7 +267,14 @@ export function buildAdhocSignal(
   const [evidence, reason] = evidenceFromImpressions(imp, 150, 40)
   const id = subject.query ? `query:${subject.query}` : `page:${subject.page}`
   const headline = subject.query || subject.page || ""
+  const regions = regionSegments(input.pages.map(p => toPath(p.keys[0])))
+  const intent = subject.query ? classifyQuery(subject.query, regions, isBrandQuery(subject.query)) : classifyPage(subject.page || "/")
+  const place = subject.query ? placeIn(subject.query, regions) : null
+  const metrics = row ? { position: row.position, impressions: row.impressions, clicks: row.clicks, ctr: row.ctr } : {}
+  const estimate = estimateFor({ kind: "analyse", metrics }, model)
   return {
+    intent, place, estimate,
+    action: actionFor({ kind: "analyse", query: subject.query, page: subject.page }, intent, place),
     key: signalKey("analyse", id),
     kind: "analyse",
     legacyType: "analyse",
@@ -268,8 +287,8 @@ export function buildAdhocSignal(
     summary: row
       ? `Eigen analyse van ${subject.query ? "dit zoekwoord" : "deze pagina"} over de laatste 28 dagen.`
       : "Er zijn in de laatste 28 dagen geen vertoningen gemeten.",
-    metrics: row ? { position: row.position, impressions: row.impressions, clicks: row.clicks, ctr: row.ctr } : {},
-    gain: row && position ? gainFromMove(model, imp, position, Math.max(1, position - 3)) : 0,
+    metrics,
+    gain: estimate?.gain ?? 0,
     priority: "laag",
     priorityRank: 0,
     evidence,

@@ -33,6 +33,7 @@ function bucketOf(p: number) {
 
 export interface CtrModel {
   at(position: number): number
+  sourceAt(position: number): "eigen" | "benchmark"
   usesOwnData: boolean
 }
 
@@ -52,12 +53,31 @@ export function buildCtrModel(keywords: GscRow[]): CtrModel {
     const v = acc.get(b)
     if (v && v.impressions >= MIN_IMPRESSIONS) own.set(b, v.clicks / v.impressions)
   }
+  // Representatieve waarde per bucket (eigen data waar die er is). Daarna één doorgang van
+  // betere naar slechtere posities: een slechtere positie mag nooit een hogere doorklik hebben.
+  // Dat is voorzichtig: lage eigen doorklik telt ook voor de posities daarachter.
+  const REP: Record<string, number> = { "11-15": 13, "16-20": 18, "21-30": 25, "31+": 40 }
+  const fixed: number[] = []
+  BUCKETS.forEach((b, i) => {
+    const v = own.get(b) ?? benchmarkAt(REP[b] ?? Number(b))
+    fixed.push(i === 0 ? v : Math.min(v, fixed[i - 1]))
+  })
   return {
     usesOwnData: own.size > 0,
+    sourceAt(position: number) {
+      const p = Math.max(1, position)
+      const i = BUCKETS.indexOf(bucketOf(p))
+      // eigen data als de bucket eigen data heeft, of als eigen data het branchegemiddelde begrenst
+      return own.has(BUCKETS[i]) || (i > 0 && benchmarkAt(p) > fixed[i - 1]) ? "eigen" : "benchmark"
+    },
     at(position: number) {
       const p = Math.max(1, position)
-      const ownVal = own.get(bucketOf(p))
-      return ownVal !== undefined ? ownVal : benchmarkAt(p)
+      const b = bucketOf(p)
+      const i = BUCKETS.indexOf(b)
+      const raw = own.get(b) ?? benchmarkAt(p)
+      const upper = i > 0 ? fixed[i - 1] : 1
+      const lower = i < fixed.length - 1 ? fixed[i + 1] : 0
+      return Math.min(Math.max(raw, lower), upper)
     },
   }
 }

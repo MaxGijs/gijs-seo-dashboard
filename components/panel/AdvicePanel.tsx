@@ -5,13 +5,15 @@ import {
   Activity, AlertTriangle, ArrowLeft, BarChart3, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
   Eye, FlaskConical, Gauge, ListChecks, MessageSquareText, Play, RotateCcw, ShieldCheck, Stethoscope,
   Target, ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
+  ClipboardCheck, Database, Users, Calculator,
 } from "lucide-react"
-import type { AdviceDetail, Experiment, Status, Task } from "@/lib/types"
+import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
+import { INTENT_META } from "@/lib/intent"
 import { useWorkspace } from "@/lib/workspace"
 import { baselineFrom, buildClaudePrompt, buildDiagnosis, type Diagnosis, type FindingTone } from "@/lib/diagnosis"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
-import { Alert, Badge, Breakable, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
+import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
 
 const SITE = "https://www.groeninjestraat.nl"
 
@@ -113,6 +115,7 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
               <KindLabel signal={signal} />
               <StatusBadge task={task} />
               {signal.kind !== "analyse" && <PriorityMeter priority={signal.priority} />}
+              {signal.intent && <IntentBadge intent={signal.intent} />}
             </div>
             <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
           </div>
@@ -123,6 +126,9 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             ) : detailState === "loading" ? "Rankende pagina wordt opgezocht…" : "Geen rankende pagina gevonden"}
             {dataUntil && <> · laatste 28 dagen t/m {dateShort(dataUntil)}</>}
           </p>
+          {signal.action && (
+            <p className="panel-task"><ClipboardCheck aria-hidden /><span><b>Taak:</b> {signal.action}</span></p>
+          )}
         </header>
 
         <div className="panel-body">
@@ -142,11 +148,16 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             </div>
           </section>
 
-          {/* Wat speelt er */}
-          <section className="psec" aria-labelledby="sec-situatie">
-            <h3 className="psec-title" id="sec-situatie"><Activity aria-hidden />Wat speelt er</h3>
+          {/* 1. Probleem */}
+          <section className="psec" aria-labelledby="sec-probleem">
+            <h3 className="psec-title" id="sec-probleem"><Activity aria-hidden /><span className="psec-num">1</span>Probleem: wat is er veranderd</h3>
             <p className="lead">{diag.situation}</p>
-            <div className="facts">
+          </section>
+
+          {/* 2. Bewijs */}
+          <section className="psec" aria-labelledby="sec-bewijs">
+            <h3 className="psec-title" id="sec-bewijs"><Database aria-hidden /><span className="psec-num">2</span>Bewijs</h3>
+            <div className="facts" style={{ marginTop: 0 }}>
               {diag.facts.map(f => (
                 <div className="fact" key={f.label}>
                   <p className="fact-label">{f.label}</p>
@@ -156,22 +167,40 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
               ))}
             </div>
             {diag.history.length >= 2 && <Sparkline points={diag.history} />}
+            {detail && (detail.queryPages?.cur?.length || detail.pageQueries?.length) ? (
+              <details className="evidence-details">
+                <summary>Pagina&apos;s en zoekwoorden achter deze cijfers</summary>
+                <div style={{ display: "grid", gap: 16, marginTop: 12 }}>
+                  {!!detail.queryPages?.cur?.length && (
+                    <div>
+                      <p className="eyebrow" style={{ marginBottom: 6 }}>Eigen pagina&apos;s die op dit zoekwoord verschijnen</p>
+                      <table className="mini-table">
+                        <thead><tr><th>Pagina</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">Clicks</th></tr></thead>
+                        <tbody>{detail.queryPages.cur.map(p => (
+                          <tr key={p.path}><td className="truncate" style={{ maxWidth: 260 }}>{p.path}</td><td className="num">{pos(p.position)}</td><td className="num">{num(p.impressions)}</td><td className="num">{num(p.clicks)}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                  {!!detail.pageQueries?.length && (
+                    <div>
+                      <p className="eyebrow" style={{ marginBottom: 6 }}>Zoekwoorden van {detail.auditTarget}</p>
+                      <table className="mini-table">
+                        <thead><tr><th>Zoekwoord</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">CTR</th></tr></thead>
+                        <tbody>{detail.pageQueries.slice(0, 10).map(r => (
+                          <tr key={r.query}><td className="truncate" style={{ maxWidth: 260 }}>{r.query}</td><td className="num">{pos(r.position)}</td><td className="num">{num(r.impressions)}</td><td className="num">{pct(r.ctr)}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </details>
+            ) : null}
           </section>
 
-          {/* Waarom belangrijk */}
-          <section className="psec" aria-labelledby="sec-waarom">
-            <h3 className="psec-title" id="sec-waarom"><Target aria-hidden />Waarom dit belangrijk is</h3>
-            <ul className="why-list">
-              <li className="why-item"><TrendingUp aria-hidden /><span><b>{diag.importance.gainText}</b> (indicatief).</span></li>
-              <li className="why-item"><Eye aria-hidden /><span>{diag.importance.visibilityText}</span></li>
-              <li className="why-item"><BarChart3 aria-hidden /><span>{diag.importance.relativeText}</span></li>
-              <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
-            </ul>
-          </section>
-
-          {/* Diagnose */}
+          {/* 3. Diagnose */}
           <section className="psec" aria-labelledby="sec-diagnose">
-            <h3 className="psec-title" id="sec-diagnose"><Stethoscope aria-hidden />Diagnose{detailState === "loading" && <span className="subtle">pagina en rankings worden gecontroleerd…</span>}</h3>
+            <h3 className="psec-title" id="sec-diagnose"><Stethoscope aria-hidden /><span className="psec-num">3</span>Diagnose: waardoor kan dit komen{detailState === "loading" && <span className="subtle">pagina en rankings worden gecontroleerd…</span>}</h3>
             {detailState === "error" && (
               <div style={{ marginBottom: 12 }}>
                 <Alert tone="warning" title="Detailgegevens niet opgehaald">De diagnose hieronder gebruikt alleen de cijfers van het signaal ({detailError}).</Alert>
@@ -195,9 +224,9 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             )}
           </section>
 
-          {/* Concrete stappen */}
+          {/* 4. Aanbeveling */}
           <section className="psec" aria-labelledby="sec-stappen">
-            <h3 className="psec-title" id="sec-stappen"><ListChecks aria-hidden />Wat je concreet aanpast</h3>
+            <h3 className="psec-title" id="sec-stappen"><ListChecks aria-hidden /><span className="psec-num">4</span>Aanbeveling: wat je concreet aanpast</h3>
             {detailState === "loading" ? (
               <div style={{ display: "grid", gap: 12 }}><Skeleton height={40} /><Skeleton height={40} /></div>
             ) : (
@@ -212,26 +241,33 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             )}
           </section>
 
-          {/* Verwacht resultaat & meetplan */}
-          <section className="psec" aria-labelledby="sec-resultaat">
-            <h3 className="psec-title" id="sec-resultaat"><Gauge aria-hidden />Verwacht resultaat en meetplan</h3>
-            <ul className="plain-list" style={{ marginBottom: 14 }}>
-              {diag.expected.map((e, i) => <li key={i}><TrendingUp aria-hidden /><span>{e}</span></li>)}
+          {/* 5. Impact en zekerheid */}
+          <section className="psec" aria-labelledby="sec-impact">
+            <h3 className="psec-title" id="sec-impact"><Target aria-hidden /><span className="psec-num">5</span>Impact en zekerheid</h3>
+            <p className="impact-headline"><TrendingUp aria-hidden /><span><b>{diag.importance.gainText}</b> <span className="muted">(indicatief)</span></span></p>
+            {signal.estimate ? <EstimateTable e={signal.estimate} /> : (
+              <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Voor dit advies is geen rekensom beschikbaar: er zijn geen actuele vertoningen of posities.</p>
+            )}
+            <ul className="why-list">
+              <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
+              {signal.intent && <li className="why-item"><Users aria-hidden /><span>Zoekintentie <b>{INTENT_META[signal.intent].label.toLowerCase()}</b>: deze zoeker {INTENT_META[signal.intent].explain}. Weegt ×{num(INTENT_META[signal.intent].weight, 2)} mee in de prioriteit.</span></li>}
+              <li className="why-item"><BarChart3 aria-hidden /><span>{diag.importance.relativeText}</span></li>
             </ul>
+            {diag.expected.slice(1).map((e, i) => <p key={i} className="field-hint" style={{ marginTop: 10 }}>{e}</p>)}
+          </section>
+
+          {/* 6. Evaluatie */}
+          <section className="psec" aria-labelledby="sec-evaluatie">
+            <h3 className="psec-title" id="sec-evaluatie"><CalendarClock aria-hidden /><span className="psec-num">6</span>Evaluatie: wanneer meten we het resultaat</h3>
             <ul className="plain-list">
               {diag.measurement.map((e, i) => <li key={i}><CalendarClock aria-hidden /><span>{e}</span></li>)}
             </ul>
-          </section>
-
-          {/* Experimenten op dit advies */}
-          {task.experiments.length > 0 && (
-            <section className="psec" aria-labelledby="sec-exp">
-              <h3 className="psec-title" id="sec-exp"><FlaskConical aria-hidden />Uitgevoerde aanpassingen</h3>
-              <div style={{ display: "grid", gap: 12 }}>
+            {task.experiments.length > 0 && (
+              <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
                 {task.experiments.map(e => <ExperimentSummary key={e.id} exp={e} />)}
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
           {task.note && mode !== "note" && (
             <section className="psec" aria-labelledby="sec-note">
@@ -239,39 +275,6 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
               <p className="note-box">{task.note}</p>
             </section>
           )}
-
-          {/* Onderliggende cijfers */}
-          {detail && (detail.queryPages?.cur?.length || detail.pageQueries?.length) ? (
-            <section className="psec">
-              <details>
-                <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--green-800)" }}>Onderliggende cijfers</summary>
-                <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
-                  {!!detail.queryPages?.cur?.length && (
-                    <div>
-                      <p className="eyebrow" style={{ marginBottom: 6 }}>Pagina&apos;s die op dit zoekwoord ranken</p>
-                      <table className="mini-table">
-                        <thead><tr><th>Pagina</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">Clicks</th></tr></thead>
-                        <tbody>{detail.queryPages.cur.map(p => (
-                          <tr key={p.path}><td className="truncate" style={{ maxWidth: 260 }}>{p.path}</td><td className="num">{pos(p.position)}</td><td className="num">{num(p.impressions)}</td><td className="num">{num(p.clicks)}</td></tr>
-                        ))}</tbody>
-                      </table>
-                    </div>
-                  )}
-                  {!!detail.pageQueries?.length && (
-                    <div>
-                      <p className="eyebrow" style={{ marginBottom: 6 }}>Zoekwoorden van {detail.auditTarget}</p>
-                      <table className="mini-table">
-                        <thead><tr><th>Zoekwoord</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">CTR</th></tr></thead>
-                        <tbody>{detail.pageQueries.slice(0, 10).map(r => (
-                          <tr key={r.query}><td className="truncate" style={{ maxWidth: 260 }}>{r.query}</td><td className="num">{pos(r.position)}</td><td className="num">{num(r.impressions)}</td><td className="num">{pct(r.ctr)}</td></tr>
-                        ))}</tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </details>
-            </section>
-          ) : null}
         </div>
 
         <footer className="panel-foot">
@@ -415,3 +418,45 @@ function ExperimentSummary({ exp }: { exp: Experiment }) {
 }
 
 export { ExperimentSummary }
+
+// De rekensom achter de schatting, regel voor regel
+function EstimateTable({ e }: { e: Estimate }) {
+  const sourceText = e.source === "eigen"
+    ? "jouw eigen doorklik op deze posities (Search Console, laatste 28 dagen)"
+    : e.source === "gemengd"
+      ? "deels jouw eigen doorklik, deels het branchegemiddelde waar je eigen data te dun is (< 300 vertoningen per positie)"
+      : "het branchegemiddelde; je eigen data heeft op deze posities te weinig vertoningen (< 300)"
+  const ratio = e.gain / Math.max(e.noise, 0.01)
+  const noiseText = e.expectedClicks < 0.5
+    ? "Bij zo weinig verwachte clicks is elk resultaat grotendeels toeval."
+    : ratio < 1
+      ? `De natuurlijke schommeling (±${num(e.noise, 1)} clicks per 28 dagen) is groter dan de verwachte winst: één maand meten zegt nog weinig.`
+      : ratio < 2
+        ? `De natuurlijke schommeling (±${num(e.noise, 1)} clicks per 28 dagen) is ongeveer even groot als de verwachte winst: meet over meerdere maanden.`
+        : `De verwachte winst is duidelijk groter dan de natuurlijke schommeling (±${num(e.noise, 1)} clicks): een effect zou zichtbaar moeten worden.`
+  return (
+    <div className="calc">
+      <p className="calc-title"><Calculator aria-hidden />Zo komt deze schatting tot stand</p>
+      <table className="calc-table">
+        <tbody>
+          <tr><th>Vertoningen (28 dagen)</th><td>{num(e.impressions)}</td></tr>
+          {e.basis === "positie" ? (<>
+            <tr><th>Nu: positie {pos(e.fromPosition)}</th><td>verwachte doorklik {pct(e.ctrFrom, 2)}</td></tr>
+            <tr><th>Scenario: {e.scenario || `positie ${pos(e.toPosition)}`}</th><td>verwachte doorklik {pct(e.ctrTo, 2)}</td></tr>
+            <tr className="calc-sum"><th>Berekening</th><td>{num(e.impressions)} × ({pct(e.ctrTo, 2)} − {pct(e.ctrFrom, 2)}) = <b>{num(e.gain, 1)} clicks</b></td></tr>
+          </>) : (<>
+            <tr><th>Nu: doorklik op positie {pos(e.fromPosition)}</th><td>{pct(e.ctrFrom, 2)}</td></tr>
+            <tr><th>Gemiddeld op deze positie</th><td>{pct(e.ctrTo, 2)}</td></tr>
+            <tr className="calc-sum"><th>Berekening</th><td>{num(e.impressions)} × {pct(e.ctrTo, 2)} − huidige clicks = <b>{num(e.gain, 1)} clicks</b></td></tr>
+          </>)}
+          <tr><th>Getoonde bandbreedte</th><td>{e.gain >= 1 ? `${num(e.low)}–${num(e.high)} clicks (−40% tot +30%)` : "minder dan 1 click"}</td></tr>
+        </tbody>
+      </table>
+      <ul className="calc-notes">
+        <li>Doorklik per positie: {sourceText}.</li>
+        <li>Aanname: het aantal vertoningen blijft gelijk. Stijg je in Google, dan krijg je vaak ook méér vertoningen; dat zit niet in deze som.</li>
+        <li>{noiseText}</li>
+      </ul>
+    </div>
+  )
+}

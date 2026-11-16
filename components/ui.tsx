@@ -123,3 +123,9 @@ export function posClass(p: number) {
   if (p <= 20) return "pos-p2"
   return "pos-far"
 }
+
+const INTENT_LABEL = { lokaal: "Lokaal", commercieel: "Commercieel", informatief: "Informatief", merk: "Merk" } as const
+const INTENT_TONE = { lokaal: "accent", commercieel: "info", informatief: "neutral", merk: "neutral" } as const
+export function IntentBadge({ intent }: { intent: keyof typeof INTENT_LABEL }) {
+  return <span className={`badge tone-${INTENT_TONE[intent]}`} title="Zoekintentie">{INTENT_LABEL[intent]}</span>
+}

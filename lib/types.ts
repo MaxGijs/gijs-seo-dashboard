@@ -14,6 +14,24 @@ export type SignalKind =
   | "kans" | "ctr" | "pagina" | "dubbel" | "analyse"
 
 export type Priority = "hoog" | "middel" | "laag"
+export type Intent = "merk" | "lokaal" | "commercieel" | "informatief"
+
+// De rekensom achter "≈ x extra clicks", zodat die controleerbaar is
+export interface Estimate {
+  basis: "positie" | "doorklik"
+  impressions: number
+  fromPosition: number
+  toPosition: number
+  ctrFrom: number
+  ctrTo: number
+  gain: number
+  low: number
+  high: number
+  source: "eigen" | "benchmark" | "gemengd"
+  scenario?: string
+  expectedClicks: number   // verwachte clicks per 28 d in het doelscenario
+  noise: number            // natuurlijke schommeling (±√clicks)
+}
 export type Evidence = "sterk" | "redelijk" | "zwak"
 
 export interface SignalMetrics {
@@ -45,6 +63,10 @@ export interface Signal {
   evidenceReason: string
   score: number
   generatedAt: string
+  intent?: Intent
+  action?: string             // concrete taak in één zin
+  place?: string | null       // plaatsnaam uit het zoekwoord (regio-segment)
+  estimate?: Estimate
 }
 
 export type Status =

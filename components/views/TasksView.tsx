@@ -6,7 +6,7 @@ import { sortByPriority, useWorkspace } from "@/lib/workspace"
 import type { Priority, SignalKind, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
-import { Breakable, EmptyState, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
+import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
 
 type TypeFilter = "alle" | "kansen" | "dalingen" | "snippet" | "analyse"
 const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
@@ -140,7 +140,7 @@ export default function TasksView() {
                         {c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
                       </span>
                       <span className="tcard-title">{t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
-                      <span className="tcard-sub">{t.signal.title}</span>
+                      <span className="tcard-sub clamp" title={t.signal.title}>{t.signal.action || t.signal.title}</span>
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
                         {newSinceLastVisit.has(t.key) && c.id === "beoordelen" ? <span className="new-dot">Nieuw</span>
@@ -169,8 +169,8 @@ export default function TasksView() {
               <tbody>
                 {COLUMNS.flatMap(c => columns[c.id]).map(t => (
                   <tr key={t.key} className="is-clickable" onClick={() => openTask(t.key)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") openTask(t.key) }}>
-                    <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400 }}>{t.signal.title}</span></td>
-                    <td className="nowrap">{KIND_META[t.signal.kind].label}</td>
+                    <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span></td>
+                    <td className="nowrap">{KIND_META[t.signal.kind].label}{t.signal.intent && <div style={{ marginTop: 4 }}><IntentBadge intent={t.signal.intent} /></div>}</td>
                     <td><StatusBadge task={t} /></td>
                     <td>{t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : <span className="subtle">—</span>}</td>
                     <td className="nowrap"><TrendingUp size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--accent-700)" }} aria-hidden />{gainShort(t.signal.gain)}</td>

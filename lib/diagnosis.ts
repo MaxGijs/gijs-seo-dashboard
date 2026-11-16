@@ -464,7 +464,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   const importance = {
     gainText: capitalize(gainText),
     relativeText: signal.priorityRank
-      ? `Prioriteit ${signal.priority}: nummer ${signal.priorityRank} van ${ctx.signalCount} signalen, gerangschikt op verwachte winst × bewijskracht.`
+      ? `Prioriteit ${signal.priority}: nummer ${signal.priorityRank} van ${ctx.signalCount} signalen, gerangschikt op verwachte winst × bewijskracht × zoekintentie.`
       : "Eigen analyse: geen automatische prioriteit.",
     evidenceText: `Bewijskracht ${signal.evidence}. ${signal.evidenceReason}`,
     visibilityText: m.impressions ? `${num(m.impressions)} keer vertoond in 28 dagen.` : "Geen vertoningen in de laatste 28 dagen.",
