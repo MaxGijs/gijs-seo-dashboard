@@ -700,3 +700,8 @@ img, svg { display: block; max-width: 100%; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { white-space: nowrap; flex-shrink: 0; }
 @media (max-width: 760px) { .tabs { padding: 0 16px; } .tab { margin-right: 12px; } }
+.kind-label svg { width: 12px; height: 12px; vertical-align: -2px; margin-right: 4px; }
+.tcard-content { border-left: 3px solid var(--accent-200); }
+.kw-scroll { max-height: 280px; overflow: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); }
+.kw-scroll .mini-table thead th { position: sticky; top: 0; background: var(--white); }
+.kw-scroll .mini-table tfoot td { position: sticky; bottom: 0; background: var(--grey-050); border-top: 1px solid var(--border); }

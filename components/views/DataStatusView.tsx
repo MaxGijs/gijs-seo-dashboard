@@ -5,7 +5,7 @@ import { CheckCircle2, Database, RefreshCw, XCircle } from "lucide-react"
 import { Alert, Badge, Skeleton } from "@/components/ui"
 import { dateShort, num } from "@/lib/format"
 
-interface Job { job: string; last: { run_at: string; ok: boolean; duration_ms: number | null; details: any; error: string | null } | null; lastOk: string | null; failures7d: number }
+interface Job { job: string; dataAt?: string | null; last: { run_at: string; ok: boolean; duration_ms: number | null; details: any; error: string | null } | null; lastOk: string | null; failures7d: number }
 interface Status {
   jobs: Job[]
   snapshots: { overview: Snap; keywords: Snap; pages: Snap; daysLast90: number }
@@ -38,7 +38,11 @@ function time(iso: string | null) {
 }
 
 function jobState(j: Job): { tone: "success" | "warning" | "error" | "neutral"; label: string } {
-  if (!j.last) return { tone: "neutral", label: "Nog niet gedraaid" }
+  if (!j.last) {
+    // Geen logregel, maar wel data: de taak draaide al vóór het logboek bestond
+    if (j.dataAt) return (Date.now() - new Date(j.dataAt).getTime()) / 3600000 > (JOB_META[j.job]?.maxAgeH ?? 30) + 24 ? { tone: "warning", label: "Data verouderd" } : { tone: "success", label: "Data aanwezig" }
+    return { tone: "neutral", label: j.job === "content-metingen" || j.job === "experimenten" ? "Nog niets te meten" : "Nog niet gedraaid" }
+  }
   if (!j.last.ok) return { tone: "error", label: "Laatste run mislukt" }
   const ageH = (Date.now() - new Date(j.last.run_at).getTime()) / 3600000
   if (ageH > (JOB_META[j.job]?.maxAgeH ?? 30)) return { tone: "warning", label: "Verouderd" }
@@ -62,7 +66,7 @@ function summary(job: string, d: any): string {
 export default function DataStatusView() {
   const [data, setData] = useState<Status | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [ga4, setGa4] = useState<{ ok: boolean; code?: string; serviceAccount?: string | null } | null>(null)
+  const [ga4, setGa4] = useState<{ ok: boolean; code?: string; serviceAccount?: string | null; sessions?: number; keyEvents?: number } | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
@@ -70,9 +74,15 @@ export default function DataStatusView() {
     setError(null)
     Promise.all([
       fetch("/api/datastatus", { cache: "no-store" }).then(async r => { const b = await r.json(); if (!r.ok) throw new Error(b.error || `HTTP ${r.status}`); return b }),
-      fetch("/api/ga4?days=1", { cache: "no-store" }).then(async r => ({ ok: r.ok, ...(r.ok ? {} : await r.json().catch(() => ({}))) })).catch(() => ({ ok: false, code: "error" })),
+      fetch("/api/ga4?days=28", { cache: "no-store" }).then(async r => {
+        const b = await r.json().catch(() => ({}))
+        if (!r.ok) return { ok: false, ...b }
+        const rows: any[] = b.rows || []
+        const sum = (i: number) => rows.reduce((s, x) => s + Number(x.metricValues?.[i]?.value || 0), 0)
+        return { ok: true, sessions: sum(0), keyEvents: sum(1) }
+      }).catch(() => ({ ok: false, code: "error" })),
     ])
-      .then(([s, g]) => { setData(s); setGa4({ ok: g.ok, code: (g as any).code, serviceAccount: (g as any).serviceAccount }) })
+      .then(([s, g]) => { setData(s); setGa4({ ok: g.ok, code: (g as any).code, serviceAccount: (g as any).serviceAccount, sessions: (g as any).sessions, keyEvents: (g as any).keyEvents }) })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
@@ -103,9 +113,9 @@ export default function DataStatusView() {
                   <tr key={j.job}>
                     <td><b>{JOB_META[j.job]?.label || j.job}</b><div className="muted" style={{ fontSize: "var(--fs-xs)" }}>{JOB_META[j.job]?.what}</div></td>
                     <td><Badge tone={st.tone} dot>{st.label}</Badge></td>
-                    <td className="nowrap">{time(j.last?.run_at ?? null)}<div className="muted" style={{ fontSize: "var(--fs-xs)" }}>{ago(j.last?.run_at ?? null)}</div></td>
-                    <td className="nowrap">{time(j.lastOk)}</td>
-                    <td style={{ fontSize: "var(--fs-sm)" }}>{j.last?.ok ? summary(j.job, j.last.details) : <span className="text-error">{j.last?.error || "—"}</span>}</td>
+                    <td className="nowrap">{j.last ? <>{time(j.last.run_at)}<div className="muted" style={{ fontSize: "var(--fs-xs)" }}>{ago(j.last.run_at)}</div></> : j.dataAt ? <>{time(j.dataAt)}<div className="muted" style={{ fontSize: "var(--fs-xs)" }}>afgeleid uit de data</div></> : "—"}</td>
+                    <td className="nowrap">{time(j.lastOk ?? j.dataAt ?? null)}</td>
+                    <td style={{ fontSize: "var(--fs-sm)" }}>{!j.last ? <span className="muted">{j.dataAt ? "Draaide vóór het logboek bestond; de volgende run wordt gelogd." : "—"}</span> : j.last.ok ? summary(j.job, j.last.details) : <span className="text-error">{j.last.error || "—"}</span>}</td>
                     <td className="num">{j.failures7d || "—"}</td>
                   </tr>
                 )
@@ -113,7 +123,7 @@ export default function DataStatusView() {
             </tbody>
           </table>
         </div>
-        {data && data.jobs.every(j => !j.last) && <p className="field-hint" style={{ padding: "0 20px 16px" }}>Het logboek is vandaag gestart; de eerste nachtelijke run verschijnt hier morgenochtend.</p>}
+        {data && data.jobs.some(j => !j.last && j.dataAt) && <p className="field-hint" style={{ padding: "0 20px 16px" }}>Het logboek bestaat sinds 16 november. Voor taken zonder logregel is het laatste moment afgeleid uit de opgeslagen data; vanaf de volgende nachtelijke run staat hier het echte resultaat.</p>}
       </section>
 
       <div className="ds-grid">
@@ -150,7 +160,14 @@ export default function DataStatusView() {
         <section className="card card-pad" aria-labelledby="ds-ga4">
           <h2 className="card-title" id="ds-ga4"><Database aria-hidden />Google Analytics 4</h2>
           {!ga4 ? <Skeleton height={60} /> : ga4.ok ? (
-            <p className="ds-ok"><CheckCircle2 aria-hidden />Gekoppeld. Conversies per pagina wegen mee in de prioriteit.</p>
+            ga4.keyEvents ? (
+              <p className="ds-ok"><CheckCircle2 aria-hidden />Gekoppeld: {num(ga4.keyEvents)} conversies bij {num(ga4.sessions || 0)} sessies (28 dagen). Conversies per pagina wegen mee in de prioriteit.</p>
+            ) : (
+              <>
+                <p className="ds-bad" style={{ color: "var(--warning, #9a6700)" }}><XCircle aria-hidden />Gekoppeld, maar 0 conversies bij {num(ga4.sessions || 0)} sessies (28 dagen)</p>
+                <p className="field-hint">De verbinding werkt, maar er zijn nog geen key events. Markeer in GA4 (Beheer → Gebeurtenissen) de gebeurtenissen voor energiescan, adviesgesprek en aanvraag als <b>key event</b>. Tot die tijd wegen conversies niet mee en is de commerciële waarde in contentkansen een aanname.</p>
+              </>
+            )
           ) : (
             <>
               <p className="ds-bad"><XCircle aria-hidden />{ga4.code === "permission" ? "Geen leesrechten" : ga4.code === "config" ? "Niet geconfigureerd" : "Niet bereikbaar"}</p>

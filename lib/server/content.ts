@@ -10,7 +10,9 @@ import {
   type CapacityMode, type ContentIdea, type Impact, type KeywordRef, type Reliability, type SourceRef,
   impactOf, isForHouseholds, jaccard, regionsIn, reliabilityOf, SCAN_SERVICE, servicesIn, tokens,
 } from "@/lib/content/model"
-import { ageOf, buildIdea, type Ctx, dayMs, newsDraft, searchDrafts, seasonDrafts } from "@/lib/content/build"
+import { ageOf, buildIdea, type Ctx, dayMs, keywordOverlap, newsDraft, type Place, searchDrafts, seasonDrafts } from "@/lib/content/build"
+import { prettySlug } from "@/lib/pages"
+import { CONTENT_MODEL_VERSION } from "@/lib/content/model"
 export { buildIdea } from "@/lib/content/build"
 
 // ── Bronnen ─────────────────────────────────────────────────────────────────
@@ -89,8 +91,23 @@ export async function siteContext(): Promise<Ctx> {
   const { data: cap } = await sb.from("content_capacity").select("service, mode")
   const capacity = new Map<string, CapacityMode>((cap || []).map(c => [c.service, c.mode as CapacityMode]))
 
+  // Plaatsen met een eigen pagina (voor "bestaande pagina eerst" en correcte spelling van plaatsnamen)
+  const places = new Map<string, Place>()
+  for (let from = 0; from < 10000; from += 1000) {
+    const { data } = await sb.from("seo_pages").select("path, page_type, gemeente, plaats, http_status").in("page_type", ["gemeente", "plaats"]).eq("in_sitemap", true).range(from, from + 999)
+    for (const r of data || []) {
+      if (r.http_status && r.http_status >= 400) continue
+      const slug = r.page_type === "gemeente" ? r.gemeente : r.plaats
+      if (!slug) continue
+      const key = slug.replace(/-/g, " ")
+      // Een gemeentepagina gaat voor een plaatspagina met dezelfde naam
+      if (!places.has(key) || r.page_type === "gemeente") places.set(key, { name: prettySlug(slug), path: r.path })
+    }
+    if (!data || data.length < 1000) break
+  }
+
   const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title")
-  return { services, hasArticles, queries, capacity, existing: (existing || []) as Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title">[] }
+  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"] }
 }
 
 // ── Scan ────────────────────────────────────────────────────────────────────
@@ -127,6 +144,18 @@ export async function scanContent() {
     webChecked++
   }
 
+  // 1c. Voorstellen van een oudere rekenregel die nog niemand heeft aangeraakt: opnieuw opbouwen
+  const { data: stale } = await sb.from("content_ideas").select("id, original, title, feedback, score_override, briefing")
+    .eq("status", "nieuw").is("score_override", null).is("briefing", null)
+  const outdated = (stale || []).filter(i => (i.original?.version ?? 1) !== CONTENT_MODEL_VERSION && i.title === i.original?.title && !(i.feedback || []).length).map(i => i.id)
+  if (outdated.length) {
+    await sb.from("content_news").update({ idea_id: null }).in("idea_id", outdated)
+    const { error: delErr } = await sb.from("content_ideas").delete().in("id", outdated)
+    if (delErr) throw new Error(`oude voorstellen opruimen: ${delErr.message}`)
+    ctx.existing = ctx.existing.filter(e => !outdated.includes(e.id))
+  }
+  const rejectedChecks: string[] = []
+
   // 2. Relevante berichten zonder voorstel → voorstel (of als extra bron bij een vergelijkbaar voorstel)
   const since = new Date(Date.now() - MAX_AGE_DAYS * dayMs).toISOString()
   const { data: open } = await sb.from("content_news").select("*").eq("relevant", true).is("idea_id", null).gte("published_at", since).order("published_at", { ascending: true })
@@ -136,7 +165,7 @@ export async function scanContent() {
     const web = n.source_kind === "web"
     const src = web ? { publisher: n.publisher || new URL(n.url).hostname.replace(/^www\./, ""), reliability: reliabilityOf(n.url) }
       : SOURCES.find(s => s.id === n.source_id) || { publisher: n.source_id, reliability: "overheid" as const }
-    const draft = newsDraft(item, src, web ? "trend" : "actualiteit")
+    const draft = newsDraft(item, src, ctx, web ? "trend" : "actualiteit")
     // Samenvoegen met een recent voorstel over hetzelfde
     const tk = tokens(n.title)
     const similar = ctx.existing.find(e => (e.origin === "actualiteit" || e.origin === "trend") && e.service === draft.service
@@ -150,7 +179,9 @@ export async function scanContent() {
       merged++
       continue
     }
-    const row = buildIdea(draft, ctx)
+    const built = buildIdea(draft, ctx)
+    if ("issues" in built) { rejectedChecks.push(`${draft.subject}: ${(built as any).issues.join(" ")}`); continue }
+    const row = built
     const { data: ins, error } = await sb.from("content_ideas").upsert(row, { onConflict: "fingerprint", ignoreDuplicates: true }).select("id, fingerprint, origin, status, service, sources, created_at, title").maybeSingle()
     if (error) throw new Error(`voorstel opslaan: ${error.message}`)
     if (ins) {
@@ -162,7 +193,11 @@ export async function scanContent() {
 
   // 3. Zoekdata en seizoen (één voorstel per dienst per maand / per seizoen per jaar)
   const known = new Set(ctx.existing.map(e => e.fingerprint))
-  const extra = [...searchDrafts(ctx), ...seasonDrafts(ctx)].filter(d => !known.has(d.fingerprint)).map(d => buildIdea(d, ctx))
+  // Zoekdata-voorstellen die vooral dezelfde zoekwoorden gebruiken als een seizoensvoorstel, vallen af (geen eigen concurrentie)
+  const seasons = seasonDrafts(ctx)
+  const searches = searchDrafts(ctx).filter(d => !seasons.some(sd => keywordOverlap(d.keywords, sd.keywords) >= 0.5))
+  const extra = [...searches, ...seasons].filter(d => !known.has(d.fingerprint)).map(d => buildIdea(d, ctx))
+    .filter(b => { if ("issues" in b) { rejectedChecks.push(`${b.title}: ${(b as any).issues.join(" ")}`); return false } return true })
   if (extra.length) {
     const { error } = await sb.from("content_ideas").upsert(extra, { onConflict: "fingerprint", ignoreDuplicates: true })
     if (error) throw new Error(`voorstellen opslaan: ${error.message}`)
@@ -176,7 +211,7 @@ export async function scanContent() {
   const failed = status.filter(s => !s.ok)
   return {
     bronnen: status.length, bronnenMislukt: failed.length, berichten: items.length, recent: recent.length,
-    relevant: classified.filter(c => c.relevant).length, webVondsten: webChecked, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
+    relevant: classified.filter(c => c.relevant).length, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
     ...(failed.length === status.length ? { fout: `Geen enkele bron bereikbaar (${failed[0]?.error})` } : {}),
     bronStatus: status,
   }

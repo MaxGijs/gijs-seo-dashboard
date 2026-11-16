@@ -3,11 +3,17 @@
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import { Badge } from "@/components/ui"
+import { Alert, Badge } from "@/components/ui"
+
+const BASIS_META: Record<Basis, { label: string; tone: "success" | "info" | "neutral"; hint: string }> = {
+  gemeten: { label: "gemeten", tone: "success", hint: "Rechtstreeks uit data: Search Console of de publicatiedatum van de bron" },
+  afgeleid: { label: "afgeleid", tone: "info", hint: "Door een vaste regel bepaald op basis van gemeten gegevens" },
+  aangenomen: { label: "aangenomen", tone: "neutral", hint: "Vaste aanname tot er echte data is" },
+}
 import { num, pct, pos } from "@/lib/format"
 import {
   type Angle, type ContentIdea, ANGLE_META, effectiveScore, FEEDBACK_TAGS, FORMATS, IMPACT_META, ORIGIN_META, RELIABILITY_META,
-  REVIEW_ROLES, requiredReviews, serviceLabel, STATUS_META,
+  REVIEW_ROLES, requiredReviews, serviceLabel, STATUS_META, consistencyIssues, type Basis,
 } from "@/lib/content/model"
 import { buildBriefing, lessonsFrom } from "@/lib/content/briefing"
 import { ago, scoreTone } from "./ContentView"
@@ -53,6 +59,8 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
   const score = effectiveScore(idea)
   const step = STATUS_META[idea.status].step
   const needed = requiredReviews(idea)
+  const issues = consistencyIssues(idea)
+  const kwTotal = idea.keywords.reduce((s, k) => s + k.impressions, 0)
 
   const act = async (body: Record<string, unknown>, ok?: string) => {
     setBusy(true)
@@ -109,6 +117,11 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
         </div>
 
         <div className="panel-body">
+          {issues.length > 0 && (
+            <div className="psec" style={{ paddingBottom: 0 }}>
+              <Alert tone="error" title="Dit voorstel is geblokkeerd: de onderbouwing klopt niet">{issues.join(" ")}</Alert>
+            </div>
+          )}
           <section className="psec" aria-label="Samenvatting">
             <div className={`summary${score < 45 ? " summary-afwachten" : ""}`}>
               <span className="summary-verdict"><Lightbulb aria-hidden />{idea.advice === "bijwerken" ? "Bestaande pagina bijwerken" : idea.advice === "niets" ? "Niets doen" : "Nieuw artikel schrijven"}</span>
@@ -145,12 +158,16 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
             <table className="mini-table">
               <tbody>
                 {parts.map(p => (
-                  <tr key={p.label}><td style={{ width: "34%" }}><strong>{p.label}</strong></td><td className="num" style={{ width: 56 }}>{p.points}/{p.max}</td><td>{p.why}</td></tr>
+                  <tr key={p.label}>
+                    <td style={{ width: "32%" }}><strong>{p.label}</strong>{p.basis && <div style={{ marginTop: 3 }}><span className={`badge tone-${BASIS_META[p.basis].tone}`} title={BASIS_META[p.basis].hint}>{BASIS_META[p.basis].label}</span></div>}</td>
+                    <td className="num" style={{ width: 56 }}>{p.points}/{p.max}</td><td>{p.why}</td>
+                  </tr>
                 ))}
                 {corrections.map((c, i) => <tr key={i}><td><strong>Correctie</strong></td><td /><td>{c.why}</td></tr>)}
               </tbody>
             </table>
             {idea.score_override !== null && <p className="field-hint">Een medewerker heeft de score aangepast naar {idea.score_override}.</p>}
+            <p className="field-hint"><b>Gemeten</b>: rechtstreeks uit data. <b>Afgeleid</b>: door een vaste regel bepaald. <b>Aangenomen</b>: aanname tot er echte data is.</p>
           </section>
 
           <section className="psec" aria-labelledby="cp-plan">
@@ -177,14 +194,17 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
                 </ul>
               </>
             )}
-            {idea.keywords.length > 0 && (
-              <>
-                <p className="field-label" style={{ marginTop: 14 }}>Zoekwoorden (Search Console, 28 dagen)</p>
+            <p className="field-label" style={{ marginTop: 14 }}>Zoekwoorden waarop de zoekvraag is gebaseerd <span className="subtle">(Search Console, 28 dagen)</span></p>
+            {idea.keywords.length > 0 ? (
+              <div className="kw-scroll">
                 <table className="mini-table">
                   <thead><tr><th>Zoekwoord</th><th className="num">Vertoningen</th><th className="num">Klikken</th><th className="num">Positie</th></tr></thead>
-                  <tbody>{idea.keywords.slice(0, 8).map(k => <tr key={k.query}><td>{k.query}</td><td className="num">{num(k.impressions)}</td><td className="num">{num(k.clicks)}</td><td className="num">{k.position ? pos(k.position) : "—"}</td></tr>)}</tbody>
+                  <tbody>{idea.keywords.map(k => <tr key={k.query}><td>{k.query}</td><td className="num">{num(k.impressions)}</td><td className="num">{num(k.clicks)}</td><td className="num">{k.position ? pos(k.position) : "—"}</td></tr>)}</tbody>
+                  <tfoot><tr><td><strong>Totaal ({idea.keywords.length})</strong></td><td className="num"><strong>{num(kwTotal)}</strong></td><td className="num"><strong>{num(idea.keywords.reduce((s, k) => s + k.clicks, 0))}</strong></td><td /></tr></tfoot>
                 </table>
-              </>
+              </div>
+            ) : (
+              <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Geen zoekwoorden in Search Console die precies over dit onderwerp gaan. Dat telt als 0 punten voor zoekvraag; het bereik is onzeker.</p>
             )}
           </section>
 
@@ -283,6 +303,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
                     })}
                   </div>
                   <p className="field-hint"><BarChart3 aria-hidden style={{ width: 12, height: 12, verticalAlign: -1 }} /> Search Console-cijfers van deze URL. Aanvragen en energiescans per artikel volgen zodra die gekoppeld zijn.</p>
+                  <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>
                 </>
               )}
             </section>
@@ -339,7 +360,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
             <div className="panel-actions">
               {(idea.status === "nieuw" || idea.status === "later" || idea.status === "verlopen") && (
                 <>
-                  <button className="btn btn-primary" disabled={busy} onClick={() => act({ action: "status", status: "geaccepteerd" }, "Geaccepteerd. Maak nu de briefing.")}><Check aria-hidden />Accepteren</button>
+                  <button className="btn btn-primary" disabled={busy || issues.length > 0} title={issues.length ? "Geblokkeerd: de onderbouwing klopt niet" : undefined} onClick={() => act({ action: "status", status: "geaccepteerd" }, "Geaccepteerd. Maak nu de briefing.")}><Check aria-hidden />Accepteren</button>
                   <button className="btn btn-secondary" onClick={() => setMode("edit")}><Gauge aria-hidden />Aanpassen</button>
                   <span className="grow" />
                   {idea.status !== "later" && <button className="btn btn-ghost btn-sm" onClick={() => setMode("later")}>Later</button>}

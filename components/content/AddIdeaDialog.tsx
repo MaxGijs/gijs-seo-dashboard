@@ -17,6 +17,9 @@ export default function AddIdeaDialog({ services, onClose, onAdded }: { services
   const [sourceUrl, setSourceUrl] = useState("")
   const [sourceTitle, setSourceTitle] = useState("")
   const [sourceDate, setSourceDate] = useState("")
+  const [question, setQuestion] = useState("")
+  const [regions, setRegions] = useState<string[]>([])
+  const [urgency, setUrgency] = useState<"hoog" | "middel" | "laag">("middel")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const first = useRef<HTMLInputElement>(null)
@@ -30,12 +33,14 @@ export default function AddIdeaDialog({ services, onClose, onAdded }: { services
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!title.trim()) { setError("Geef het idee een titel of onderwerp."); return }
+    const t = title.trim() || (kind === "klantvraag" ? question.trim().slice(0, 120) : "")
+    if (!t) { setError(kind === "klantvraag" ? "Vul de vraag van de klant of een onderwerp in." : "Geef het idee een titel of onderwerp."); return }
     if (kind === "bron" && !/^https?:\/\/\S+$/i.test(sourceUrl.trim())) { setError("Vul de link naar de bron in."); return }
+    if (sourceUrl.trim() && !/^https?:\/\/\S+$/i.test(sourceUrl.trim())) { setError("De bronlink moet beginnen met https://"); return }
     setBusy(true)
     const res = await fetch("/api/content", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind, title, why, service: service || undefined, format: format || undefined, sourceUrl: sourceUrl.trim() || undefined, sourceTitle: sourceTitle || undefined, sourceDate: sourceDate || undefined }),
+      body: JSON.stringify({ kind, title: t, why, question: question || undefined, regions, urgency, service: service || undefined, format: format || undefined, sourceUrl: sourceUrl.trim() || undefined, sourceTitle: sourceTitle || undefined, sourceDate: sourceDate || undefined }),
     })
     const json = await res.json().catch(() => ({}))
     setBusy(false)
@@ -59,22 +64,38 @@ export default function AddIdeaDialog({ services, onClose, onAdded }: { services
               <button type="button" key={k} role="radio" aria-checked={kind === k} className={kind === k ? "is-active" : ""} onClick={() => setKind(k)}>{l}</button>
             ))}
           </div>
-          <label className="field-label" htmlFor="ai-t">{kind === "klantvraag" ? "De vraag van de klant" : "Onderwerp of werktitel"}</label>
-          <input id="ai-t" ref={first} className="input" maxLength={200} value={title} onChange={e => { setTitle(e.target.value); setError(null) }}
-            placeholder={kind === "klantvraag" ? "Kan ik een warmtepomp nemen als mijn huis nog niet geïsoleerd is?" : "Bijvoorbeeld: Netcongestie in Gelderland: kun je nog een warmtepomp nemen?"} />
-          <label className="field-label" htmlFor="ai-w">Waarom nu? <span className="subtle">(aanleiding)</span></label>
-          <textarea id="ai-w" className="textarea" value={why} onChange={e => setWhy(e.target.value)} placeholder="Wat is de aanleiding, hoe vaak horen we dit, wat moet de lezer weten?" />
-          {kind === "bron" && (
+          {kind === "klantvraag" && (
             <>
-              <label className="field-label" htmlFor="ai-u">Link naar de bron</label>
-              <input id="ai-u" className="input" value={sourceUrl} onChange={e => { setSourceUrl(e.target.value); setError(null) }} placeholder="https://…" />
-              <div className="modal-row">
-                <div><label className="field-label" htmlFor="ai-st">Titel van de bron <span className="subtle">(optioneel)</span></label><input id="ai-st" className="input" value={sourceTitle} onChange={e => setSourceTitle(e.target.value)} /></div>
-                <div><label className="field-label" htmlFor="ai-sd">Datum van de bron</label><input id="ai-sd" type="date" className="input" value={sourceDate} onChange={e => setSourceDate(e.target.value)} /></div>
-              </div>
+              <label className="field-label" htmlFor="ai-q">Letterlijke vraag van de klant</label>
+              <textarea id="ai-q" className="textarea" value={question} onChange={e => { setQuestion(e.target.value); if (!title) setError(null) }} placeholder="Zoals de klant het vroeg, bijvoorbeeld: “Kan ik een warmtepomp nemen als mijn huis nog niet geïsoleerd is?”" />
             </>
           )}
-          <div className="modal-row">
+          <label className="field-label" htmlFor="ai-t">{kind === "klantvraag" ? "Onderwerp of werktitel" : "Onderwerp of werktitel"}</label>
+          <input id="ai-t" ref={first} className="input" maxLength={200} value={title} onChange={e => { setTitle(e.target.value); setError(null) }}
+            placeholder={kind === "klantvraag" ? "Bijvoorbeeld: Warmtepomp in een slecht geïsoleerd huis" : "Bijvoorbeeld: Netcongestie in Gelderland: kun je nog een warmtepomp nemen?"} />
+          <label className="field-label" htmlFor="ai-w">Waarom nu? <span className="subtle">(aanleiding)</span></label>
+          <textarea id="ai-w" className="textarea" value={why} onChange={e => setWhy(e.target.value)} placeholder="Wat is de aanleiding, hoe vaak horen we dit, wat moet de lezer weten?" />
+          <label className="field-label" htmlFor="ai-u">Link naar de bron {kind !== "bron" && <span className="subtle">(optioneel)</span>}</label>
+          <input id="ai-u" className="input" value={sourceUrl} onChange={e => { setSourceUrl(e.target.value); setError(null) }} placeholder="https://…" />
+          {sourceUrl.trim() && (
+            <div className="modal-row">
+              <div><label className="field-label" htmlFor="ai-st">Titel van de bron <span className="subtle">(optioneel)</span></label><input id="ai-st" className="input" value={sourceTitle} onChange={e => setSourceTitle(e.target.value)} /></div>
+              <div><label className="field-label" htmlFor="ai-sd">Datum van de bron</label><input id="ai-sd" type="date" className="input" value={sourceDate} onChange={e => setSourceDate(e.target.value)} /></div>
+            </div>
+          )}
+          <p className="field-label" style={{ marginBottom: 0 }}>Regio <span className="subtle">(optioneel)</span></p>
+          <div className="tag-pick" role="group" aria-label="Regio">
+            {["overijssel", "gelderland", "utrecht", "flevoland"].map(r => (
+              <button type="button" key={r} aria-pressed={regions.includes(r)} className={`chip chip-sm${regions.includes(r) ? " is-active" : ""}`} onClick={() => setRegions(x => (x.includes(r) ? x.filter(y => y !== r) : [...x, r]))}>{r[0].toUpperCase() + r.slice(1)}</button>
+            ))}
+          </div>
+          <div className="modal-row modal-row-3">
+            <div>
+              <label className="field-label" htmlFor="ai-g">Urgentie</label>
+              <select id="ai-g" className="select" value={urgency} onChange={e => setUrgency(e.target.value as typeof urgency)}>
+                <option value="hoog">Hoog: nu actueel</option><option value="middel">Middel</option><option value="laag">Laag: kan wachten</option>
+              </select>
+            </div>
             <div>
               <label className="field-label" htmlFor="ai-s">Dienst</label>
               <select id="ai-s" className="select" value={service} onChange={e => setService(e.target.value)}>

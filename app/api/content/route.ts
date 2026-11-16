@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
 import { buildIdea, siteContext } from "@/lib/server/content"
-import { impactOf, regionsIn, servicesIn, SCAN_SERVICE } from "@/lib/content/model"
+import { termsInText, topicKeywords } from "@/lib/content/build"
+import { impactOf, PROVINCES, regionsIn, reliabilityOf, servicesIn, SCAN_SERVICE } from "@/lib/content/model"
 
 export const maxDuration = 30
 
@@ -44,25 +45,31 @@ export async function POST(req: Request) {
   const sourceUrl = String(body.sourceUrl || "").trim()
   if (sourceUrl && !/^https?:\/\/\S+$/i.test(sourceUrl)) return NextResponse.json({ error: "Bron-URL is ongeldig" }, { status: 400 })
   const ctx = await siteContext()
-  const text = `${title} ${why}`
+  const question = String(body.question || "").trim().slice(0, 1000)
+  const text = `${title} ${why} ${question}`
   const service = body.service || servicesIn(text, ctx.services).find(s => s !== SCAN_SERVICE) || SCAN_SERVICE
   const impact = impactOf(text)
   const who = guard.session.user?.name || guard.session.user?.email || "medewerker"
+  const regions: string[] = Array.isArray(body.regions) ? body.regions.filter((r: unknown) => typeof r === "string" && r in PROVINCES) : []
+  const urgency = ["hoog", "middel", "laag"].includes(body.urgency) ? body.urgency : "middel"
   const row = buildIdea({
     fingerprint: `handmatig:${crypto.randomUUID()}`,
     origin: "handmatig",
     subject: title,
-    summary: why,
-    whyNow: why || `Idee van ${who}.`,
-    service, impact, regions: Array.isArray(body.regions) && body.regions.length ? body.regions : regionsIn(text),
+    summary: [question ? `Letterlijke klantvraag: "${question}"` : "", why].filter(Boolean).join(" "),
+    whyNow: why || (question ? `Klantvraag: "${question}"` : `Idee van ${who}.`),
+    service, impact, regions: regions.length ? regions : regionsIn(text),
     sources: [
-      ...(sourceUrl ? [{ title: String(body.sourceTitle || sourceUrl).slice(0, 300), url: sourceUrl, publisher: String(body.sourcePublisher || new URL(sourceUrl).hostname), date: body.sourceDate || null, reliability: "medewerker" as const }] : []),
-      { title: body.kind === "klantvraag" ? "Klantvraag" : "Idee van een medewerker", publisher: who, date: new Date().toISOString(), reliability: "medewerker" as const },
+      ...(sourceUrl ? [{ title: String(body.sourceTitle || sourceUrl).slice(0, 300), url: sourceUrl, publisher: String(body.sourcePublisher || new URL(sourceUrl).hostname.replace(/^www\./, "")), date: body.sourceDate || null, reliability: reliabilityOf(sourceUrl) }] : []),
+      { title: body.kind === "klantvraag" ? (question ? `Klantvraag: "${question.slice(0, 200)}"` : "Klantvraag") : "Idee van een medewerker", publisher: who, date: new Date().toISOString(), reliability: "medewerker" as const },
     ],
-    ageDays: null, reliability: "medewerker",
+    ageDays: null, reliability: sourceUrl ? reliabilityOf(sourceUrl) : "medewerker",
     format: body.format || undefined,
+    urgency,
+    keywords: topicKeywords(termsInText(text, ctx.services), ctx.queries),
     titleOverride: [{ angle: body.angle || "neutraal", title }],
   }, ctx)
+  if ("issues" in row) return NextResponse.json({ error: `Controle mislukt: ${(row as any).issues.join(" ")}` }, { status: 500 })
   const { data, error } = await getSupabase().from("content_ideas").insert({ ...row, created_by: who }).select("*").single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ idea: data })

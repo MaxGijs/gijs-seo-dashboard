@@ -15,7 +15,14 @@ export type Reliability = "overheid" | "voorlichting" | "vakmedia" | "web" | "ei
 export type CapacityMode = "actief" | "normaal" | "minder" | "alleen-digitaal" | "clustering" | "niet-beschikbaar"
 
 export interface SourceRef { title: string; url?: string; publisher: string; date?: string | null; reliability: Reliability; firstSeen?: boolean }
-export interface ScorePart { label: string; points: number; max: number; why: string }
+// Gemeten = rechtstreeks uit data (Search Console, publicatiedatum); afgeleid = door een regel bepaald uit
+// gemeten data; aangenomen = vaste aanname tot er echte data is (bijvoorbeeld conversies).
+export type Basis = "gemeten" | "afgeleid" | "aangenomen"
+export interface ScorePart { label: string; points: number; max: number; why: string; basis?: Basis; value?: number }
+
+// Versie van de regels waarmee voorstellen worden opgebouwd. Onaangeroerde voorstellen van een
+// oudere versie worden bij de volgende scan opnieuw opgebouwd.
+export const CONTENT_MODEL_VERSION = 2
 export interface KeywordRef { query: string; impressions: number; clicks: number; position: number | null }
 export interface Feedback { tag: string; note?: string; at: string; by?: string }
 export interface Eval { impressions: number; clicks: number; ctr: number; position: number | null; measured_at: string; window: string }
@@ -252,7 +259,9 @@ export interface ScoreInput {
   ageDays: number | null      // leeftijd van de aanleiding (nieuws), null = n.v.t.
   service: string | null
   impact: Impact
-  demand: number              // vertoningen in 28 dagen op zoekwoorden over dit onderwerp
+  demand: number              // vertoningen in 28 dagen op precies de zoekwoorden van dit voorstel
+  keywordCount: number
+  urgency?: "hoog" | "middel" | "laag" // alleen bij eigen ideeën: de urgentie die de medewerker aangeeft
   reliability: Reliability
   capacity: CapacityMode
   rejectedSimilar: number     // eerder afgewezen kansen voor dezelfde dienst en herkomst
@@ -267,27 +276,31 @@ export function scoreIdea(i: ScoreInput): { score: number; parts: ScorePart[]; f
     actWhy = `Aanleiding is ${Math.round(i.ageDays)} dagen oud${i.ageDays <= 7 ? ": nu publiceren heeft het meeste effect" : i.ageDays > 45 ? ": het nieuws is niet vers meer, wel nog bruikbaar als achtergrond" : ""}.`
   } else if (i.origin === "seizoen") { act = 14; actWhy = "Het seizoen begint nu; zoekvraag naar dit onderwerp stijgt in deze periode." }
   else if (i.origin === "zoekdata") { act = 10; actWhy = "Er wordt nu al op gezocht; geen nieuws, wel een vaste vraag." }
-  else { act = 12; actWhy = "Aanleiding aangedragen door een medewerker." }
-  parts.push({ label: "Actualiteit", points: act, max: 25, why: actWhy })
+  else {
+    act = i.urgency === "hoog" ? 22 : i.urgency === "laag" ? 6 : 12
+    actWhy = `Aanleiding aangedragen door een medewerker${i.urgency ? ` met urgentie ${i.urgency}` : ""}.`
+  }
+  parts.push({ label: "Actualiteit", points: act, max: 25, why: actWhy, basis: (i.origin === "actualiteit" || i.origin === "trend") && i.ageDays !== null ? "gemeten" : i.origin === "zoekdata" ? "afgeleid" : "aangenomen" })
 
   // 2. Aansluiting op een dienst
   const fit = !i.service ? 0 : i.service === SCAN_SERVICE ? 13 : 20
-  parts.push({ label: "Aansluiting op dienst", points: fit, max: 20, why: !i.service ? "Geen dienst van Gijs gevonden." : i.service === SCAN_SERVICE ? "Gaat over verduurzamen in het algemeen; past bij de energiescan." : `Past direct bij ${serviceLabel(i.service)}.` })
+  parts.push({ label: "Aansluiting op dienst", points: fit, max: 20, why: !i.service ? "Geen dienst van Gijs gevonden." : i.service === SCAN_SERVICE ? "Gaat over verduurzamen in het algemeen; past bij de energiescan." : `Past direct bij ${serviceLabel(i.service)}.`, basis: "afgeleid" })
 
   // 3. Zoekvraag
   const dem = Math.min(20, Math.round(5 * Math.log10(1 + i.demand)))
-  parts.push({ label: "Zoekvraag", points: dem, max: 20, why: i.demand ? `${i.demand.toLocaleString("nl-NL")} vertoningen in 28 dagen op zoekwoorden over dit onderwerp.` : "Nog geen vertoningen op dit onderwerp: nieuw terrein, minder zekerheid over bereik." })
+  parts.push({ label: "Zoekvraag", points: dem, max: 20, basis: "gemeten", value: i.demand,
+    why: i.demand ? `${i.demand.toLocaleString("nl-NL")} vertoningen in 28 dagen op de ${i.keywordCount} zoekwoorden in de tabel hieronder.` : "Geen zoekwoorden in Search Console die precies over dit onderwerp gaan. Nieuw terrein: het bereik is onzeker." })
 
   // 4. Gevolgen voor huiseigenaren
-  parts.push({ label: "Gevolgen voor huiseigenaren", points: IMPACT_META[i.impact].points, max: 15, why: IMPACT_META[i.impact].label + "." })
+  parts.push({ label: "Gevolgen voor huiseigenaren", points: IMPACT_META[i.impact].points, max: 15, why: IMPACT_META[i.impact].label + ".", basis: "afgeleid" })
 
   // 5. Commerciële waarde (aanname tot GA4-conversies er zijn)
   const [com, comWhy] = commercialFor(i.service)
-  parts.push({ label: "Commerciële waarde", points: com, max: 10, why: `${comWhy[0].toUpperCase()}${comWhy.slice(1)} (aanname; wordt vervangen door GA4-conversies zodra die zijn ingesteld).` })
+  parts.push({ label: "Commerciële waarde", points: com, max: 10, why: `${comWhy[0].toUpperCase()}${comWhy.slice(1)} (aanname; wordt vervangen door GA4-conversies zodra die zijn ingesteld).`, basis: "aangenomen" })
 
   // 6. Betrouwbaarheid van de bron
   const rel = RELIABILITY_META[i.reliability]
-  parts.push({ label: "Betrouwbaarheid bron", points: rel.points, max: 10, why: `${rel.label}.` })
+  parts.push({ label: "Betrouwbaarheid bron", points: rel.points, max: 10, why: `${rel.label}.`, basis: "afgeleid" })
 
   let score = parts.reduce((s, p) => s + p.points, 0)
   const factors: string[] = []
@@ -310,7 +323,7 @@ export function priorityFor(score: number): "hoog" | "middel" | "laag" {
 }
 
 const NAMES: Record<string, string> = {
-  energiescan: "de energiescan", warmtepomp: "warmtepompen", zonnepanelen: "zonnepanelen", thuisbatterij: "thuisbatterijen",
+  energiescan: "verduurzamen in het algemeen (energiescan)", warmtepomp: "warmtepompen", zonnepanelen: "zonnepanelen", thuisbatterij: "thuisbatterijen",
   spouwmuurisolatie: "spouwmuurisolatie", dakisolatie: "dakisolatie", vloerisolatie: "vloerisolatie", isolatieglas: "isolatieglas",
   kozijnen: "kozijnen", vloerverwarming: "vloerverwarming", ketel: "de cv-ketel",
 }
@@ -376,11 +389,12 @@ export function ctaFor(service: string | null, capacity: CapacityMode, regions: 
   return `Laat in een energiescan uitzoeken of ${serviceLabel(service)} past bij jouw huis`
 }
 
+// Let op: dit is een bedrijfsregel. Het dashboard kent (nog) geen aantallen energiescans per regio.
 export function regionNote(regions: string[], capacity: CapacityMode): string | null {
   if (!regions.length) return null
   const names = regions.map(r => r[0].toUpperCase() + r.slice(1)).join(", ")
-  if (regions.includes("overijssel")) return `Raakt ${names}. Overijssel is de sterkste regio: fysieke scans zijn daar goed te combineren.`
-  return `Raakt ${names}. Stuur primair op de digitale energiescan en verzamel belangstelling; een fysieke scandag loont pas bij 2–3 afspraken op één dag${capacity === "clustering" ? " (capaciteit staat op clustering)" : ""}.`
+  if (regions.includes("overijssel")) return `Raakt ${names}. Bedrijfsregel: Overijssel is de sterkste regio, fysieke scans zijn daar goed te combineren (nog niet gemeten: scandata per regio is niet gekoppeld).`
+  return `Raakt ${names}. Stuur primair op de digitale energiescan en verzamel belangstelling; een fysieke scandag loont pas bij 2–3 afspraken op één dag${capacity === "clustering" ? " (capaciteit staat op clustering)" : ""}. Dit is een bedrijfsregel; het dashboard kent nog geen aantallen scans per regio.`
 }
 
 export function risksFor(impact: Impact, reliability: Reliability, firstSeen: boolean): string[] {
@@ -421,3 +435,20 @@ export function jaccard(a: Set<string>, b: Set<string>) {
   a.forEach(w => { if (b.has(w)) inter++ })
   return inter / Math.max(1, a.size + b.size - inter)
 }
+
+
+// ── Controle op consistentie ───────────────────────────────────────────────
+// Een voorstel mag alleen getoond worden als samenvatting, score en zoekwoordtabel dezelfde cijfers gebruiken.
+export function consistencyIssues(i: Pick<ContentIdea, "score" | "score_parts" | "keywords" | "original" | "title">): string[] {
+  const issues: string[] = []
+  const kwTotal = (i.keywords || []).reduce((s, k) => s + (k.impressions || 0), 0)
+  const demand = (i.score_parts || []).find(p => p.label === "Zoekvraag")
+  if (!demand || demand.value === undefined) issues.push("Dit voorstel is gemaakt met een oudere rekenregel: de zoekvraag in de score is niet terug te voeren op de zoekwoordtabel. Het wordt bij de volgende scan opnieuw opgebouwd.")
+  else if (demand.value !== kwTotal) issues.push(`De zoekvraag in de score (${demand.value.toLocaleString("nl-NL")} vertoningen) wijkt af van de zoekwoordtabel (${kwTotal.toLocaleString("nl-NL")}).`)
+  const sum = (i.score_parts || []).reduce((s, p) => s + p.points, 0)
+  if (i.score > sum) issues.push(`De score (${i.score}) is hoger dan de som van de onderdelen (${sum}).`)
+  if ((i.title || "").length > TITLE_MAX + 15) issues.push("De werktitel is te lang.")
+  return issues
+}
+
+export const TITLE_MAX = 80

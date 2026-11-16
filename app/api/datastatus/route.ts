@@ -56,6 +56,21 @@ export async function GET() {
       sb.from("seo_pages").select("inspected_at").not("inspected_at", "is", null).order("inspected_at", { ascending: false }).limit(1).maybeSingle(),
     ])
     const [expTotal, expOpen] = await Promise.all([count("seo_experiments"), count("seo_experiments", q => q.is("outcome", null))])
+
+    // Taken die al draaiden vóór het logboek bestond: laatste moment afleiden uit de data zelf
+    const [{ data: lastSnap }, { data: lastHttp }, { data: lastNews }] = await Promise.all([
+      sb.from("seo_daily_overview").select("created_at, snapshot_date").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      sb.from("seo_pages").select("http_checked_at").not("http_checked_at", "is", null).order("http_checked_at", { ascending: false }).limit(1).maybeSingle(),
+      sb.from("content_news").select("fetched_at").order("fetched_at", { ascending: false }).limit(1).maybeSingle(),
+    ])
+    const fallback: Record<string, string | null> = {
+      "gsc-snapshot": lastSnap?.created_at ?? null,
+      inventaris: lastSync?.synced_at ?? null,
+      "http-controle": lastHttp?.http_checked_at ?? null,
+      indexering: lastInspect?.inspected_at ?? null,
+      actualiteiten: lastNews?.fetched_at ?? null,
+    }
+    for (const j of jobs as any[]) j.dataAt = fallback[j.job] ?? null
     const { data: recentErrors } = await sb.from("seo_sync_log").select("run_at, job, error").eq("ok", false).order("run_at", { ascending: false }).limit(8)
 
     return NextResponse.json({

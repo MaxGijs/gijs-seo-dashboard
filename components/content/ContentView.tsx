@@ -130,6 +130,9 @@ function WhatWorks({ ideas }: { ideas: ContentIdea[] }) {
   const rows = [
     ...group(i => (i.angle ? `Invalshoek: ${ANGLE_META[i.angle].label.toLowerCase()}` : null)),
     ...group(i => (i.format ? `Vorm: ${i.format.toLowerCase()}` : null)),
+    ...group(i => (i.shelf_life === "actueel" ? "Nieuws (actueel)" : "Evergreen")),
+    ...group(i => (i.regions.length ? "Lokaal of regionaal" : "Landelijk")),
+    ...group(i => (i.advice === "bijwerken" ? "Bestaande pagina bijgewerkt" : "Nieuw artikel")),
   ]
   return (
     <section className="card" aria-labelledby="works-title">

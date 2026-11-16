@@ -1,15 +1,18 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Play, ShieldCheck, TrendingUp, Inbox, SearchX } from "lucide-react"
+import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX } from "lucide-react"
 import { sortByPriority, useWorkspace } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
+import ContentPanel from "@/components/content/ContentPanel"
+import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
+import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
 import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
 
-type TypeFilter = "alle" | "techniek" | "kansen" | "dalingen" | "snippet" | "analyse"
+type TypeFilter = "alle" | "techniek" | "kansen" | "dalingen" | "snippet" | "analyse" | "content"
 const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
   { id: "alle", label: "Alle", kinds: [] },
   { id: "techniek", label: "Technisch", kinds: ["techniek"] },
@@ -17,7 +20,23 @@ const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
   { id: "dalingen", label: "Dalingen", kinds: ["daler", "trend-dalend"] },
   { id: "snippet", label: "Zoekresultaat en dubbele pagina's", kinds: ["ctr", "pagina", "dubbel"] },
   { id: "analyse", label: "Eigen analyses", kinds: ["analyse"] },
+  { id: "content", label: "Content", kinds: [] },
 ]
+
+// Eén kaart op het bord: een SEO-advies of een contentkans
+type Entry =
+  | { kind: "seo"; key: string; col: ColumnId; prio: Priority; dim: boolean; date: string; t: Task }
+  | { kind: "content"; key: string; col: ColumnId; prio: Priority; dim: boolean; date: string; i: ContentIdea }
+const PRIO_RANK: Record<Priority, number> = { hoog: 0, middel: 1, laag: 2 }
+
+function contentMeta(i: ContentIdea, col: ColumnId) {
+  if (col === "beoordelen") return { icon: <TrendingUp aria-hidden />, text: `Score ${effectiveScore(i)}` }
+  if (col === "evalueren") {
+    const next = !i.evals?.d7 ? 7 : !i.evals?.d30 ? 30 : 90
+    return { icon: <CalendarClock aria-hidden />, text: i.published_at ? `${next}-dagenmeting ${dateShort(addDays(i.published_at, next))}` : "Wordt gemeten" }
+  }
+  return { icon: col === "uitvoering" ? <Play aria-hidden /> : <CalendarClock aria-hidden />, text: CONTENT_STEP[i.status] || "" }
+}
 
 const COLUMN_LIMIT = 8
 
@@ -48,6 +67,8 @@ const VIEW_KEY = "gijs.seo.tasksView"
 
 export default function TasksView() {
   const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, toast } = useWorkspace()
+  const content = useContentIdeas()
+  const [openIdea, setOpenIdea] = useState<string | null>(null)
   const [view, setViewState] = useState<"bord" | "lijst">("bord")
   const [viewChosen, setViewChosen] = useState(false)
   const [dragKey, setDragKey] = useState<string | null>(null)
@@ -62,27 +83,35 @@ export default function TasksView() {
   const [text, setText] = useState("")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
+  const entries = useMemo<Entry[]>(() => {
+    const seo: Entry[] = visibleTasks.map(t => ({ kind: "seo", key: t.key, col: columnOf(t.status), prio: t.signal.priority, dim: !!t.snoozed, date: t.updatedAt || "", t }))
+    const ideas: Entry[] = (content.ideas || []).flatMap(i => {
+      const col = contentColumn(i)
+      return col ? [{ kind: "content" as const, key: `content:${i.id}`, col, prio: i.priority || "middel", dim: i.status === "later", date: i.updated_at, i }] : []
+    })
+    return [...seo, ...ideas]
+  }, [visibleTasks, content.ideas])
+
   const filtered = useMemo(() => {
     const kinds = TYPE_FILTERS.find(f => f.id === type)!.kinds
     const n = normalize(text)
-    return visibleTasks.filter(t =>
-      (type === "alle" || kinds.includes(t.signal.kind)) &&
-      (prio === "alle" || t.signal.priority === prio) &&
-      (!n || normalize(`${t.signal.query || ""} ${t.signal.page || ""} ${t.signal.headline}`).includes(n))
+    return entries.filter(e =>
+      (type === "alle" || (type === "content" ? e.kind === "content" : e.kind === "seo" && kinds.includes(e.t.signal.kind))) &&
+      (prio === "alle" || e.prio === prio) &&
+      (!n || normalize(e.kind === "seo" ? `${e.t.signal.query || ""} ${e.t.signal.page || ""} ${e.t.signal.headline}` : `${e.i.title} ${e.i.service || ""} ${e.i.target_page || ""}`).includes(n))
     )
-  }, [visibleTasks, type, prio, text])
+  }, [entries, type, prio, text])
 
   const typeCounts = useMemo(() => Object.fromEntries(TYPE_FILTERS.map(f => [
-    f.id, f.id === "alle" ? visibleTasks.length : visibleTasks.filter(t => f.kinds.includes(t.signal.kind)).length,
-  ])), [visibleTasks])
+    f.id, f.id === "alle" ? entries.length : f.id === "content" ? entries.filter(e => e.kind === "content").length : entries.filter(e => e.kind === "seo" && f.kinds.includes(e.t.signal.kind)).length,
+  ])), [entries])
 
   const columns = useMemo(() => {
-    const byCol: Record<ColumnId, Task[]> = { beoordelen: [], gepland: [], uitvoering: [], evalueren: [], afgerond: [] }
-    for (const t of filtered) byCol[columnOf(t.status)].push(t)
-    byCol.beoordelen.sort((a, b) => Number(a.snoozed) - Number(b.snoozed) || sortByPriority(a, b))
-    for (const c of ["gepland", "uitvoering", "evalueren", "afgerond"] as ColumnId[]) {
-      byCol[c].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
-    }
+    const byCol: Record<ColumnId, Entry[]> = { beoordelen: [], gepland: [], uitvoering: [], evalueren: [], afgerond: [] }
+    for (const e of filtered) byCol[e.col].push(e)
+    byCol.beoordelen.sort((a, b) => Number(a.dim) - Number(b.dim) || PRIO_RANK[a.prio] - PRIO_RANK[b.prio]
+      || (a.kind === b.kind ? (a.kind === "seo" ? sortByPriority(a.t, (b as typeof a).t) : effectiveScore((b as typeof a).i) - effectiveScore(a.i)) : a.kind === "seo" ? -1 : 1))
+    for (const c of ["gepland", "uitvoering", "evalueren", "afgerond"] as ColumnId[]) byCol[c].sort((a, b) => b.date.localeCompare(a.date))
     return byCol
   }, [filtered])
 
@@ -92,10 +121,26 @@ export default function TasksView() {
     let saved: string | null = null
     try { saved = window.localStorage.getItem(VIEW_KEY) } catch { /* privémodus */ }
     if (saved === "bord" || saved === "lijst") { setViewState(saved); return }
-    const total = visibleTasks.length
-    const inReview = visibleTasks.filter(t => columnOf(t.status) === "beoordelen").length
+    const total = entries.length
+    const inReview = entries.filter(e => e.col === "beoordelen").length
     setViewState(total > 0 && total - inReview <= 2 ? "lijst" : "bord")
-  }, [loading, viewChosen, visibleTasks])
+  }, [loading, viewChosen, entries])
+
+  // Contentkaarten volgen hun eigen workflow; slepen doet alleen wat zonder extra invoer kan
+  const dropContent = async (i: ContentIdea, from: ColumnId, to: ColumnId) => {
+    if (from === to) return
+    const patch = async (status: string, msg: string) => {
+      const res = await fetch(`/api/content/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "status", status }) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(json.error || "Verplaatsen mislukt", "error"); return }
+      content.update(json.idea); toast(msg)
+    }
+    if (from === "beoordelen" && to === "gepland") return patch("geaccepteerd", "Geaccepteerd. Open de kaart om de briefing te maken.")
+    if (from === "gepland" && to === "beoordelen") return patch("nieuw", "Terug naar te beoordelen")
+    if (to === "afgerond" && from !== "evalueren") { setOpenIdea(i.id); toast("Geef aan waarom je deze kans afwijst (knop Afwijzen of Stoppen).", "info"); return }
+    setOpenIdea(i.id)
+    toast(to === "uitvoering" ? "Content gaat naar In uitvoering zodra het concept binnen is. Maak eerst de briefing." : to === "evalueren" ? "De meting start zodra je de publicatie vastlegt (URL en datum)." : "Deze stap volgt uit de contentworkflow in het paneel.", "info")
+  }
 
   const drop = async (t: Task, to: ColumnId) => {
     const from = columnOf(t.status)
@@ -117,7 +162,7 @@ export default function TasksView() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Mijn taken</h1>
-          <p className="page-sub">Elk SEO-advies van signaal tot resultaat. Open een kaart om te beslissen wat ermee gebeurt, of sleep hem naar een andere kolom.</p>
+          <p className="page-sub">Elk SEO-advies en elke contentkans van signaal tot resultaat. Open een kaart om te beslissen wat ermee gebeurt, of sleep hem naar een andere kolom.</p>
         </div>
         <div className="page-actions">
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Taak toevoegen</button>
@@ -156,7 +201,7 @@ export default function TasksView() {
             <div key={c.id} className="col"><div className="col-head"><h2>{c.label}</h2></div><Skeleton height={96} radius={12} /><Skeleton height={96} radius={12} /></div>
           ))}
         </div>
-      ) : visibleTasks.length === 0 ? (
+      ) : entries.length === 0 ? (
         <div className="card"><EmptyState icon={<Inbox />} title="Nog geen signalen" text="Zodra Search Console genoeg data heeft, verschijnen hier de adviezen. Je kunt ook via de zoekbalk zelf een zoekwoord of pagina analyseren." /></div>
       ) : filtered.length === 0 ? (
         <div className="card"><EmptyState icon={<SearchX />} title="Geen taken met deze filters" action={<button className="btn btn-secondary btn-sm" onClick={() => { setType("alle"); setPrio("alle"); setText("") }}>Filters wissen</button>} /></div>
@@ -168,8 +213,8 @@ export default function TasksView() {
             const visible = showAll ? items : items.slice(0, COLUMN_LIMIT)
             // Lege kolommen klappen in, behalve tijdens slepen (dan zijn ze een doel)
             const collapsed = items.length === 0 && !dragKey && !expanded[`open-${c.id}`]
-            const dragged = dragKey ? filtered.find(t => t.key === dragKey) : null
-            const canDrop = !!dragged && columnOf(dragged.status) !== c.id
+            const dragged = dragKey ? filtered.find(e => e.key === dragKey) : null
+            const canDrop = !!dragged && dragged.col !== c.id
             if (collapsed) {
               return (
                 <button key={c.id} className="col col-collapsed" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: true }))} aria-label={`${c.label}: leeg. Klik om uit te klappen`} title={c.hint}>
@@ -181,7 +226,7 @@ export default function TasksView() {
               <section key={c.id} className={`col${overCol === c.id && canDrop ? " is-over" : ""}`} aria-labelledby={`col-${c.id}`}
                 onDragOver={e => { if (!canDrop) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== c.id) setOverCol(c.id) }}
                 onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setOverCol(o => (o === c.id ? null : o)) }}
-                onDrop={e => { e.preventDefault(); const key = e.dataTransfer.getData("text/plain") || dragKey; setOverCol(null); setDragKey(null); const t = filtered.find(x => x.key === key); if (t) drop(t, c.id) }}>
+                onDrop={e => { e.preventDefault(); const key = e.dataTransfer.getData("text/plain") || dragKey; setOverCol(null); setDragKey(null); const en = filtered.find(x => x.key === key); if (en?.kind === "seo") drop(en.t, c.id); else if (en) dropContent(en.i, en.col, c.id) }}>
                 <div className="col-head">
                   <h2 id={`col-${c.id}`}>{c.label}</h2><span className="col-count">{items.length}</span>
                   {items.length === 0 && expanded[`open-${c.id}`] && <button className="icon-btn col-fold" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: false }))} aria-label={`${c.label} inklappen`}>–</button>}
@@ -189,13 +234,31 @@ export default function TasksView() {
                 <p className="col-hint">{c.id === "evalueren" ? "Sleep hierheen als het is aangepast: je beschrijft kort wat en de meting start" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.hint}</p>
                 {items.length === 0 ? (
                   <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "afgerond" ? "Nog niets afgerond" : "Leeg"}</p>
-                ) : visible.map(t => {
+                ) : visible.map(en => {
+                  const dragProps = {
+                    draggable: true,
+                    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData("text/plain", en.key); e.dataTransfer.effectAllowed = "move"; setDragKey(en.key) },
+                    onDragEnd: () => { setDragKey(null); setOverCol(null) },
+                    "aria-roledescription": "versleepbare kaart",
+                  }
+                  if (en.kind === "content") {
+                    const i = en.i, meta = contentMeta(i, c.id)
+                    return (
+                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
+                        <span className="tcard-top">
+                          <span className="kind-label tone-info"><Newspaper aria-hidden />Content · {ORIGIN_META[i.origin].label}</span>
+                          {c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
+                        </span>
+                        <span className="tcard-title">{i.title}</span>
+                        <span className="tcard-sub">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
+                        <span className="tcard-foot"><span>{meta.icon}{meta.text}</span>{i.status === "later" ? <span>Later</span> : null}</span>
+                      </button>
+                    )
+                  }
+                  const t = en.t
                   const meta = cardMeta(t)
                   return (
-                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)}
-                      draggable onDragStart={e => { e.dataTransfer.setData("text/plain", t.key); e.dataTransfer.effectAllowed = "move"; setDragKey(t.key) }}
-                      onDragEnd={() => { setDragKey(null); setOverCol(null) }}
-                      aria-roledescription="versleepbare kaart">
+                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
                       <span className="tcard-top">
                         <KindLabel signal={t.signal} />
                         {c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
@@ -228,7 +291,18 @@ export default function TasksView() {
                 <tr><th>Onderwerp</th><th>Type</th><th>Status</th><th>Prioriteit</th><th>Verwachte winst</th><th className="num">Vertoningen</th><th>Bewijs</th><th aria-label="Openen" /></tr>
               </thead>
               <tbody>
-                {COLUMNS.flatMap(c => columns[c.id]).map(t => (
+                {COLUMNS.flatMap(c => columns[c.id]).map(en => en.kind === "content" ? (
+                  <tr key={en.key} className="is-clickable" onClick={() => setOpenIdea(en.i.id)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") setOpenIdea(en.i.id) }}>
+                    <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{en.i.title}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{en.i.format} · {serviceLabel(en.i.service)}</span></td>
+                    <td className="nowrap">Content<div style={{ marginTop: 4 }}><span className="badge tone-neutral">{ORIGIN_META[en.i.origin].label}</span></div></td>
+                    <td><span className="badge tone-info badge-dot">{CONTENT_STEP[en.i.status] || en.i.status}</span></td>
+                    <td><PriorityMeter priority={en.prio} /></td>
+                    <td className="nowrap"><TrendingUp size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--accent-700)" }} aria-hidden />Score {effectiveScore(en.i)}</td>
+                    <td className="num">{en.i.keywords?.length ? num(en.i.keywords.reduce((s, k) => s + k.impressions, 0)) : "—"}</td>
+                    <td className="nowrap"><ShieldCheck size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--grey-400)" }} aria-hidden />{en.i.sources[0]?.publisher || "—"}</td>
+                    <td className="cell-arrow"><ChevronRight aria-hidden /></td>
+                  </tr>
+                ) : (() => { const t = en.t; return (
                   <tr key={t.key} className="is-clickable" onClick={() => openTask(t.key)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") openTask(t.key) }}>
                     <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span></td>
                     <td className="nowrap">{KIND_META[t.signal.kind].label}{t.signal.intent && <div style={{ marginTop: 4 }}><IntentBadge intent={t.signal.intent} /></div>}</td>
@@ -239,13 +313,16 @@ export default function TasksView() {
                     <td className="nowrap"><ShieldCheck size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--grey-400)" }} aria-hidden />{t.signal.evidence}</td>
                     <td className="cell-arrow"><ChevronRight aria-hidden /></td>
                   </tr>
-                ))}
+                ) })())}
               </tbody>
             </table>
           </div>
         </div>
       )}
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
+      {openIdea && content.ideas?.find(i => i.id === openIdea) && (
+        <ContentPanel idea={content.ideas.find(i => i.id === openIdea)!} all={content.ideas} onClose={() => setOpenIdea(null)} onUpdate={content.update} />
+      )}
     </>
   )
 }
