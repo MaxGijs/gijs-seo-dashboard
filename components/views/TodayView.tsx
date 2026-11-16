@@ -26,7 +26,8 @@ export default function TodayView() {
   const clicks = sum(overview, "clicks"), prevClicks = sum(prevOverview, "clicks")
   const impressions = sum(overview, "impressions")
   const clickDelta = prevClicks ? ((clicks - prevClicks) / prevClicks) * 100 : null
-  const focus = toReview.slice(0, 3)
+  // Merkzoekwoorden horen zelden bij de drie acties van de dag; ze blijven wel op het bord staan.
+  const focus = toReview.filter(t => t.signal.intent !== "merk").slice(0, 3)
   const highCount = toReview.filter(t => t.signal.priority === "hoog").length
   const newCount = toReview.filter(t => newSinceLastVisit.has(t.key)).length
   const inProgress = active.filter(t => t.status === "in_uitvoering").length
