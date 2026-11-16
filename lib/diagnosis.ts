@@ -39,10 +39,17 @@ function tokens(q: string) {
   return normalize(q).split(" ").filter(t => t && !STOP.has(t))
 }
 
+// Woordvarianten tellen mee (isoleren ≈ isolatie, warmtepompen ≈ warmtepomp);
+// algemene woorden als "huis" of "kosten" hoeven niet letterlijk in een title.
+const GENERIC = new Set(["huis", "woning", "woningen", "kosten", "prijs", "prijzen", "info", "beste", "goedkoop", "laten", "nieuwe"])
+function stem(tok: string) {
+  return tok.length >= 6 ? tok.slice(0, 4) : tok
+}
 function missingTokens(q: string, text?: string) {
-  if (!text) return tokens(q)
+  const toks = tokens(q).filter(t => !GENERIC.has(t))
+  if (!text) return toks
   const t = normalize(text)
-  return tokens(q).filter(tok => !t.includes(tok))
+  return toks.filter(tok => !t.includes(tok) && !t.includes(stem(tok)))
 }
 
 function placeFromPath(path: string | null) {
@@ -146,10 +153,22 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
       findings.push({ tone: "feit", text: "Google koppelde dit zoekwoord in de laatste 28 dagen aan geen enkele pagina met vertoningen." })
     } else {
       const top = pagesCur[0]
-      findings.push({ tone: "feit", text: `Rankende pagina: ${top.path} (positie ${pos(top.position)}, ${num(top.impressions)} vertoningen).` })
+      const intended = detail.intendedPage ? pagesCur.find(p => p.path === detail.intendedPage) : undefined
       const totalImp = pagesCur.reduce((s, p) => s + p.impressions, 0)
+      if (pagesCur.length >= 4) {
+        findings.push({ tone: "feit", text: `Google toont ${pagesCur.length}${pagesCur.length >= 10 ? " of meer" : ""} verschillende eigen pagina's voor dit zoekwoord. De meeste vertoningen gaan naar ${top.path} (positie ${pos(top.position)}, ${num(top.impressions)} van ${num(totalImp)}).` })
+      } else {
+        findings.push({ tone: "feit", text: `Rankende pagina: ${top.path} (positie ${pos(top.position)}, ${num(top.impressions)} vertoningen).` })
+      }
       const rivals = pagesCur.slice(1).filter(p => p.impressions >= Math.max(5, totalImp * 0.15))
-      if (rivals.length) {
+      if (intended && intended.path !== top.path) {
+        const others = pagesCur.filter(p => p.path !== intended.path).slice(0, 3).map(p => p.path)
+        findings.push({ tone: "aanwijzing", text: `De pagina die bij dit zoekwoord hoort, ${intended.path}, staat maar op positie ${pos(intended.position)} (${num(intended.impressions)} vertoningen). Google verspreidt het zoekwoord over andere pagina's, waardoor geen enkele pagina hoog komt.` })
+        steps.push({
+          title: `Maak ${intended.path} de hoofdpagina voor "${q}"`,
+          detail: `Laat ${others.join(", ")} naar ${intended.path} linken met de linktekst "${q}". Zo weet Google welke pagina het antwoord is. Haal "${q}" niet uit die pagina's weg; ze blijven nuttig voor hun eigen wijk of onderwerp.`,
+        })
+      } else if (rivals.length) {
         findings.push({
           tone: "aanwijzing",
           text: `Ook ${rivals.map(r => `${r.path} (positie ${pos(r.position)})`).join(" en ")} verschijnt voor dit zoekwoord. Je eigen pagina's concurreren met elkaar.`,
@@ -208,7 +227,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
         else if (h1Missing.length) findings.push({ tone: "feit", text: `De H1 ("${audit.h1[0]}") bevat ${h1Missing.map(t => `"${t}"`).join(" en ")} niet.` })
       }
       if (q && !isBrandQuery(q) && audit.title && audit.h1.length && !titleMissing.length && !h1Missing.length) {
-        findings.push({ tone: "feit", text: `Title en H1 bevatten al ${tokens(q).map(t => `"${t}"`).join(" en ")}: de basis op de pagina is in orde.` })
+        findings.push({ tone: "feit", text: `Title en H1 bevatten de kernwoorden ${tokens(q).filter(t => !GENERIC.has(t)).map(t => `"${t}"`).join(" en ")}: de basis op de pagina is in orde.` })
       }
       if (titleLen > 62) findings.push({ tone: "aanwijzing", text: `De title is ${titleLen} tekens; Google kapt rond 60 tekens af, dus het eind valt weg.` })
       if (!audit.metaDescription) findings.push({ tone: "feit", text: "Er is geen meta description. Google kiest dan zelf een stukje tekst als omschrijving." })

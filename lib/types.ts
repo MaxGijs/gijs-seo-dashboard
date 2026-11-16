@@ -119,6 +119,7 @@ export interface AdviceDetail {
   pageQueries?: (MetricSet & { query: string })[]
   history?: { weekStart: string; clicks: number; impressions: number; position: number; days: number }[]
   auditTarget?: string | null
+  intendedPage?: string | null
   audit?: PageAudit
   redirects?: { path: string; status?: number; finalPath?: string; redirected: boolean; error?: string }[]
   errors: string[]

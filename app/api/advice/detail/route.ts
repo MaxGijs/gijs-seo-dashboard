@@ -83,15 +83,25 @@ export async function GET(request: Request) {
       safe("historie", () => weeklyHistory("query", query), []),
     ])
     result.queryTotals = { cur: metric(totCur[0]), prev: metric(totPrev[0]) }
-    const mapPages = (rows: GscRow[]) => rows.map(r => ({ path: toPath(r.keys[0]), ...metric(r)! }))
+    // Search Console sorteert gefilterde resultaten niet betrouwbaar: zelf op vertoningen sorteren
+    const mapPages = (rows: GscRow[]) => rows
+      .map(r => ({ path: toPath(r.keys[0]), ...metric(r)! }))
+      .sort((a, b) => b.impressions - a.impressions || a.position - b.position)
     result.queryPages = { cur: mapPages(pagesCur), prev: mapPages(pagesPrev) }
     result.history = history
   }
 
   // Welke pagina bekijken we? De opgegeven pagina, anders de pagina die nu het meest
   // vertoond wordt voor dit zoekwoord.
-  const qp = result.queryPages as { cur: { path: string }[] } | undefined
-  const target = pageParam || qp?.cur?.[0]?.path || null
+  // Bij een plaats-zoekwoord ("huis isoleren zwolle") is de stadspagina de bedoelde pagina,
+  // ook als Google nu vooral wijkpagina's toont.
+  const qp = result.queryPages as { cur: { path: string; impressions: number }[] } | undefined
+  const tokens = (query || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9]+/).filter(t => t.length > 2)
+  const intended = (qp?.cur || [])
+    .filter(p => p.path.startsWith("/regio/") && tokens.includes(p.path.split("/").filter(Boolean).pop()!.toLowerCase()))
+    .sort((a, b) => a.path.split("/").length - b.path.split("/").length || b.impressions - a.impressions)[0]
+  result.intendedPage = intended?.path ?? null
+  const target = pageParam || intended?.path || qp?.cur?.[0]?.path || null
   result.auditTarget = target
 
   if (target) {
@@ -103,7 +113,7 @@ export async function GET(request: Request) {
       pageParam && !query ? safe("historie", () => weeklyHistory("page", toUrl(target)), []) : Promise.resolve(null),
     ])
     result.pageTotals = { cur: metric(totCur[0]), prev: metric(totPrev[0]) }
-    result.pageQueries = pageQueries.map(r => ({ query: r.keys[0], ...metric(r)! }))
+    result.pageQueries = pageQueries.map(r => ({ query: r.keys[0], ...metric(r)! })).sort((a, b) => b.impressions - a.impressions)
     result.audit = audit
     if (pageHistory) result.history = pageHistory
   }

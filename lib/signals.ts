@@ -224,7 +224,7 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
 
   // Score en prioriteit. Prioriteit is relatief: de beste kansen in jóuw huidige data.
   const scored = drafts.map(d => {
-    const brand = isBrandQuery(d.query) ? 0.5 : 1
+    const brand = isBrandQuery(d.query) ? 0.3 : 1
     const score = (d.gain + (d.metrics.impressions || 0) * 0.002) * EVIDENCE_WEIGHT[d.evidence] * (d.urgency || 1) * brand
     return { ...d, score }
   }).sort((a, b) => b.score - a.score)
@@ -232,6 +232,7 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
   return scored.map((d, i) => {
     let priority: Priority = i < 3 ? "hoog" : i < 8 ? "middel" : "laag"
     if (d.evidence === "zwak" && priority === "hoog") priority = "middel"
+    if (isBrandQuery(d.query) && priority === "hoog") priority = "middel"
     if (d.gain < 0.2 && priority !== "laag") priority = d.evidence === "sterk" ? "middel" : "laag"
     const { urgency, ...rest } = d
     void urgency
