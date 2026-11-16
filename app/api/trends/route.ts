@@ -1,12 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-function getSupabase() {
-  return createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { getSupabase, requireUser } from "@/lib/server/guard"
 
 interface Streak {
   query: string
@@ -20,13 +13,16 @@ interface Streak {
 // GET /api/trends?type=streaks — zoekwoorden die meerdere weken op rij stijgen of dalen
 // GET /api/trends?type=overview&days=180 — dagelijkse overview-geschiedenis uit onze eigen opslag (langer dan GSC's eigen 16 maanden)
 export async function GET(request: Request) {
+  const guard = await requireUser()
+  if (guard.error) return guard.error
+
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type") || "streaks"
-  const supabase = getSupabase()
 
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "Supabase not configured", rows: [] }, { status: 200 })
   }
+  const supabase = getSupabase()
 
   try {
     if (type === "overview") {

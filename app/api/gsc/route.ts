@@ -1,75 +1,44 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { google } from "googleapis"
+import { dateWindow, gscQuery, userSearchConsole } from "@/lib/server/gsc"
 
-const SITE_URL = "https://www.groeninjestraat.nl/"
-
+// GET /api/gsc?type=overview|keywords|pages&days=28&offset=0&limit=25&order=clicks|impressions
+// offset = aantal dagen dat het venster terug in de tijd schuift (vorige periode: offset=days).
 export async function GET(request: Request) {
   const session = await auth()
   if (!session?.accessToken) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
   }
+  if (session.error === "RefreshAccessTokenError") {
+    return NextResponse.json({ error: "Google-sessie verlopen" }, { status: 401 })
+  }
 
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type") || "keywords"
-  const days = parseInt(searchParams.get("days") || "28")
-  const offset = parseInt(searchParams.get("offset") || "0")
-
-  const endDate = new Date()
-  endDate.setDate(endDate.getDate() - offset)
-  const startDate = new Date()
-  startDate.setDate(endDate.getDate() - days)
-  const fmt = (d: Date) => d.toISOString().split("T")[0]
-
-  const oauth2 = new google.auth.OAuth2()
-  oauth2.setCredentials({ access_token: session.accessToken })
-
-  const sc = google.searchconsole({ version: "v1", auth: oauth2 })
+  const days = Math.min(Math.max(parseInt(searchParams.get("days") || "28"), 1), 480)
+  const offset = Math.max(parseInt(searchParams.get("offset") || "0"), 0)
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "25"), 1), 1000)
+  const order = searchParams.get("order") === "impressions" ? "impressions" : "clicks"
+  const { startDate, endDate } = dateWindow(days, offset)
+  const sc = userSearchConsole(session.accessToken)
 
   try {
     if (type === "overview") {
-      const res = await sc.searchanalytics.query({
-        siteUrl: SITE_URL,
-        requestBody: {
-          startDate: fmt(startDate),
-          endDate: fmt(endDate),
-          dimensions: ["date"],
-          rowLimit: days,
-        },
-      } as any)
-      return NextResponse.json((res as any).data)
+      const rows = await gscQuery(sc, { startDate, endDate, dimensions: ["date"], rowLimit: days })
+      return NextResponse.json({ rows, startDate, endDate })
     }
-
-    if (type === "keywords") {
-      const res = await sc.searchanalytics.query({
-        siteUrl: SITE_URL,
-        requestBody: {
-          startDate: fmt(startDate),
-          endDate: fmt(endDate),
-          dimensions: ["query"],
-          rowLimit: 25,
-          orderBy: [{ fieldName: "clicks", sortOrder: "DESCENDING" }],
-        },
-      } as any)
-      return NextResponse.json((res as any).data)
+    if (type === "keywords" || type === "pages") {
+      const rows = await gscQuery(sc, {
+        startDate, endDate,
+        dimensions: [type === "keywords" ? "query" : "page"],
+        rowLimit: limit,
+        orderBy: [{ fieldName: order, sortOrder: "DESCENDING" }],
+      })
+      return NextResponse.json({ rows, startDate, endDate })
     }
-
-    if (type === "pages") {
-      const res = await sc.searchanalytics.query({
-        siteUrl: SITE_URL,
-        requestBody: {
-          startDate: fmt(startDate),
-          endDate: fmt(endDate),
-          dimensions: ["page"],
-          rowLimit: 25,
-          orderBy: [{ fieldName: "clicks", sortOrder: "DESCENDING" }],
-        },
-      } as any)
-      return NextResponse.json((res as any).data)
-    }
-
     return NextResponse.json({ error: "Unknown type" }, { status: 400 })
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    const status = err?.code === 401 || /invalid authentication/i.test(err?.message || "") ? 401 : 500
+    return NextResponse.json({ error: err.message }, { status })
   }
 }

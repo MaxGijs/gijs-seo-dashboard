@@ -1,0 +1,138 @@
+import type { AdviceRecord, Experiment, Signal, SignalKind, Status, Task } from "./types"
+import { today } from "./format"
+
+export type ColumnId = "beoordelen" | "gepland" | "uitvoering" | "evalueren" | "afgerond"
+
+export const COLUMNS: { id: ColumnId; label: string; hint: string }[] = [
+  { id: "beoordelen", label: "Te beoordelen", hint: "Nieuwe signalen: inplannen, uitstellen of afwijzen" },
+  { id: "gepland", label: "Gepland", hint: "Goedgekeurd, nog niet begonnen" },
+  { id: "uitvoering", label: "In uitvoering", hint: "Je bent ermee bezig" },
+  { id: "evalueren", label: "Evalueren", hint: "Aangepast; metingen na 14, 28 en 56 dagen" },
+  { id: "afgerond", label: "Afgerond", hint: "Beoordeeld of afgesloten" },
+]
+
+export function columnOf(status: Status): ColumnId {
+  switch (status) {
+    case "nieuw":
+    case "onderzoeken":
+    case "uitgesteld": return "beoordelen"
+    case "goedgekeurd": return "gepland"
+    case "in_uitvoering": return "uitvoering"
+    case "uitgevoerd":
+    case "in_evaluatie": return "evalueren"
+    default: return "afgerond"
+  }
+}
+
+export type Tone = "neutral" | "info" | "accent" | "success" | "warning" | "error"
+
+export const STATUS_META: Record<Status, { label: string; tone: Tone }> = {
+  nieuw: { label: "Nieuw", tone: "neutral" },
+  onderzoeken: { label: "In onderzoek", tone: "warning" },
+  uitgesteld: { label: "Uitgesteld", tone: "neutral" },
+  goedgekeurd: { label: "Gepland", tone: "info" },
+  in_uitvoering: { label: "In uitvoering", tone: "accent" },
+  uitgevoerd: { label: "Wordt gemeten", tone: "accent" },
+  in_evaluatie: { label: "Wordt gemeten", tone: "accent" },
+  succesvol: { label: "Succesvol", tone: "success" },
+  niet_succesvol: { label: "Niet succesvol", tone: "error" },
+  afgewezen: { label: "Afgewezen", tone: "neutral" },
+  onvoldoende_bewijs: { label: "Onvoldoende bewijs", tone: "neutral" },
+}
+
+export const KIND_META: Record<SignalKind, { label: string; tone: Tone }> = {
+  "trend-dalend": { label: "Dalende trend", tone: "error" },
+  "trend-stijgend": { label: "Stijgende trend", tone: "success" },
+  daler: { label: "Daling", tone: "error" },
+  stijger: { label: "Stijging", tone: "success" },
+  kans: { label: "Kans", tone: "accent" },
+  ctr: { label: "Lage doorklik", tone: "warning" },
+  pagina: { label: "Geen clicks", tone: "warning" },
+  dubbel: { label: "Dubbele pagina's", tone: "warning" },
+  analyse: { label: "Eigen analyse", tone: "info" },
+}
+
+// Fallback voor statusregels van vóór de momentopname (bv. het eerder gezette "onderzoeken")
+function signalFromRecord(r: AdviceRecord): Signal {
+  const [prefix, ...rest] = r.advice_key.split(":")
+  let subject = rest.join(":")
+  let kind: SignalKind = "analyse"
+  let page: string | undefined
+  let query: string | undefined
+  if (prefix === "trend") kind = "trend-dalend"
+  else if (prefix === "daler") kind = "daler"
+  else if (prefix === "stijger") kind = "stijger"
+  else if (prefix === "kans") kind = "kans"
+  else if (prefix === "dubbel") kind = "dubbel"
+  else if (prefix === "probleem") {
+    if (subject.startsWith("page:")) { kind = "pagina"; subject = subject.slice(5); page = subject }
+    else kind = "ctr"
+  } else if (prefix === "analyse") {
+    if (subject.startsWith("page:")) { page = subject.slice(5); subject = page }
+    else if (subject.startsWith("query:")) { query = subject.slice(6); subject = query }
+  }
+  if (!page && kind !== "dubbel") query = query ?? subject
+  return {
+    key: r.advice_key,
+    kind,
+    legacyType: r.advice_type,
+    query,
+    page,
+    headline: subject,
+    title: r.advice_title,
+    summary: "Dit signaal komt niet meer voor in de actuele data. De laatst bekende gegevens staan hieronder.",
+    metrics: {},
+    gain: 0,
+    priority: "laag",
+    priorityRank: 0,
+    evidence: "zwak",
+    evidenceReason: "Geen actuele cijfers bij dit signaal.",
+    score: 0,
+    generatedAt: r.created_at,
+  }
+}
+
+export function mergeTasks(signals: Signal[], records: AdviceRecord[], experiments: Experiment[]): Task[] {
+  const recMap = new Map(records.map(r => [r.advice_key, r]))
+  const expMap = new Map<string, Experiment[]>()
+  for (const e of experiments) expMap.set(e.advice_key, [...(expMap.get(e.advice_key) || []), e])
+  const t = today()
+  const tasks: Task[] = []
+  const seen = new Set<string>()
+
+  const make = (signal: Signal, rec: AdviceRecord | undefined, current: boolean): Task => {
+    const status = rec?.status || "nieuw"
+    const snoozeUntil = rec?.snooze_until || null
+    return {
+      key: signal.key,
+      signal,
+      status,
+      note: rec?.note || null,
+      snoozeUntil,
+      snoozed: status === "uitgesteld" && !!snoozeUntil && snoozeUntil > t,
+      current,
+      updatedAt: rec?.updated_at || null,
+      experiments: expMap.get(signal.key) || [],
+    }
+  }
+
+  for (const s of signals) {
+    tasks.push(make(s, recMap.get(s.key), true))
+    seen.add(s.key)
+  }
+  for (const r of records) {
+    if (seen.has(r.advice_key)) continue
+    const signal = r.snapshot && r.snapshot.key ? { ...r.snapshot, key: r.advice_key } : signalFromRecord(r)
+    tasks.push(make(signal, r, false))
+  }
+  return tasks
+}
+
+// Taken die in "Te beoordelen" horen maar niet meer actueel zijn en nooit zijn aangeraakt,
+// tonen we niet: dan zou het bord vollopen met verouderde signalen.
+export function isVisible(task: Task) {
+  if (task.current) return true
+  return task.status !== "nieuw"
+}
+
+export const PRIORITY_ORDER = { hoog: 0, middel: 1, laag: 2 } as const

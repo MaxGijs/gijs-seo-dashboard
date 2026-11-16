@@ -1,19 +1,27 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata, Viewport } from "next"
+import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Gijs SEO Dashboard",
-  description: "SEO dashboard voor groeninjestraat.nl",
-};
+  title: "Gijs Intelligence · SEO-werkruimte",
+  description: "Dagelijkse SEO-werkruimte voor groeninjestraat.nl",
+  robots: { index: false, follow: false },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#133e35",
+  width: "device-width",
+  initialScale: 1,
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="nl">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" />
       </head>
-      <body style={{ margin: 0, minHeight: "100vh" }}>{children}</body>
+      <body>{children}</body>
     </html>
-  );
+  )
 }

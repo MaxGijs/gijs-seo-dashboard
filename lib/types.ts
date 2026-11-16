@@ -1,0 +1,125 @@
+export interface GscRow { keys: string[]; clicks: number; impressions: number; ctr: number; position: number }
+
+export interface Streak {
+  query: string
+  weeks: number
+  direction: "stijgend" | "dalend"
+  positionNow: number
+  positionWeeksAgo: number
+  impressions: number
+}
+
+export type SignalKind =
+  | "trend-dalend" | "trend-stijgend" | "daler" | "stijger"
+  | "kans" | "ctr" | "pagina" | "dubbel" | "analyse"
+
+export type Priority = "hoog" | "middel" | "laag"
+export type Evidence = "sterk" | "redelijk" | "zwak"
+
+export interface SignalMetrics {
+  position?: number
+  prevPosition?: number
+  impressions?: number
+  prevImpressions?: number
+  clicks?: number
+  prevClicks?: number
+  ctr?: number
+  weeks?: number
+}
+
+export interface Signal {
+  key: string
+  kind: SignalKind
+  legacyType: string          // advice_type in de database (compatibel met bestaande statussen)
+  query?: string
+  page?: string               // pad, bv. /regio/overijssel/borne
+  relatedPages?: string[]     // bij dubbele pagina's
+  headline: string            // kort onderwerp: zoekwoord of pad
+  title: string               // één zin: wat er speelt
+  summary: string             // waarom dit opvalt, met cijfers
+  metrics: SignalMetrics
+  gain: number                // indicatieve extra clicks per 28 dagen
+  priority: Priority
+  priorityRank: number
+  evidence: Evidence
+  evidenceReason: string
+  score: number
+  generatedAt: string
+}
+
+export type Status =
+  | "nieuw" | "onderzoeken" | "uitgesteld" | "goedgekeurd" | "in_uitvoering"
+  | "uitgevoerd" | "in_evaluatie" | "succesvol" | "niet_succesvol" | "afgewezen" | "onvoldoende_bewijs"
+
+export interface AdviceRecord {
+  advice_key: string
+  advice_title: string
+  advice_type: string
+  status: Status
+  note: string | null
+  snapshot: Signal | null
+  snooze_until: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Experiment {
+  id: string
+  advice_key: string
+  description: string
+  changed_at: string
+  baseline: Record<string, any>
+  result_14d: Record<string, any> | null
+  result_28d: Record<string, any> | null
+  result_56d: Record<string, any> | null
+  outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | null
+  query: string | null
+  page: string | null
+  created_at: string
+}
+
+export interface Task {
+  key: string
+  signal: Signal
+  status: Status
+  note: string | null
+  snoozeUntil: string | null
+  snoozed: boolean            // uitgesteld en de datum is nog niet bereikt
+  current: boolean            // signaal komt voor in de actuele data
+  updatedAt: string | null
+  experiments: Experiment[]
+}
+
+export interface PageAudit {
+  url: string
+  ok: boolean
+  status?: number
+  error?: string
+  finalUrl?: string
+  title?: string
+  metaDescription?: string
+  h1: string[]
+  h2: string[]
+  wordCount: number
+  internalLinks: number
+  canonical?: string
+  noindex: boolean
+}
+
+export interface MetricSet { clicks: number; impressions: number; ctr: number; position: number }
+
+export interface AdviceDetail {
+  query: string | null
+  page: string | null
+  window: { startDate: string; endDate: string }
+  prevWindow: { startDate: string; endDate: string }
+  queryTotals?: { cur: MetricSet | null; prev: MetricSet | null }
+  queryPages?: { cur: (MetricSet & { path: string })[]; prev: (MetricSet & { path: string })[] }
+  pageTotals?: { cur: MetricSet | null; prev: MetricSet | null }
+  pageQueries?: (MetricSet & { query: string })[]
+  history?: { weekStart: string; clicks: number; impressions: number; position: number; days: number }[]
+  auditTarget?: string | null
+  audit?: PageAudit
+  redirects?: { path: string; status?: number; finalPath?: string; redirected: boolean; error?: string }[]
+  errors: string[]
+}

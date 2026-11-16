@@ -32,7 +32,7 @@ async function measure(supabase: any, query: string | null, page: string | null)
     }
   }
   if (page) {
-    const fullUrl = `https://www.groeninjestraat.nl${page === "/" ? "" : page}`
+    const fullUrl = `https://www.groeninjestraat.nl${page === "/" ? "/" : page}`
     const { data, error } = await supabase
       .from("seo_daily_pages")
       .select("position, impressions, clicks, ctr")
@@ -95,12 +95,24 @@ export async function GET(request: Request) {
         if (m) {
           update.result_56d = m
           results.measured56++
-          // Eindbeoordeling: vergelijk positie nu met de nulmeting (lager getal = betere positie).
+          // Eindbeoordeling volgens het meetplan uit het advies:
+          // - positie: minstens 0,5 beter dan de nulmeting (lager getal = betere positie)
+          // - doorklik (CTR): minstens 20% hoger dan de nulmeting
+          const useCtr = exp.baseline?.successMetric === "ctr"
           const baselinePos = exp.baseline?.position ?? exp.baseline?.positionNow
-          if (typeof baselinePos === "number" && typeof m.position === "number") {
+          const baselineCtr = exp.baseline?.ctr
+          let verdict: string | null = null
+          if (useCtr && typeof baselineCtr === "number" && typeof m.ctr === "number") {
+            const improved = m.ctr >= Math.max(baselineCtr * 1.2, baselineCtr + 0.002)
+            const worsened = m.ctr < baselineCtr * 0.8
+            verdict = improved ? "succesvol" : worsened ? "niet_succesvol" : "onduidelijk"
+          } else if (typeof baselinePos === "number" && typeof m.position === "number") {
             const improved = m.position < baselinePos - 0.5
             const worsened = m.position > baselinePos + 0.5
-            update.outcome = improved ? "succesvol" : worsened ? "niet_succesvol" : "onduidelijk"
+            verdict = improved ? "succesvol" : worsened ? "niet_succesvol" : "onduidelijk"
+          }
+          if (verdict) {
+            update.outcome = verdict
 
             if (update.outcome !== "onduidelijk") {
               await supabase.from("seo_advice_status").update({
