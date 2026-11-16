@@ -3,6 +3,7 @@ import type { CtrModel } from "./ctr"
 import { gainFromMove } from "./ctr"
 import { capitalize, dateShort, normalize, num, pct, pos } from "./format"
 import { isBrandQuery, toPath } from "./signals"
+import { ageDays, assessPage, coverageNl, OPBOUW_DAGEN, phaseOf } from "./pages"
 
 export type FindingTone = "feit" | "aanwijzing" | "check" | "spoed"
 export interface Finding { tone: FindingTone; text: string }
@@ -185,6 +186,32 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
           text: `Google wisselde van pagina: vorige periode vooral ${prevTop.path} (positie ${pos(prevTop.position)}), nu ${top.path} (positie ${pos(top.position)}).`,
         })
       }
+    }
+  }
+
+  // ── Bevindingen: indexering en fase (uit de pagina-audit)
+  const info = detail?.pageInfo
+  let opbouwFase = false
+  if (target && info) {
+    const phase = phaseOf(info)
+    const age = ageDays(info)
+    opbouwFase = phase === "opbouw"
+    if (opbouwFase) {
+      findings.push({ tone: "feit", text: `${target} is nieuw: ${age} dagen live${info.launch_date ? ` (provincie gelanceerd op ${dateShort(info.launch_date)})` : ""}. Tot ${OPBOUW_DAGEN / 7} weken na lancering beoordelen we de basis, niet de prestaties.` })
+    }
+    if (info.inspected_at && !info.inspect_error) {
+      const state = coverageNl(info.coverage_state)
+      if (info.index_verdict === "PASS") findings.push({ tone: "feit", text: `Google heeft de pagina geïndexeerd${info.last_crawl_time ? ` (laatst gecrawld ${dateShort(info.last_crawl_time)})` : ""}.` })
+      else findings.push({ tone: opbouwFase ? "feit" : "spoed", text: `Indexering: ${state || "niet geïndexeerd"}${opbouwFase ? ", voor een nieuwe pagina nog niet zorgwekkend" : ""}.` })
+    } else {
+      findings.push({ tone: "check", text: "De indexeringsstatus is nog niet gecontroleerd. Dat gebeurt automatisch in de pagina-audit." })
+    }
+    if (!info.in_sitemap) findings.push({ tone: "aanwijzing", text: `${target} staat niet in de sitemap.` })
+    // Technische blokkades zijn altijd spoed, ook in de opbouwfase
+    const pa = assessPage(info)
+    if (pa.status === "technisch") {
+      findings.push({ tone: "spoed", text: pa.reason })
+      steps.unshift({ title: pa.next })
     }
   }
 
@@ -453,6 +480,8 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     verdict = { kind: "afwachten", label: "Al opgelost", text: "De doorverwijzing staat al. Wijs dit advies af of markeer het als onvoldoende bewijs; er hoeft niets te gebeuren." }
   } else if (spoed) {
     verdict = { kind: "spoed", label: "Spoed", text: "Er is een technische blokkade gevonden. Los die eerst op; daarna pas inhoudelijke aanpassingen." }
+  } else if (opbouwFase && ["daler", "trend-dalend", "pagina", "analyse"].includes(signal.kind)) {
+    verdict = { kind: "afwachten", label: "In opbouw", text: "De pagina is nieuw. Schommelingen en weinig vertoningen zijn in deze fase normaal: controleer de basis (indexering, interne links, unieke inhoud) en beoordeel prestaties pas na de opbouwfase." }
   } else if (signal.evidence === "zwak" && signal.gain < 0.5) {
     verdict = { kind: "afwachten", label: "Nog afwachten", text: "Te weinig vertoningen en te weinig te winnen om nu iets te veranderen. Kies 'Onvoldoende bewijs' of stel het uit." }
   } else if (signal.gain < 0.2 && signal.kind !== "dubbel") {

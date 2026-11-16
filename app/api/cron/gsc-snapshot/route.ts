@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server"
 import { google } from "googleapis"
 import { createClient } from "@supabase/supabase-js"
+import { inspectBatch, syncInventory } from "@/lib/server/inventory"
 
 const SITE_URL = "https://www.groeninjestraat.nl/"
 // GSC data heeft vaak 2-3 dagen vertraging voor het compleet/stabiel is.
 const SNAPSHOT_LAG_DAYS = 3
+
+export const maxDuration = 300
 
 function getGscClient() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
@@ -44,11 +47,11 @@ export async function GET(request: Request) {
       } as any),
       sc.searchanalytics.query({
         siteUrl: SITE_URL,
-        requestBody: { startDate: snapshotDate, endDate: snapshotDate, dimensions: ["query"], rowLimit: 500 },
+        requestBody: { startDate: snapshotDate, endDate: snapshotDate, dimensions: ["query"], rowLimit: 5000 },
       } as any),
       sc.searchanalytics.query({
         siteUrl: SITE_URL,
-        requestBody: { startDate: snapshotDate, endDate: snapshotDate, dimensions: ["page"], rowLimit: 500 },
+        requestBody: { startDate: snapshotDate, endDate: snapshotDate, dimensions: ["page"], rowLimit: 5000 },
       } as any),
     ])
 
@@ -101,6 +104,11 @@ export async function GET(request: Request) {
       if (error) throw new Error(`pages upsert: ${error.message}`)
       results.pages = pageRows.length
     }
+
+    // Pagina-inventaris bijwerken en een batch indexeringscontroles (los van de snapshot: een fout
+    // hierin mag de dagelijkse snapshot niet laten mislukken).
+    try { results.inventaris = await syncInventory() } catch (e: any) { results.inventaris = { fout: e.message } }
+    try { results.indexering = await inspectBatch({ budgetMs: 200000, max: 1500 }) } catch (e: any) { results.indexering = { fout: e.message } }
 
     return NextResponse.json({ ok: true, ...results })
   } catch (err: any) {

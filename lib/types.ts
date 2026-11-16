@@ -142,6 +142,7 @@ export interface AdviceDetail {
   history?: { weekStart: string; clicks: number; impressions: number; position: number; days: number }[]
   auditTarget?: string | null
   intendedPage?: string | null
+  pageInfo?: import("./pages").PageRow | null
   audit?: PageAudit
   redirects?: { path: string; status?: number; finalPath?: string; redirected: boolean; error?: string }[]
   errors: string[]

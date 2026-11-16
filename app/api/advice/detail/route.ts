@@ -115,6 +115,11 @@ export async function GET(request: Request) {
     result.pageTotals = { cur: metric(totCur[0]), prev: metric(totPrev[0]) }
     result.pageQueries = pageQueries.map(r => ({ query: r.keys[0], ...metric(r)! })).sort((a, b) => b.impressions - a.impressions)
     result.audit = audit
+    // Inventaris en indexering uit de pagina-audit (als die al gedraaid heeft)
+    if (supabaseConfigured()) {
+      const { data: info } = await getSupabase().from("seo_pages").select("*").eq("path", target).maybeSingle()
+      result.pageInfo = info ?? null
+    }
     if (pageHistory) result.history = pageHistory
   }
 

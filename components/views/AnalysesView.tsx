@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import PageAuditView from "./PageAuditView"
 import { ArrowDown, ArrowUp, ChevronRight, ChevronsUpDown, FileText, Hash, LineChart, SearchX } from "lucide-react"
 import { useWorkspace, type AnalyticsData } from "@/lib/workspace"
 import type { GscRow } from "@/lib/types"
@@ -28,7 +30,37 @@ function DeltaText({ cur, prev, invert = false, absolute = false }: { cur: numbe
   return <p className={`kpi-delta ${cls}`}>{label}</p>
 }
 
+function ViewTabs({ tab }: { tab: "overzicht" | "audit" }) {
+  const router = useRouter()
+  return (
+    <div className="seg" role="tablist" aria-label="Onderdeel">
+      <button role="tab" aria-selected={tab === "overzicht"} className={tab === "overzicht" ? "is-active" : ""} onClick={() => router.replace("/analyses")}>Overzicht</button>
+      <button role="tab" aria-selected={tab === "audit"} className={tab === "audit" ? "is-active" : ""} onClick={() => router.replace("/analyses?tab=audit")}>Pagina-audit</button>
+    </div>
+  )
+}
+
 export default function AnalysesView() {
+  const params = useSearchParams()
+  const tab = params.get("tab") === "audit" ? "audit" : "overzicht"
+  if (tab === "audit") {
+    return (
+      <>
+        <div className="page-head">
+          <div>
+            <h1 className="page-title">SEO-analyses</h1>
+            <p className="page-sub">Alle pagina&apos;s uit de sitemap naast Search Console: kent Google ze, toont Google ze, en wat is de volgende stap?</p>
+          </div>
+          <ViewTabs tab="audit" />
+        </div>
+        <PageAuditView />
+      </>
+    )
+  }
+  return <OverviewAnalyses tabs={<ViewTabs tab="overzicht" />} />
+}
+
+function OverviewAnalyses({ tabs }: { tabs: ReactNode }) {
   const { getAnalytics, openSubject, loading: wsLoading, authError } = useWorkspace()
   const [period, setPeriod] = useState(28)
   const [data, setData] = useState<AnalyticsData | null>(null)
@@ -58,10 +90,13 @@ export default function AnalysesView() {
             Google Search Console{data?.range && state === "ready" ? `, ${dateShort(data.range.startDate)} t/m ${dateShort(data.range.endDate)}` : ""}. Klik op een zoekwoord of pagina voor de volledige diagnose.
           </p>
         </div>
-        <div className="seg" role="group" aria-label="Periode">
-          {PERIODS.map(p => (
-            <button key={p} className={period === p ? "is-active" : ""} onClick={() => setPeriod(p)} aria-pressed={period === p}>{p} dagen</button>
-          ))}
+        <div className="page-actions">
+          <div className="seg" role="group" aria-label="Periode">
+            {PERIODS.map(p => (
+              <button key={p} className={period === p ? "is-active" : ""} onClick={() => setPeriod(p)} aria-pressed={period === p}>{p} dagen</button>
+            ))}
+          </div>
+          {tabs}
         </div>
       </div>
 
