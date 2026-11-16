@@ -23,7 +23,7 @@ export async function requireUser() {
     return { error: NextResponse.json({ error: "Niet ingelogd" }, { status: 401 }) }
   }
   if (!isAllowed(session.user.email)) {
-    return { error: NextResponse.json({ error: "Geen toegang voor dit account" }, { status: 403 }) }
+    return { error: NextResponse.json({ error: `Geen toegang voor ${session.user.email}: alleen accounts op @groeninjestraat.nl (of accounts die in ALLOWED_EMAILS staan) kunnen het dashboard gebruiken.` }, { status: 403 }) }
   }
   return { session }
 }

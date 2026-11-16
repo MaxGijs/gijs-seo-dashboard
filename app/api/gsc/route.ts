@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/auth"
-import { dateWindow, gscQuery, userSearchConsole } from "@/lib/server/gsc"
+import { requireUser } from "@/lib/server/guard"
+import { dateWindow, gscQuery, serviceSearchConsole } from "@/lib/server/gsc"
 
 // GET /api/gsc?type=overview|keywords|pages&days=28&offset=0&limit=25&order=clicks|impressions
 // offset = aantal dagen dat het venster terug in de tijd schuift (vorige periode: offset=days).
 export async function GET(request: Request) {
-  const session = await auth()
-  if (!session?.accessToken) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
-  }
-  if (session.error === "RefreshAccessTokenError") {
-    return NextResponse.json({ error: "Google-sessie verlopen" }, { status: 401 })
-  }
+  // Alle Gijs-medewerkers zien dezelfde cijfers: opgehaald met het service-account van het dashboard,
+  // niet met het eigen Google-account (dat heeft lang niet altijd toegang tot Search Console).
+  const guard = await requireUser()
+  if (guard.error) return guard.error
 
   const { searchParams } = new URL(request.url)
   const type = searchParams.get("type") || "keywords"
@@ -20,7 +17,7 @@ export async function GET(request: Request) {
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "25"), 1), 1000)
   const order = searchParams.get("order") === "impressions" ? "impressions" : "clicks"
   const { startDate, endDate } = dateWindow(days, offset)
-  const sc = userSearchConsole(session.accessToken)
+  const sc = serviceSearchConsole()
 
   try {
     if (type === "overview") {
@@ -38,7 +35,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({ error: "Unknown type" }, { status: 400 })
   } catch (err: any) {
-    const status = err?.code === 401 || /invalid authentication/i.test(err?.message || "") ? 401 : 500
-    return NextResponse.json({ error: err.message }, { status })
+    const forbidden = err?.code === 403 || /permission|sufficient/i.test(err?.message || "")
+    return NextResponse.json({ error: forbidden ? "Het service-account van het dashboard heeft geen toegang tot Search Console." : err.message, code: forbidden ? "permission" : undefined }, { status: 500 })
   }
 }

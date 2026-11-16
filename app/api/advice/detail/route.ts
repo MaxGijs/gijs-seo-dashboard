@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireUser, getSupabase, supabaseConfigured } from "@/lib/server/guard"
-import { dateWindow, gscQuery, toPath, toUrl, userSearchConsole, type GscRow } from "@/lib/server/gsc"
+import { dateWindow, gscQuery, serviceSearchConsole, toPath, toUrl, type GscRow } from "@/lib/server/gsc"
 import { auditPage, checkRedirect } from "@/lib/server/audit"
 
 export const maxDuration = 30
@@ -53,8 +53,6 @@ async function weeklyHistory(kind: "query" | "page", value: string) {
 export async function GET(request: Request) {
   const guard = await requireUser()
   if (guard.error) return guard.error
-  const session = guard.session!
-  if (!session.accessToken) return NextResponse.json({ error: "Geen Google-sessie" }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const query = searchParams.get("query")?.trim() || null
@@ -64,7 +62,7 @@ export async function GET(request: Request) {
 
   const cur = dateWindow(28, 0)
   const prev = dateWindow(28, 28)
-  const sc = userSearchConsole(session.accessToken)
+  const sc = serviceSearchConsole()
   const errors: string[] = []
   const safe = async <T,>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
     try { return await fn() } catch (e: any) { errors.push(`${label}: ${e?.message || e}`); return fallback }

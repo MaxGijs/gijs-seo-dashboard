@@ -11,7 +11,7 @@ export type IdeaStatus =
 export type Impact = "regelgeving" | "subsidie" | "kosten" | "net" | "advies" | "overig"
 export type Angle = "probleemgericht" | "negatief" | "positief" | "neutraal"
 export type Advice = "nieuw" | "bijwerken" | "samenvoegen" | "niets"
-export type Reliability = "overheid" | "voorlichting" | "vakmedia" | "web" | "eigen-data" | "kalender" | "medewerker"
+export type Reliability = "overheid" | "voorlichting" | "vakmedia" | "nieuws" | "web" | "eigen-data" | "kalender" | "medewerker"
 export type CapacityMode = "actief" | "normaal" | "minder" | "alleen-digitaal" | "clustering" | "niet-beschikbaar"
 
 export interface SourceRef { title: string; url?: string; publisher: string; date?: string | null; reliability: Reliability; firstSeen?: boolean }
@@ -169,7 +169,7 @@ export const SERVICE_TERMS: Record<string, string[]> = {
 export const GENERAL_TERMS = [
   "verduurzam", "isolatie", "isoleren", "energielabel", "isde", "warmtefonds", "energierekening", "energiebelasting",
   "energieprijs", "energietarie", "stroomnet", "netcongestie", "netbeheer", "aansluiting verzwaren", "3-fase", "energiebesparing",
-  "energie besparen", "aardgasvrij", "gasvrij", "gasprijs", "warmtenet", "energiearmoede", "woningeigenaar", "huiseigenaar",
+  "energie besparen", "aardgasvrij", "gasvrij", "gasprijs", "warmtenet", "energiearmoede",
 ]
 export const SCAN_SERVICE = "energiescan"
 
@@ -229,6 +229,7 @@ export const RELIABILITY_META: Record<Reliability, { label: string; points: numb
   voorlichting: { label: "Onafhankelijke voorlichting", points: 9 },
   "eigen-data": { label: "Eigen data (Search Console)", points: 10 },
   vakmedia: { label: "Vakmedia", points: 7 },
+  nieuws: { label: "Nieuwsmedium", points: 7 },
   web: { label: "Webonderzoek (wekelijkse zoektaak)", points: 6 },
   kalender: { label: "Seizoenspatroon", points: 6 },
   medewerker: { label: "Medewerker", points: 8 },
@@ -403,6 +404,7 @@ export function risksFor(impact: Impact, reliability: Reliability, firstSeen: bo
   if (impact === "regelgeving") r.push("Gaat het om een voorstel of een besluit? Een voorstel mag niet als vaststaand feit worden gepresenteerd.")
   if (impact === "kosten") r.push("Tarieven en prijzen veranderen; vermeld de peildatum en bron bij elk bedrag.")
   if (reliability === "web") r.push("Gevonden via webonderzoek: open de bron, controleer of die betrouwbaar is en zoek waar nodig de oorspronkelijke overheids- of fabrikantbron op.")
+  if (reliability === "nieuws") r.push("Bron is een nieuwsmedium: zoek de oorspronkelijke bron (gemeente, provincie, netbeheerder, overheid) op en verwijs daarnaar.")
   if (reliability === "vakmedia") r.push("Bron is vakmedia: zoek de oorspronkelijke overheids- of fabrikantbron op.")
   if (firstSeen) r.push("De bron gaf geen publicatiedatum; de datum is het moment waarop het dashboard het bericht vond.")
   r.push("Een stevige kop mag, maar het artikel moet nuance en een praktische oplossing bieden.")

@@ -17,7 +17,7 @@ export { buildIdea } from "@/lib/content/build"
 
 // ── Bronnen ─────────────────────────────────────────────────────────────────
 
-interface Source { id: string; name: string; publisher: string; kind: "rss" | "milieucentraal"; url: string; reliability: Reliability }
+interface Source { id: string; name: string; publisher: string; kind: "rss" | "milieucentraal"; url: string; reliability: Reliability; region?: string }
 
 function rijksoverheid(filter: { topic?: string; term?: string }): string {
   const filters: any[] = [{ field: "content_type", values: ["pro:newsDocument"], type: "all" }]
@@ -32,6 +32,14 @@ export const SOURCES: Source[] = [
     id: `ro-${term.toLowerCase()}`, name: `Rijksoverheid · zoekterm "${term}"`, publisher: "Rijksoverheid", kind: "rss" as const, url: rijksoverheid({ term }), reliability: "overheid" as const,
   })),
   { id: "milieucentraal", name: "Milieu Centraal · Nieuwsberichten", publisher: "Milieu Centraal", kind: "milieucentraal", url: "https://www.milieucentraal.nl/nieuwsberichten/", reliability: "voorlichting" },
+  // Nieuwsmedia: landelijk en in de werkgebieden. Alleen berichten over woningen én een dienst van Gijs worden een kans.
+  { id: "nos-binnenland", name: "NOS · Binnenland", publisher: "NOS", kind: "rss", url: "https://feeds.nos.nl/nosnieuwsbinnenland", reliability: "nieuws" },
+  { id: "nos-economie", name: "NOS · Economie", publisher: "NOS", kind: "rss", url: "https://feeds.nos.nl/nosnieuwseconomie", reliability: "nieuws" },
+  { id: "oost", name: "Oost (RTV Oost)", publisher: "Oost", kind: "rss", url: "https://www.rtvoost.nl/rss/index.xml", reliability: "nieuws", region: "overijssel" },
+  { id: "tubantia", name: "Tubantia", publisher: "Tubantia", kind: "rss", url: "https://www.tubantia.nl/home/rss.xml", reliability: "nieuws", region: "overijssel" },
+  { id: "stentor", name: "De Stentor", publisher: "De Stentor", kind: "rss", url: "https://www.destentor.nl/home/rss.xml", reliability: "nieuws" },
+  { id: "gld", name: "Omroep Gelderland", publisher: "Omroep Gelderland", kind: "rss", url: "https://www.gld.nl/rss/index.xml", reliability: "nieuws", region: "gelderland" },
+  { id: "rtvutrecht", name: "RTV Utrecht", publisher: "RTV Utrecht", kind: "rss", url: "https://www.rtvutrecht.nl/rss/index.xml", reliability: "nieuws", region: "utrecht" },
 ]
 
 const MAX_AGE_DAYS = 120
@@ -121,7 +129,9 @@ export async function scanContent() {
   const classified = recent.map(i => {
     const text = `${i.title} ${i.summary}`
     const services = servicesIn(text, ctx.services)
-    return { ...i, services, impact: impactOf(text), regions: regionsIn(text), relevant: services.length > 0 && isForHouseholds(text) }
+    const src = SOURCES.find(x => x.id === i.sourceId)
+    const regions = [...new Set([...regionsIn(text), ...(src?.region ? [src.region] : [])])]
+    return { ...i, services, impact: impactOf(text), regions, relevant: services.length > 0 && isForHouseholds(text) }
   })
   if (classified.length) {
     const { error } = await sb.from("content_news").upsert(classified.map(i => ({
