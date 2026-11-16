@@ -41,57 +41,70 @@ export default function Dashboard() {
     : "—"
   const totalConversions = ga4?.rows?.reduce((s: number, r: any) => s + parseFloat(r.metricValues?.[1]?.value || 0), 0) || 0
 
+  const card: React.CSSProperties = {
+    background: "var(--surface)", border: "1px solid var(--border)",
+    borderRadius: "var(--radius-card)", padding: "22px 24px",
+    boxShadow: "var(--shadow-1)"
+  }
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Period selector */}
-      <div className="flex items-center gap-2">
-        <span className="text-gray-400 text-sm">Periode:</span>
-        {[7, 28, 90].map(d => (
-          <button
-            key={d}
-            onClick={() => setPeriod(d)}
-            className={`px-3 py-1 rounded text-sm transition ${
-              period === d
-                ? "bg-blue-600 text-white"
-                : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-            }`}
-          >
-            {d} dagen
-          </button>
-        ))}
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px 60px" }}>
+
+      {/* Toolbar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--green-800)", letterSpacing: "-0.025em", margin: 0 }}>
+            groeninjestraat.nl
+          </h1>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Google Search Console · Analytics</p>
+        </div>
+        <div style={{ display: "flex", gap: 3, background: "var(--grey-100)", borderRadius: "var(--radius-pill)", padding: 3 }}>
+          {[7, 28, 90].map(d => (
+            <button key={d} onClick={() => setPeriod(d)} style={{
+              padding: "6px 16px", borderRadius: "var(--radius-pill)", border: "none",
+              background: period === d ? "var(--surface)" : "none",
+              color: period === d ? "var(--green-800)" : "var(--muted)",
+              fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              boxShadow: period === d ? "var(--shadow-1)" : "none",
+              transition: "all .14s"
+            }}>
+              {d}d
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (
-        <div className="bg-red-900/30 border border-red-700 text-red-300 rounded-lg p-4 text-sm">
-          Fout: {error}
+        <div style={{
+          background: "#fbecea", border: "1px solid #f5c6c3", color: "#b23225",
+          borderRadius: 12, padding: "12px 16px", fontSize: 13, marginBottom: 16
+        }}>
+          Fout bij ophalen data: {error}
         </div>
       )}
 
       {/* KPI tiles */}
-      <StatsRow
-        loading={loading}
-        stats={[
-          { label: "Clicks", value: totalClicks.toLocaleString("nl"), color: "blue" },
-          { label: "Impressies", value: totalImpressions.toLocaleString("nl"), color: "purple" },
-          { label: "Gem. positie", value: avgPosition, color: "green" },
-          { label: "Conversies", value: totalConversions.toFixed(0), color: "orange" },
-        ]}
-      />
+      <StatsRow loading={loading} stats={[
+        { label: "Clicks", value: totalClicks.toLocaleString("nl"), accent: "var(--accent-600)" },
+        { label: "Impressies", value: totalImpressions.toLocaleString("nl"), accent: "var(--green-700)" },
+        { label: "Gem. positie", value: avgPosition, accent: "var(--accent-500)" },
+        { label: "Conversies", value: totalConversions.toFixed(0), accent: "var(--accent-700)" },
+      ]} />
 
-      {/* Trend chart */}
-      <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-        <h2 className="text-white font-semibold mb-4">Clicks & Impressies</h2>
+      {/* Chart */}
+      <div style={{ ...card, marginBottom: 16 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--green-800)", margin: "0 0 16px" }}>Clicks per dag</h2>
         <TrendChart rows={gscOverview?.rows || []} loading={loading} />
       </div>
 
       {/* Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h2 className="text-white font-semibold mb-4">Top zoekwoorden</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={card}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--green-800)", margin: "0 0 16px" }}>Top zoekwoorden</h2>
           <KeywordsTable rows={keywords} loading={loading} />
         </div>
-        <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-          <h2 className="text-white font-semibold mb-4">Top pagina's</h2>
+        <div style={card}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--green-800)", margin: "0 0 16px" }}>Top pagina's</h2>
           <PagesTable rows={pages} loading={loading} />
         </div>
       </div>
