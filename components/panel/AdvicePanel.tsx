@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
-  Activity, AlertTriangle, ArrowLeft, BarChart3, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
-  Eye, FlaskConical, Gauge, ListChecks, MessageSquareText, Play, RotateCcw, ShieldCheck, Stethoscope,
-  Target, ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
-  ClipboardCheck, Database, Users, Calculator,
+  AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
+  FlaskConical, MessageSquareText, Play, RotateCcw, ShieldCheck,
+  ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
+  Users, Calculator,
 } from "lucide-react"
 import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
 import { INTENT_META } from "@/lib/intent"
@@ -80,6 +80,17 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
     [signal, detail, ctrModel, pages, signals.length]
   )
 
+  // Belangrijkste bevindingen eerst; controles die in orde zijn en losse feiten inklapbaar
+  const findings = useMemo(() => {
+    const order: Record<FindingTone, number> = { spoed: 0, aanwijzing: 1, feit: 2, check: 3 }
+    const quiet = (f: { tone: FindingTone; text: string }) =>
+      f.tone === "feit" && /in orde|^Positie per week|^Title tag|^Meta description|^H1|^Interne links naar/i.test(f.text)
+    const sorted = [...diag.findings].sort((a, b) => order[a.tone] - order[b.tone])
+    const main = sorted.filter(f => !quiet(f)).slice(0, 4)
+    const rest = sorted.filter(f => !main.includes(f))
+    return { main, rest }
+  }, [diag.findings])
+
   const column = columnOf(task.status)
   const target = diag.target
 
@@ -126,9 +137,6 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             ) : detailState === "loading" ? "Rankende pagina wordt opgezocht…" : "Geen rankende pagina gevonden"}
             {dataUntil && <> · laatste 28 dagen t/m {dateShort(dataUntil)}</>}
           </p>
-          {signal.action && (
-            <p className="panel-task"><ClipboardCheck aria-hidden /><span><b>Taak:</b> {signal.action}</span></p>
-          )}
         </header>
 
         <div className="panel-body">
@@ -140,29 +148,33 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             </div>
           )}
 
-          {/* Oordeel */}
-          <section className="psec">
-            <div className={`verdict verdict-${diag.verdict.kind}`}>
-              {diag.verdict.kind === "spoed" ? <AlertTriangle aria-hidden /> : diag.verdict.kind === "afwachten" ? <PauseCircle aria-hidden /> : <CheckCircle2 aria-hidden />}
-              <div><strong>{diag.verdict.label}</strong><p>{diag.verdict.text}</p></div>
+          {/* Samenvatting: oordeel, taak en verwachte winst in één blok */}
+          <section className="psec" aria-label="Samenvatting">
+            <div className={`summary summary-${diag.verdict.kind}`}>
+              <p className="summary-verdict">
+                {diag.verdict.kind === "spoed" ? <AlertTriangle aria-hidden /> : diag.verdict.kind === "afwachten" ? <PauseCircle aria-hidden /> : <CheckCircle2 aria-hidden />}
+                {diag.verdict.label}
+              </p>
+              <p className="summary-task">{signal.action || diag.steps[0]?.title || diag.situation}</p>
+              {diag.verdict.kind !== "inplannen" && <p className="summary-note">{diag.verdict.text}</p>}
+              <dl className="summary-meta">
+                <div><dt>Verwachte winst</dt><dd>{signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
+                <div><dt>Bewijskracht</dt><dd>{capitalizeFirst(signal.evidence)}</dd></div>
+                {signal.priorityRank ? <div><dt>Prioriteit</dt><dd>#{signal.priorityRank} van {signals.length}</dd></div> : null}
+              </dl>
             </div>
           </section>
 
-          {/* 1. Probleem */}
+          {/* 1. Wat speelt er: probleem en bewijs */}
           <section className="psec" aria-labelledby="sec-probleem">
-            <h3 className="psec-title" id="sec-probleem"><Activity aria-hidden /><span className="psec-num">1</span>Probleem: wat is er veranderd</h3>
+            <h3 className="psec-title" id="sec-probleem"><span className="psec-num">1</span>Wat speelt er</h3>
             <p className="lead">{diag.situation}</p>
-          </section>
-
-          {/* 2. Bewijs */}
-          <section className="psec" aria-labelledby="sec-bewijs">
-            <h3 className="psec-title" id="sec-bewijs"><Database aria-hidden /><span className="psec-num">2</span>Bewijs</h3>
-            <div className="facts" style={{ marginTop: 0 }}>
+            <div className="kpis-inline">
               {diag.facts.map(f => (
-                <div className="fact" key={f.label}>
-                  <p className="fact-label">{f.label}</p>
-                  <p className="fact-value">{detailState === "loading" && f.value === "—" ? <Skeleton height={20} width={48} /> : f.value}</p>
-                  {f.sub && <p className="fact-sub">{f.sub}</p>}
+                <div className="kpi-inline" key={f.label}>
+                  <span className="kpi-inline-label">{f.label}</span>
+                  <span className="kpi-inline-value">{detailState === "loading" && f.value === "—" ? <Skeleton height={18} width={40} /> : f.value}</span>
+                  {f.sub && <span className="kpi-inline-sub">{f.sub}</span>}
                 </div>
               ))}
             </div>
@@ -198,9 +210,9 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             ) : null}
           </section>
 
-          {/* 3. Diagnose */}
+          {/* 2. Diagnose: belangrijkste bevindingen eerst, de rest inklapbaar */}
           <section className="psec" aria-labelledby="sec-diagnose">
-            <h3 className="psec-title" id="sec-diagnose"><Stethoscope aria-hidden /><span className="psec-num">3</span>Diagnose: waardoor kan dit komen{detailState === "loading" && <span className="subtle">pagina en rankings worden gecontroleerd…</span>}</h3>
+            <h3 className="psec-title" id="sec-diagnose"><span className="psec-num">2</span>Waardoor komt dit{detailState === "loading" && <span className="subtle">pagina wordt gecontroleerd…</span>}</h3>
             {detailState === "error" && (
               <div style={{ marginBottom: 12 }}>
                 <Alert tone="warning" title="Detailgegevens niet opgehaald">De diagnose hieronder gebruikt alleen de cijfers van het signaal ({detailError}).</Alert>
@@ -210,23 +222,28 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
               <div style={{ display: "grid", gap: 10 }}>
                 <Skeleton height={18} /><Skeleton height={18} width="85%" /><Skeleton height={18} width="70%" />
               </div>
-            ) : diag.findings.length ? (
-              <ul className="findings">
-                {diag.findings.map((f, i) => (
-                  <li className="finding" key={i}>
-                    <span className="finding-tag"><Badge tone={FINDING_TAG[f.tone].tone}>{FINDING_TAG[f.tone].label}</Badge></span>
-                    <span>{f.text}</span>
-                  </li>
-                ))}
-              </ul>
+            ) : findings.main.length ? (
+              <>
+                <ul className="findings">
+                  {findings.main.map((f, i) => <FindingRow key={i} tone={f.tone} text={f.text} />)}
+                </ul>
+                {findings.rest.length > 0 && (
+                  <details className="evidence-details">
+                    <summary>{findings.rest.length} {findings.rest.length === 1 ? "controle" : "controles"} die in orde {findings.rest.length === 1 ? "is" : "zijn"} of ter info</summary>
+                    <ul className="findings findings-quiet">
+                      {findings.rest.map((f, i) => <FindingRow key={i} tone={f.tone} text={f.text} />)}
+                    </ul>
+                  </details>
+                )}
+              </>
             ) : (
               <p className="muted">Geen opvallende bevindingen in de data.</p>
             )}
           </section>
 
-          {/* 4. Aanbeveling */}
+          {/* 3. Aanbeveling */}
           <section className="psec" aria-labelledby="sec-stappen">
-            <h3 className="psec-title" id="sec-stappen"><ListChecks aria-hidden /><span className="psec-num">4</span>Aanbeveling: wat je concreet aanpast</h3>
+            <h3 className="psec-title" id="sec-stappen"><span className="psec-num">3</span>Wat je aanpast</h3>
             {detailState === "loading" ? (
               <div style={{ display: "grid", gap: 12 }}><Skeleton height={40} /><Skeleton height={40} /></div>
             ) : (
@@ -241,27 +258,36 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             )}
           </section>
 
-          {/* 5. Impact en zekerheid */}
+          {/* 4. Resultaat en meting */}
           <section className="psec" aria-labelledby="sec-impact">
-            <h3 className="psec-title" id="sec-impact"><Target aria-hidden /><span className="psec-num">5</span>Impact en zekerheid</h3>
+            <h3 className="psec-title" id="sec-impact"><span className="psec-num">4</span>Verwacht resultaat en meting</h3>
             <p className="impact-headline"><TrendingUp aria-hidden /><span><b>{diag.importance.gainText}</b> <span className="muted">(indicatief)</span></span></p>
-            {signal.estimate ? <EstimateTable e={signal.estimate} /> : (
-              <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Voor dit advies is geen rekensom beschikbaar: er zijn geen actuele vertoningen of posities.</p>
-            )}
             <ul className="why-list">
               <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
-              {signal.intent && <li className="why-item"><Users aria-hidden /><span>Zoekintentie <b>{INTENT_META[signal.intent].label.toLowerCase()}</b>: deze zoeker {INTENT_META[signal.intent].explain}. Weegt ×{num(INTENT_META[signal.intent].weight, 2)} mee in de prioriteit.</span></li>}
-              <li className="why-item"><BarChart3 aria-hidden /><span>{diag.importance.relativeText}</span></li>
+              {signal.intent && <li className="why-item"><Users aria-hidden /><span>Zoekintentie <b>{INTENT_META[signal.intent].label.toLowerCase()}</b>: deze zoeker {INTENT_META[signal.intent].explain}.</span></li>}
             </ul>
-            {diag.expected.slice(1).map((e, i) => <p key={i} className="field-hint" style={{ marginTop: 10 }}>{e}</p>)}
-          </section>
-
-          {/* 6. Evaluatie */}
-          <section className="psec" aria-labelledby="sec-evaluatie">
-            <h3 className="psec-title" id="sec-evaluatie"><CalendarClock aria-hidden /><span className="psec-num">6</span>Evaluatie: wanneer meten we het resultaat</h3>
-            <ul className="plain-list">
-              {diag.measurement.map((e, i) => <li key={i}><CalendarClock aria-hidden /><span>{e}</span></li>)}
-            </ul>
+            <div className="timeline" aria-label="Meetplan">
+              {[
+                { l: "Nulmeting", s: "bij uitvoeren" },
+                { l: "14 dagen", s: "eerste meting" },
+                { l: "28 dagen", s: "tussenmeting" },
+                { l: "56 dagen", s: "eindoordeel" },
+              ].map(t => <div className="timeline-step" key={t.l}><span className="timeline-dot" aria-hidden /><b>{t.l}</b><span>{t.s}</span></div>)}
+            </div>
+            <p className="field-hint" style={{ marginTop: 8 }}>{diag.measurement[diag.measurement.length - 1]}</p>
+            <details className="evidence-details">
+              <summary>Hoe is deze schatting berekend?</summary>
+              <div style={{ marginTop: 12 }}>
+                {signal.estimate ? <EstimateTable e={signal.estimate} /> : (
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Voor dit advies is geen rekensom beschikbaar: er zijn geen actuele vertoningen of posities.</p>
+                )}
+                <ul className="calc-notes" style={{ marginTop: 0 }}>
+                  <li>{diag.importance.relativeText}</li>
+                  {signal.intent && <li>Zoekintentie weegt ×{num(INTENT_META[signal.intent].weight, 2)} mee in de prioriteit.</li>}
+                  {diag.expected.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+              </div>
+            </details>
             {task.experiments.length > 0 && (
               <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
                 {task.experiments.map(e => <ExperimentSummary key={e.id} exp={e} />)}
@@ -392,6 +418,21 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
     </>
   )
 }
+
+function FindingRow({ tone, text }: { tone: FindingTone; text: string }) {
+  return (
+    <li className="finding">
+      <span className="finding-tag"><Badge tone={FINDING_TAG[tone].tone}>{FINDING_TAG[tone].label}</Badge></span>
+      <span>{text}</span>
+    </li>
+  )
+}
+
+function gainLabel(e: Estimate) {
+  return e.gain >= 1 ? `+${num(e.low)}–${num(e.high)} clicks / 28 d` : "minder dan 1 click"
+}
+
+function capitalizeFirst(t: string) { return t ? t[0].toUpperCase() + t.slice(1) : t }
 
 function ExperimentSummary({ exp }: { exp: Experiment }) {
   const base = exp.baseline || {}
