@@ -44,11 +44,13 @@ export function scopeLabel(scope?: MetricScope): string {
     case "zoekwoord-pagina": return `Zoekwoord "${scope.query}" op ${scope.page} · ${when} · ${src}`
     case "paginagroep": return `${scope.pages?.length ?? 0} pagina's opgeteld (per pagina geteld) · ${when} · ${src}`
     case "inventaris": return `Alle pagina's uit de sitemap · ${src}`
+    case "geen": return "Eigen taak, niet gekoppeld aan een zoekwoord of pagina"
   }
 }
 
 export function listScope(signal: Signal, window: Window): MetricScope {
   if (signal.kind === "techniek") return { kind: "inventaris", source: "inventaris" }
+  if (signal.kind === "eigen" && !signal.query && !signal.page) return { kind: "geen", source: "lijst" }
   if (signal.kind === "dubbel") return { kind: "paginagroep", pages: signal.relatedPages, window, source: "lijst" }
   if (signal.query) return { kind: "zoekwoord", query: signal.query, window, source: "lijst" }
   return { kind: "pagina", page: signal.page, window, source: "lijst" }
@@ -61,7 +63,7 @@ export function reconcile(signal: Signal, detail: AdviceDetail | null, model: Ct
     const scope = signal.scope || listScope(signal, listWindow)
     return { signal: { ...signal, scope }, scopeText: scopeLabel(scope), changes: [], blocked: null, targetRow: null, ...extra }
   }
-  if (signal.kind === "techniek") return base()
+  if (signal.kind === "techniek" || (signal.kind === "eigen" && !signal.query && !signal.page)) return base()
   if (!detail) return base({ changes: ["De live controle is niet gelukt. De cijfers komen uit de lijst; controleer ze voordat je iets aanpast."] })
 
   const changes: string[] = []

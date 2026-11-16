@@ -51,6 +51,7 @@ export const KIND_META: Record<SignalKind, { label: string; tone: Tone }> = {
   dubbel: { label: "Dubbele pagina's", tone: "warning" },
   analyse: { label: "Eigen analyse", tone: "info" },
   techniek: { label: "Technisch", tone: "error" },
+  eigen: { label: "Eigen taak", tone: "info" },
 }
 
 // Fallback voor statusregels van vóór de momentopname (bv. het eerder gezette "onderzoeken")
@@ -66,6 +67,7 @@ function signalFromRecord(r: AdviceRecord): Signal {
   else if (prefix === "kans") kind = "kans"
   else if (prefix === "dubbel") kind = "dubbel"
   else if (prefix === "techniek") kind = "techniek"
+  else if (prefix === "eigen") kind = "eigen"
   else if (prefix === "probleem") {
     if (subject.startsWith("page:")) { kind = "pagina"; subject = subject.slice(5); page = subject }
     else kind = "ctr"
@@ -73,7 +75,7 @@ function signalFromRecord(r: AdviceRecord): Signal {
     if (subject.startsWith("page:")) { page = subject.slice(5); subject = page }
     else if (subject.startsWith("query:")) { query = subject.slice(6); subject = query }
   }
-  if (!page && kind !== "dubbel" && kind !== "techniek") query = query ?? subject
+  if (!page && kind !== "dubbel" && kind !== "techniek" && kind !== "eigen") query = query ?? subject
   return {
     key: r.advice_key,
     kind,
@@ -125,7 +127,8 @@ export function mergeTasks(signals: Signal[], records: AdviceRecord[], experimen
   for (const r of records) {
     if (seen.has(r.advice_key)) continue
     const signal = r.snapshot && r.snapshot.key ? { ...r.snapshot, key: r.advice_key } : signalFromRecord(r)
-    tasks.push(make(signal, r, false))
+    // Eigen taken zijn altijd actueel: ze komen niet uit de data maar van jou
+    tasks.push(make(signal, r, signal.kind === "eigen"))
   }
   return tasks
 }

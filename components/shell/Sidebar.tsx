@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CalendarCheck, FlaskConical, KanbanSquare, LineChart, LogOut } from "lucide-react"
+import { CalendarCheck, Database, FlaskConical, KanbanSquare, LineChart, LogOut } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
@@ -12,6 +12,7 @@ export const NAV = [
   { href: "/taken", label: "Mijn taken", icon: KanbanSquare },
   { href: "/analyses", label: "SEO-analyses", icon: LineChart },
   { href: "/experimenten", label: "Experimenten", icon: FlaskConical },
+  { href: "/data", label: "Datastatus", icon: Database },
 ] as const
 
 export default function Sidebar({ user }: { user: { name?: string | null; email?: string | null; image?: string | null } }) {

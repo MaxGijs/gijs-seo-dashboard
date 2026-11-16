@@ -137,5 +137,7 @@ export function actionFor(s: Pick<Signal, "kind" | "query" | "page" | "relatedPa
       return `Bekijk de diagnose van ${q} en beslis of er een taak van moet komen`
     case "techniek":
       return `Los de technische blokkade op${s.page ? ` op ${s.page}` : ""}`
+    case "eigen":
+      return s.page || q
   }
 }

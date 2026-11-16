@@ -13,6 +13,7 @@ export const SUCCESS_METRIC: Record<ActionType, SuccessMetric> = {
   ranking: "position",
   merk: "geen",
   geen: "geen",
+  handmatig: "geen",
 }
 
 export interface MeasurePlan {
@@ -93,6 +94,13 @@ export function measurePlan(type: ActionType, ctx: { page?: string | null; query
         timeline: [{ l: "Nu", s: "zelf zoeken" }, { l: "Klaar", s: "geen meting" }],
         success: "Geen meting: dit is een controle. Sluit de taak af na het zoeken.",
         baselineText: "niets",
+      }
+    case "handmatig":
+      return {
+        label: "Eigen taak",
+        timeline: [{ l: "Nu", s: "uitvoeren" }, { l: "Klaar", s: "zelf beoordelen" }],
+        success: "Geen automatische meting: er is geen zoekwoord of pagina gekoppeld. Beoordeel het resultaat zelf bij het afronden.",
+        baselineText: "je beschrijving van de aanpassing",
       }
     case "geen":
       return {

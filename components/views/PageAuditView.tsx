@@ -175,7 +175,9 @@ export default function PageAuditView() {
                   <td className="cell-main">{prettySlug(r.p)}</td>
                   <td>{r.launch ? dateShort(r.launch) : "—"}</td>
                   <td className="num">{num(r.total)}</td>
-                  <td className="num">{r.inspected ? `${num(r.indexed)} van ${num(r.inspected)}` : <span className="subtle">nog niet gecontroleerd</span>}</td>
+                  <td className="num" title={r.inspected < r.total ? `${num(r.total - r.inspected)} pagina's zijn nog niet door Google geïnspecteerd (of de inspectie mislukte); die tellen hier niet mee.` : undefined}>
+                    {r.inspected ? <>{num(r.indexed)} van {num(r.inspected)} gecontroleerd{r.inspected < r.total && <div className="subtle" style={{ fontSize: 11 }}>{num(r.total - r.inspected)} nog niet gecontroleerd</div>}</> : <span className="subtle">nog niet gecontroleerd</span>}
+                  </td>
                   <td className="num">{num(r.visible)} <span className="subtle">({Math.round((r.visible / Math.max(r.total, 1)) * 100)}%)</span></td>
                   <td className="num">{r.problems ? <span className="delta-down">{r.problems}</span> : <span className="subtle">0</span>}</td>
                   <td>{r.opbouw === r.total ? <Badge tone="info">Opbouw</Badge> : r.opbouw ? <Badge tone="info">Deels opbouw</Badge> : <Badge tone="neutral">Volwassen</Badge>}</td>

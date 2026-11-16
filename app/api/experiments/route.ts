@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { advice_key, description, baseline, query, page } = body
+    const { advice_key, description, baseline, query, page, hypothesis, target_pages, target_queries, predicted } = body
     if (!advice_key || !description?.trim() || !baseline) {
       return NextResponse.json({ error: "advice_key, description en baseline zijn verplicht" }, { status: 400 })
     }
@@ -48,6 +48,10 @@ export async function POST(request: Request) {
         baseline,
         query: query ?? null,
         page: page ?? null,
+        hypothesis: typeof hypothesis === "string" ? hypothesis.slice(0, 1000) : null,
+        target_pages: Array.isArray(target_pages) ? target_pages.slice(0, 500).map(String) : null,
+        target_queries: Array.isArray(target_queries) ? target_queries.slice(0, 50).map(String) : null,
+        predicted: predicted && typeof predicted === "object" ? predicted : null,
         changed_at: new Date().toISOString().split("T")[0],
       })
       .select()

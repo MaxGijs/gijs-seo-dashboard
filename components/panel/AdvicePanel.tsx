@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
   FlaskConical, MessageSquareText, Play, RotateCcw, ShieldCheck,
   ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
-  Users, Calculator, Database,
+  Users, Calculator, Database, Target,
 } from "lucide-react"
 import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
 import { INTENT_META } from "@/lib/intent"
@@ -19,9 +19,9 @@ import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleto
 const SITE = "https://www.groeninjestraat.nl"
 
 export default function AdvicePanel() {
-  const { panelTask, closePanel } = useWorkspace()
+  const { panelTask, closePanel, panelIntent } = useWorkspace()
   if (!panelTask) return null
-  return <PanelContent key={panelTask.key} task={panelTask} onClose={closePanel} />
+  return <PanelContent key={panelTask.key} task={panelTask} onClose={closePanel} intent={panelIntent} />
 }
 
 const FINDING_TAG: Record<FindingTone, { label: string; tone: "info" | "warning" | "neutral" | "error" }> = {
@@ -31,10 +31,10 @@ const FINDING_TAG: Record<FindingTone, { label: string; tone: "info" | "warning"
   spoed: { label: "Spoed", tone: "error" },
 }
 
-type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback"
+type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback" | "close"
 
-function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { getDetail, ctrModel, pages, signals, setStatus, toast, dataUntil, listWindow } = useWorkspace()
+function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => void; intent: "execute" | "close" | null }) {
+  const { getDetail, ctrModel, pages, signals, setStatus, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
   const [detail, setDetail] = useState<AdviceDetail | null>(null)
   const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading")
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -46,7 +46,7 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const raw = task.signal
-  const needsDetail = raw.kind !== "techniek"
+  const needsDetail = raw.kind !== "techniek" && !(raw.kind === "eigen" && !raw.query && !raw.page)
 
   useEffect(() => {
     let cancelled = false
@@ -104,6 +104,14 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
     return { main, rest }
   }, [diag])
 
+  // Geopend na slepen naar Evalueren of Afgerond: meteen de bijbehorende vraag tonen
+  const intentApplied = useRef(false)
+  useEffect(() => {
+    if (!diag || intentApplied.current || !intent) return
+    intentApplied.current = true
+    setMode(intent)
+  }, [diag, intent])
+
   const column = columnOf(task.status)
   const target = diag?.target ?? null
   const blocked = !!rec?.blocked
@@ -132,6 +140,35 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
 
   const latestExperiment: Experiment | undefined = task.experiments[0]
 
+  // Sitebrede niveau bij de nulmeting: om later te corrigeren voor algemene groei (nieuwe provincies, seizoen)
+  const siteBaseline = overview.length ? {
+    impressionsPerDay: Math.round(overview.reduce((a, r) => a + r.impressions, 0) / overview.length),
+    clicksPerDay: Math.round((overview.reduce((a, r) => a + r.clicks, 0) / overview.length) * 10) / 10,
+    days: overview.length,
+  } : null
+
+  // GA4: conversies via de pagina waar dit advies over gaat
+  const conv = (() => {
+    if (!diag || signal.kind === "techniek") return null
+    if (ga4Pages === null) return "GA4 is (nog) niet beschikbaar: de prioriteit rekent alleen met Search Console."
+    const page = target || signal.conversions?.page
+    if (!page) return null
+    const r = ga4Pages.find(x => x.path === page)
+    if (!r || !r.sessions) return `GA4: geen bezoek via ${page} als landingspagina in de laatste 28 dagen.`
+    const f = 1 + Math.min(r.keyEvents, 20) / 20
+    return `GA4: ${num(r.sessions)} sessies en ${num(r.keyEvents)} conversies (aanvragen, energiescans) via ${page} in 28 dagen${r.keyEvents ? `; weegt ×${num(f, 2)} mee in de prioriteit` : ""}.`
+  })()
+  // Wat leerden eerdere experimenten van dit type?
+  const learned = (() => {
+    if (!diag) return ""
+    const same = experiments.filter(e => e.baseline?.actionType === diag.actionType && e.advice_key !== task.key)
+    const done = same.filter(e => e.outcome && e.result_56d?.evidence !== "te weinig data")
+    const ok = done.filter(e => e.outcome === "succesvol").length
+    if (!same.length) return `Nog geen eerdere experimenten van het type "${diag.plan.label.toLowerCase()}". Deze schatting steunt alleen op de doorklik per positie.`
+    if (!done.length) return `${same.length} eerder${same.length === 1 ? " experiment" : "e experimenten"} van dit type ${same.length === 1 ? "loopt" : "lopen"} nog; er is nog geen uitkomst om op te leunen.`
+    return `Gebaseerd op ${done.length} afgeronde experiment${done.length === 1 ? "" : "en"} van dit type: ${ok} succesvol, ${done.length - ok} niet of zonder duidelijk effect.`
+  })()
+
   const header = (
     <header className="panel-head">
       <div className="panel-head-top">
@@ -143,11 +180,11 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
         </div>
         <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
       </div>
-      <h2 className="panel-title" id="panel-title">{raw.query ? `"${raw.query}"` : <Breakable text={raw.headline} />}</h2>
+      <h2 className="panel-title" id="panel-title">{raw.kind === "eigen" ? raw.headline : raw.query ? `"${raw.query}"` : <Breakable text={raw.headline} />}</h2>
       <p className="panel-subtitle">
         {target ? (
           <a href={`${SITE}${target}`} target="_blank" rel="noopener noreferrer">{target}<ExternalLink aria-hidden /></a>
-        ) : !diag ? "Pagina en cijfers worden live gecontroleerd…" : raw.kind === "techniek" ? "Uit de pagina-audit (nachtelijke controle)" : "Geen rankende pagina gevonden"}
+        ) : !diag ? "Pagina en cijfers worden live gecontroleerd…" : raw.kind === "techniek" ? "Uit de pagina-audit (nachtelijke controle)" : raw.kind === "eigen" ? (raw.query ? "Geen rankende pagina gevonden" : "Eigen taak") : "Geen rankende pagina gevonden"}
         {dataUntil && raw.kind !== "techniek" && <> · laatste 28 dagen t/m {dateShort(rec?.signal.scope?.window?.endDate || dataUntil)}</>}
       </p>
     </header>
@@ -201,6 +238,7 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                 <div><dt>Soort aanpassing</dt><dd>{diag.plan.label}</dd></div>
                 <div><dt>Verwachte winst</dt><dd>{signal.kind === "techniek" ? "randvoorwaarde" : signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
                 <div><dt>Bewijskracht</dt><dd>{capitalizeFirst(signal.evidence)}</dd></div>
+                <div><dt>Inspanning · risico</dt><dd>{capitalizeFirst(diag.effort)} · {diag.risk}</dd></div>
                 {signal.priorityRank ? <div><dt>Prioriteit</dt><dd>#{signal.priorityRank} van {signals.length}</dd></div> : null}
               </dl>
             </div>
@@ -258,10 +296,13 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                     <div>
                       <p className="eyebrow" style={{ marginBottom: 6 }}>Zoekwoorden van {detail.auditTarget}</p>
                       <table className="mini-table">
-                        <thead><tr><th>Zoekwoord</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">CTR</th></tr></thead>
-                        <tbody>{detail.pageQueries.slice(0, 10).map(r => (
-                          <tr key={r.query}><td className="truncate" style={{ maxWidth: 260 }}>{r.query}</td><td className="num">{pos(r.position)}</td><td className="num">{num(r.impressions)}</td><td className="num">{pct(r.ctr)}</td></tr>
-                        ))}</tbody>
+                        <thead><tr><th>Zoekwoord</th><th className="num">Positie</th><th className="num">Vertoningen</th><th className="num">Aandeel</th></tr></thead>
+                        <tbody>{detail.pageQueries.slice(0, 10).map(r => {
+                          const c = diag.cluster?.queries.find(x => x.query === r.query)
+                          return (
+                            <tr key={r.query} className={r.query === signal.query ? "is-current" : undefined}><td className="truncate" style={{ maxWidth: 260 }}>{r.query}{c?.inTopic && diag.cluster?.topic ? <span className="subtle"> · {diag.cluster.topic}</span> : null}</td><td className="num">{pos(r.position)}</td><td className="num">{num(r.impressions)}</td><td className="num">{c ? `${Math.round(c.share * 100)}%` : "—"}</td></tr>
+                          )
+                        })}</tbody>
                       </table>
                     </div>
                   )}
@@ -325,6 +366,8 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
             <ul className="why-list">
               <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
               {signal.intent && <li className="why-item"><Users aria-hidden /><span>Zoekintentie <b>{INTENT_META[signal.intent].label.toLowerCase()}</b>: deze zoeker {INTENT_META[signal.intent].explain}.</span></li>}
+              {conv && <li className="why-item"><Target aria-hidden /><span>{conv}</span></li>}
+              <li className="why-item"><FlaskConical aria-hidden /><span>{learned}</span></li>
             </ul>
             <p className="field-hint" style={{ marginTop: 14 }}>Meetplan voor: <b>{diag.plan.label.toLowerCase()}</b>. De nulmeting legt {diag.plan.baselineText} vast.</p>
             <div className="timeline" aria-label="Meetplan" style={{ gridTemplateColumns: `repeat(${diag.plan.timeline.length}, minmax(0, 1fr))` }}>
@@ -400,7 +443,16 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
                 <button className="btn btn-primary btn-sm" disabled={busy || blocked} onClick={() => {
                   if (!text.trim()) { setFormError("Beschrijf kort wat je hebt aangepast, zodat je later weet wat er gemeten wordt."); return }
-                  run("uitgevoerd", { experiment: { description: text.trim(), baseline: baselineFrom(signal, detail, diag, rec!.targetRow) } }, "Uitgevoerd. De meting is gestart.")
+                  run("uitgevoerd", {
+                    experiment: {
+                      description: text.trim(),
+                      baseline: { ...baselineFrom(signal, detail, diag, rec!.targetRow), site: siteBaseline },
+                      hypothesis: `${diag.steps[0]?.title || signal.action || ""}. Verwacht: ${diag.importance.gainText.toLowerCase()}. ${diag.plan.success}`,
+                      targetPages: signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x),
+                      targetQueries: signal.query ? [signal.query] : [],
+                      predicted: { gain: signal.estimate ? Math.round(signal.estimate.gain * 10) / 10 : null, low: signal.estimate?.low ?? null, high: signal.estimate?.high ?? null, metric: diag.successMetric },
+                    },
+                  }, "Uitgevoerd. De meting is gestart.")
                 }}>Opslaan en meting starten</button>
               </div>
             </div>
@@ -414,6 +466,20 @@ function PanelContent({ task, onClose }: { task: Task; onClose: () => void }) {
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
                 <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(task.status, { note: text.trim() || null, snoozeUntil: task.snoozeUntil }, "Notitie opgeslagen")}>Notitie opslaan</button>
               </div>
+            </div>
+          )}
+
+          {mode === "close" && (
+            <div className="inline-form">
+              <p className="field-label">Hoe sluit je deze taak af?</p>
+              <div className="snooze-options">
+                <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run("succesvol", {}, "Afgerond als succesvol")}><ThumbsUp aria-hidden />Succesvol</button>
+                <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run("niet_succesvol", {}, "Afgerond als niet succesvol")}><XCircle aria-hidden />Niet succesvol</button>
+                <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run("onvoldoende_bewijs", {}, "Afgerond: onvoldoende bewijs")}><CircleSlash aria-hidden />Onvoldoende bewijs</button>
+                <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => setMode("reject")}><ThumbsDown aria-hidden />Afwijzen</button>
+              </div>
+              {task.experiments.some(e => !e.outcome) && <p className="field-hint">Er loopt nog een meting. Die gaat door; de automatische eindbeoordeling kan je keuze later aanvullen.</p>}
+              <div className="inline-form-actions"><button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Annuleren</button></div>
             </div>
           )}
 

@@ -1,4 +1,4 @@
-import type { Evidence, GscRow, Priority, Signal, SignalKind, Streak } from "./types"
+import type { Evidence, GscRow, Level, Priority, Signal, SignalKind, Streak } from "./types"
 import { buildCtrModel, clicksAt, gainFromMove, type CtrModel } from "./ctr"
 import { num, pos, pct } from "./format"
 import { actionFor, classifyPage, classifyQuery, estimateFor, INTENT_META, placeIn, regionSegments } from "./intent"
@@ -12,7 +12,7 @@ export function toPath(url: string) {
 // De sleutelvorm is gelijk aan de eerdere versie, zodat al opgeslagen statussen blijven kloppen.
 const LEGACY_TYPE: Record<SignalKind, string> = {
   "trend-dalend": "trend", "trend-stijgend": "trend", daler: "daler", stijger: "stijger",
-  kans: "kans", ctr: "probleem", pagina: "probleem", dubbel: "dubbel", analyse: "analyse", techniek: "techniek",
+  kans: "kans", ctr: "probleem", pagina: "probleem", dubbel: "dubbel", analyse: "analyse", techniek: "techniek", eigen: "eigen",
 }
 
 export function signalKey(kind: SignalKind, subject: string) {
@@ -27,6 +27,7 @@ export function signalKey(kind: SignalKind, subject: string) {
     case "dubbel": return `dubbel:${subject}`
     case "analyse": return `analyse:${subject}`
     case "techniek": return `techniek:${subject}`
+    case "eigen": return `eigen:${subject}`
   }
 }
 
@@ -56,6 +57,31 @@ export interface SignalInput {
   pages: GscRow[]          // huidige 28 dagen
   streaks: Streak[]
   inventory?: PageRow[]    // pagina-inventaris (sitemap + nachtelijke HTTP- en indexeringscontrole)
+  ga4Pages?: { path: string; sessions: number; keyEvents: number }[]  // GA4 per landingspagina (28 d)
+  feedback?: { key: string; kind: SignalKind; intent?: string }[]    // eerder afgewezen of 'onvoldoende bewijs'
+}
+
+// Inspanning en wijzigingsrisico per soort signaal (in het zijpaneel verfijnd per aanpassing)
+export const EFFORT_RISK: Record<SignalKind, { effort: Level; risk: Level }> = {
+  kans: { effort: "laag", risk: "laag" },
+  stijger: { effort: "laag", risk: "laag" },
+  "trend-stijgend": { effort: "laag", risk: "laag" },
+  analyse: { effort: "laag", risk: "laag" },
+  daler: { effort: "middel", risk: "laag" },
+  "trend-dalend": { effort: "middel", risk: "laag" },
+  ctr: { effort: "laag", risk: "middel" },
+  pagina: { effort: "laag", risk: "middel" },
+  dubbel: { effort: "middel", risk: "middel" },
+  techniek: { effort: "middel", risk: "laag" },
+  eigen: { effort: "middel", risk: "laag" },
+}
+const EFFORT_FACTOR: Record<Level, number> = { laag: 1, middel: 0.85, hoog: 0.7 }
+const RISK_FACTOR: Record<Level, number> = { laag: 1, middel: 0.9, hoog: 0.75 }
+
+// Conversies via de pagina: een pagina die aanvragen of energiescans oplevert, weegt zwaarder (max ×2)
+export function conversionFactor(c?: { keyEvents: number } | null) {
+  if (!c) return 1
+  return 1 + Math.min(c.keyEvents, 20) / 20
 }
 
 export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] {
@@ -240,7 +266,20 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
 
   // Intentie, controleerbare schatting en concrete taak per signaal
   const regions = regionSegments(input.pages.map(p => toPath(p.keys[0])))
+  const ga = new Map((input.ga4Pages || []).map(r => [r.path, r]))
+  const pagePaths = input.pages.map(p => toPath(p.keys[0]))
   for (const d of drafts) {
+    // Welke pagina hoort bij dit signaal? Bij een plaats-zoekwoord de regiopagina van die plaats.
+    let page = d.page || null
+    if (!page && d.query) {
+      const place = placeIn(d.query, regions)
+      if (place) page = pagePaths.filter(p => p.startsWith("/regio/") && p.endsWith(`/${place}`)).sort((a, b) => a.length - b.length)[0] || null
+    }
+    const conv = page ? ga.get(page) : undefined
+    d.conversions = input.ga4Pages ? (conv ? { page: page!, sessions: conv.sessions, keyEvents: conv.keyEvents } : page ? { page, sessions: 0, keyEvents: 0 } : null) : null
+    d.rejectedSimilar = (input.feedback || []).filter(f => f.key !== d.key && f.kind === d.kind && (f.intent || null) === (d.intent || null)).length
+    d.effort = EFFORT_RISK[d.kind].effort
+    d.risk = EFFORT_RISK[d.kind].risk
     d.intent = d.query ? classifyQuery(d.query, regions, isBrandQuery(d.query)) : classifyPage(d.page || "/")
     d.place = d.query ? placeIn(d.query, regions) : null
     d.estimate = estimateFor(d, model)
@@ -289,11 +328,14 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
   // gewogen naar verwachte winst, bewijskracht, urgentie en zoekintentie (zakelijke waarde).
   const scored = [
     // Technische blokkades eerst, op volgorde van omvang
-    ...techDrafts.map(d => ({ ...d, score: 10000 + (d.tech?.pages.length || 0) })),
+    ...techDrafts.map(d => ({ ...d, ...EFFORT_RISK.techniek, score: 10000 + (d.tech?.pages.length || 0) })),
     ...drafts.map(d => {
       const intentWeight = INTENT_META[d.intent || "informatief"].weight
       // Al opgelost: blijft zichtbaar als "controleer en sluit", maar telt niet mee in de wachtrij
       const score = d.resolved ? 0 : (d.gain + (d.metrics.impressions || 0) * 0.002) * EVIDENCE_WEIGHT[d.evidence] * (d.urgency || 1) * intentWeight
+        * EFFORT_FACTOR[d.effort || "laag"] * RISK_FACTOR[d.risk || "laag"] * conversionFactor(d.conversions)
+        // Wat je eerder afwees, telt voor vergelijkbare adviezen minder zwaar (max. halvering)
+        * Math.max(0.5, Math.pow(0.85, d.rejectedSimilar || 0))
       return { ...d, score }
     }),
   ].sort((a, b) => b.score - a.score)

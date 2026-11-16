@@ -29,6 +29,71 @@ function Delta({ base, value, metric }: { base: number | null | undefined; value
   return <span className={d > 0 ? "delta-up" : "delta-down"}>{d > 0 ? "+" : "−"}{num(Math.abs(d), 1)} pp</span>
 }
 
+function ExpOutcome({ e }: { e: Experiment }) {
+  const last = e.result_56d || e.result_28d || e.result_14d
+  const pred = e.predicted?.gain ?? e.baseline?.predictedGain
+  const lines: string[] = []
+  if (typeof pred === "number") lines.push(`Voorspeld: ${pred >= 1 ? `+${num(e.predicted?.low ?? Math.floor(pred * 0.6))}–${num(e.predicted?.high ?? Math.ceil(pred * 1.3))}` : "< 1"} clicks / 28 d`)
+  if (last && typeof last.actualGain === "number") {
+    lines.push(`Werkelijk tot nu: ${last.actualGain >= 0 ? "+" : ""}${num(last.actualGain, 1)} clicks / 28 d${typeof last.actualGainCorrected === "number" && last.actualGainCorrected !== last.actualGain ? ` (gecorrigeerd voor sitebrede groei: ${last.actualGainCorrected >= 0 ? "+" : ""}${num(last.actualGainCorrected, 1)})` : ""}`)
+  }
+  const conf: string[] = last?.confounders || []
+  if (!lines.length && !conf.length && !last?.evidence) return null
+  return (
+    <div className="exp-outcome">
+      {lines.map(l => <p key={l}>{l}</p>)}
+      {conf.length > 0 && <p className="exp-conf">Let op: {conf.join("; ")}.</p>}
+      {last?.evidence && <Badge tone={last.evidence === "telt mee" ? "success" : "neutral"}>{last.evidence === "telt mee" ? "Telt als leerbewijs" : "Te weinig data om van te leren"}</Badge>}
+    </div>
+  )
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  technisch: "Technische reparatie", indexering: "Indexering", consolidatie: "Samenvoegen", snippet: "Title en description",
+  ranking: "Positie (links en inhoud)", merk: "Controle", geen: "Geen aanpassing", handmatig: "Eigen taak",
+}
+
+// Wat heeft Gijs geleerd? Per soort aanpassing: hoeveel experimenten, hoeveel succesvol, voorspeld vs werkelijk
+function Learned({ experiments }: { experiments: Experiment[] }) {
+  const groups = new Map<string, Experiment[]>()
+  for (const e of experiments) {
+    const t = e.baseline?.actionType || (e.baseline?.successMetric === "ctr" ? "snippet" : "ranking")
+    groups.set(t, [...(groups.get(t) || []), e])
+  }
+  const rows = [...groups.entries()].map(([type, list]) => {
+    const done = list.filter(e => e.outcome && e.result_56d?.evidence !== "te weinig data")
+    const ok = done.filter(e => e.outcome === "succesvol").length
+    const withGain = done.filter(e => typeof e.result_56d?.actualGainCorrected === "number" && typeof (e.predicted?.gain ?? e.baseline?.predictedGain) === "number")
+    const pred = withGain.reduce((a, e) => a + (e.predicted?.gain ?? e.baseline?.predictedGain), 0)
+    const act = withGain.reduce((a, e) => a + e.result_56d!.actualGainCorrected, 0)
+    return { type, total: list.length, running: list.filter(e => !e.outcome).length, done: done.length, ok, withGain: withGain.length, pred, act }
+  })
+  const anyDone = rows.some(r => r.done > 0)
+  return (
+    <section className="card learned" aria-labelledby="learned-title">
+      <div className="card-head"><h2 className="card-title" id="learned-title">Wat heeft Gijs geleerd?</h2></div>
+      {!anyDone ? (
+        <p className="muted learned-empty">Nog geen afgeronde experimenten met genoeg data. Na de eindmeting (56 dagen) zie je hier per soort aanpassing hoe vaak het werkte en hoe de voorspelling uitpakte. Nieuwe adviezen verwijzen dan naar deze uitkomsten.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Soort aanpassing</th><th className="num">Experimenten</th><th className="num">Afgerond (telt mee)</th><th className="num">Succesvol</th><th>Voorspeld vs werkelijk</th></tr></thead>
+            <tbody>{rows.map(r => (
+              <tr key={r.type}>
+                <td>{TYPE_LABEL[r.type] || r.type}</td>
+                <td className="num">{r.total}{r.running ? <span className="subtle"> ({r.running} lopend)</span> : null}</td>
+                <td className="num">{r.done}</td>
+                <td className="num">{r.done ? `${r.ok} (${Math.round((r.ok / r.done) * 100)}%)` : "—"}</td>
+                <td>{r.withGain ? `${num(r.pred, 1)} voorspeld, ${num(r.act, 1)} werkelijk (gecorrigeerd), over ${r.withGain}` : "—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function ExperimentsView() {
   const { loading, experiments, tasks, openTask } = useWorkspace()
   const [filter, setFilter] = useState<Filter>("alle")
@@ -70,6 +135,7 @@ export default function ExperimentsView() {
         </div>
       ) : (
         <>
+          <Learned experiments={experiments} />
           <div className="toolbar">
             <div className="toolbar-left" role="group" aria-label="Filter op resultaat">
               {FILTERS.filter(f => f.id === "alle" || counts[f.id] > 0).map(f => (
@@ -105,6 +171,8 @@ export default function ExperimentsView() {
                     </div>
                     <p className="exp-title">{subject}</p>
                     <p className="exp-desc">{e.description}</p>
+                    {e.hypothesis && <p className="exp-hyp"><b>Hypothese:</b> {e.hypothesis}</p>}
+                    <ExpOutcome e={e} />
                     <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {other ? ({ technisch: "HTTP-status en sitemap", indexering: "indexeringsstatus", consolidatie: "doorverwijzing en vertoningen", geen: "niets" } as Record<string, string>)[base.successMetric] : metric === "ctr" ? "doorklik" : pair ? `positie van ${e.page}` : "positie"}</p>
                   </div>
                   <div className="exp-measures">

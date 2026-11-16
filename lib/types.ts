@@ -11,11 +11,11 @@ export interface Streak {
 
 export type SignalKind =
   | "trend-dalend" | "trend-stijgend" | "daler" | "stijger"
-  | "kans" | "ctr" | "pagina" | "dubbel" | "analyse" | "techniek"
+  | "kans" | "ctr" | "pagina" | "dubbel" | "analyse" | "techniek" | "eigen"
 
 // Waar een cijfer over gaat. Search Console telt per zoekwoord (alle eigen pagina's samen,
 // elke zoekopdracht één keer) anders dan per pagina (elke getoonde pagina telt mee).
-export type ScopeKind = "zoekwoord" | "pagina" | "zoekwoord-pagina" | "paginagroep" | "inventaris"
+export type ScopeKind = "zoekwoord" | "pagina" | "zoekwoord-pagina" | "paginagroep" | "inventaris" | "geen"
 export interface MetricScope {
   kind: ScopeKind
   query?: string
@@ -26,7 +26,7 @@ export interface MetricScope {
 }
 
 // Soort aanpassing: bepaalt nulmeting en succescriterium
-export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen"
+export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen" | "handmatig"
 
 // Technisch signaal uit de pagina-audit (gegroepeerd)
 export interface TechIssue {
@@ -92,7 +92,14 @@ export interface Signal {
   scope?: MetricScope         // waar metrics over gaan (datacontract)
   resolved?: string | null    // al opgelost (bv. doorverwijzing staat): uitleg
   tech?: TechIssue            // alleen bij kind "techniek"
+  description?: string        // eigen taak: wat er moet gebeuren
+  rejectedSimilar?: number    // eerder afgewezen adviezen van dezelfde soort en intentie
+  effort?: Level              // benodigde inspanning
+  risk?: Level                // risico dat de wijziging iets anders verslechtert
+  conversions?: { page: string; sessions: number; keyEvents: number } | null  // GA4, laatste 28 dagen
 }
+
+export type Level = "laag" | "middel" | "hoog"
 
 export type Status =
   | "nieuw" | "onderzoeken" | "uitgesteld" | "goedgekeurd" | "in_uitvoering"
@@ -123,6 +130,10 @@ export interface Experiment {
   query: string | null
   page: string | null
   created_at: string
+  hypothesis?: string | null
+  target_pages?: string[] | null
+  target_queries?: string[] | null
+  predicted?: { gain: number | null; low: number | null; high: number | null; metric: string } | null
 }
 
 export interface Task {

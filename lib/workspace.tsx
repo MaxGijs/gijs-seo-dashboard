@@ -1,9 +1,9 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Signal, Status, Streak, Task } from "./types"
+import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
 import { buildCtrModel, type CtrModel } from "./ctr"
-import { buildAdhocSignal, buildSignals, toPath } from "./signals"
+import { buildAdhocSignal, buildSignals, signalKey, toPath } from "./signals"
 import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
 import { today } from "./format"
 import type { PageRow } from "./pages"
@@ -50,8 +50,28 @@ export interface Toast { id: number; message: string; tone: "success" | "error" 
 export interface StatusOptions {
   note?: string | null
   snoozeUntil?: string | null
-  experiment?: { description: string; baseline: Record<string, unknown> }
+  experiment?: {
+    description: string
+    baseline: Record<string, unknown>
+    hypothesis?: string
+    targetPages?: string[]
+    targetQueries?: string[]
+    predicted?: { gain: number | null; low: number | null; high: number | null; metric: string } | null
+  }
 }
+
+export interface NewTask {
+  title: string
+  description?: string
+  query?: string
+  page?: string
+  priority: Priority
+  status: "nieuw" | "goedgekeurd" | "in_uitvoering"
+  effort?: Level
+}
+
+// Waarmee het zijpaneel opent (bv. na slepen naar Evalueren: direct "wat heb je aangepast?")
+export type PanelIntent = null | "execute" | "close"
 
 export interface WorkspaceUser { name?: string | null; email?: string | null; image?: string | null }
 
@@ -70,6 +90,7 @@ interface WorkspaceValue {
   dataUntil: string | null
   listWindow: { startDate: string; endDate: string } | null
   inventory: PageRow[]
+  ga4Pages: { path: string; sessions: number; keyEvents: number }[] | null  // null = GA4 niet beschikbaar
   ctrModel: CtrModel
   signals: Signal[]
   tasks: Task[]
@@ -79,7 +100,9 @@ interface WorkspaceValue {
   lastVisit: string | null
   // acties
   setStatus: (task: Task, to: Status, opts?: StatusOptions) => Promise<boolean>
-  openTask: (key: string) => void
+  addTask: (input: NewTask) => Promise<string | null>
+  openTask: (key: string, intent?: PanelIntent) => void
+  panelIntent: PanelIntent
   openSubject: (subject: { query?: string; page?: string }) => void
   closePanel: () => void
   panelTask: Task | null
@@ -121,11 +144,13 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [prevOverview, setPrevOverview] = useState<GscRow[]>([])
   const [streaks, setStreaks] = useState<Streak[]>([])
   const [inventory, setInventory] = useState<PageRow[]>([])
+  const [ga4Pages, setGa4Pages] = useState<{ path: string; sessions: number; keyEvents: number }[] | null>(null)
   const [listWindow, setListWindow] = useState<{ startDate: string; endDate: string } | null>(null)
   const [records, setRecords] = useState<AdviceRecord[]>([])
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [reloadTick, setReloadTick] = useState(0)
   const [panelKey, setPanelKey] = useState<string | null>(null)
+  const [panelIntent, setPanelIntent] = useState<PanelIntent>(null)
   const [adhoc, setAdhoc] = useState<Record<string, Signal>>({})
   const [toasts, setToasts] = useState<Toast[]>([])
   const [newSinceLastVisit, setNewSinceLastVisit] = useState<Set<string>>(new Set())
@@ -161,16 +186,18 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       getJson(`/api/advice`),
       getJson(`/api/experiments`),
       getJson(`/api/pages`),
+      getJson(`/api/ga4?type=pages&days=28`),
     ])
 
     Promise.all([core, stored])
-      .then(([[kw, prevKw, pg, ov, prevOv], [tr, adv, exp, inv]]) => {
+      .then(([[kw, prevKw, pg, ov, prevOv], [tr, adv, exp, inv, ga]]) => {
         if (cancelled) return
         setKeywords(kw.rows || [])
         setPrevKeywords(prevKw.rows || [])
         setPages(pg.rows || [])
         setListWindow(kw.startDate && kw.endDate ? { startDate: kw.startDate, endDate: kw.endDate } : null)
         setInventory(inv.status === "fulfilled" ? inv.value.rows || [] : [])
+        setGa4Pages(ga.status === "fulfilled" ? ga.value.rows || [] : null)
         setOverview(ov.rows || [])
         setPrevOverview(prevOv.rows || [])
         setStreaks(tr.status === "fulfilled" ? tr.value.rows || [] : [])
@@ -191,8 +218,14 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
 
   const ctrModel = useMemo(() => buildCtrModel(keywords), [keywords])
   const signals = useMemo(
-    () => (loading ? [] : buildSignals({ keywords, prevKeywords, pages, streaks, inventory }, ctrModel)),
-    [loading, keywords, prevKeywords, pages, streaks, inventory, ctrModel]
+    () => {
+      if (loading) return []
+      const feedback = records
+        .filter(r => (r.status === "afgewezen" || r.status === "onvoldoende_bewijs") && r.snapshot?.kind && !(r.note || "").startsWith("Al opgelost"))
+        .map(r => ({ key: r.advice_key, kind: r.snapshot!.kind, intent: r.snapshot!.intent }))
+      return buildSignals({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages: ga4Pages || undefined, feedback }, ctrModel)
+    },
+    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks])
@@ -221,21 +254,21 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
 
   const panelTask = panelKey ? findTask(panelKey) : null
 
-  const openTask = useCallback((key: string) => setPanelKey(key), [])
-  const closePanel = useCallback(() => setPanelKey(null), [])
+  const openTask = useCallback((key: string, intent: PanelIntent = null) => { setPanelIntent(intent); setPanelKey(key) }, [])
+  const closePanel = useCallback(() => { setPanelKey(null); setPanelIntent(null) }, [])
 
   const openSubject = useCallback((subject: { query?: string; page?: string }) => {
     const match = tasks.find(t =>
       t.signal.kind !== "analyse" && t.current &&
       ((subject.query && t.signal.query === subject.query) || (subject.page && !subject.query && t.signal.page === subject.page))
     )
-    if (match) { setPanelKey(match.key); return }
+    if (match) { setPanelIntent(null); setPanelKey(match.key); return }
     const existing = tasks.find(t => t.signal.kind === "analyse" &&
       ((subject.query && t.signal.query === subject.query) || (subject.page && t.signal.page === subject.page)))
-    if (existing) { setPanelKey(existing.key); return }
+    if (existing) { setPanelIntent(null); setPanelKey(existing.key); return }
     const s = buildAdhocSignal(subject, { keywords, pages }, ctrModel)
     setAdhoc(a => ({ ...a, [s.key]: s }))
-    setPanelKey(s.key)
+    setPanelIntent(null); setPanelKey(s.key)
   }, [tasks, keywords, pages, ctrModel])
 
   const getDetail = useCallback((signal: Signal) => {
@@ -316,6 +349,10 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
             advice_key: task.key,
             description: opts.experiment.description,
             baseline: opts.experiment.baseline,
+            hypothesis: opts.experiment.hypothesis,
+            target_pages: opts.experiment.targetPages,
+            target_queries: opts.experiment.targetQueries,
+            predicted: opts.experiment.predicted ?? null,
             query: task.signal.query ?? null,
             // Bij een zoekwoord met doelpagina meten we de zoekwoord-paginacombinatie
             page: (opts.experiment.baseline.targetPage as string | undefined) ?? (task.signal.kind === "dubbel" ? task.signal.page ?? null : task.signal.query ? null : task.signal.page ?? null),
@@ -331,13 +368,48 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [toast])
 
+  // Eigen taak toevoegen: wordt als statusregel met momentopname opgeslagen, net als adviezen
+  const addTask = useCallback(async (input: NewTask) => {
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+    const query = input.query?.trim() || undefined
+    const page = input.page?.trim() ? toPath(input.page.trim()).replace(/\/$/, "") || "/" : undefined
+    const base = query || page ? buildAdhocSignal({ query, page: query ? undefined : page }, { keywords, pages }, ctrModel) : null
+    const signal: Signal = {
+      key: signalKey("eigen", id),
+      kind: "eigen",
+      legacyType: "eigen",
+      query, page,
+      headline: input.title.trim(),
+      title: input.description?.trim().split("\n")[0].slice(0, 140) || "Eigen taak",
+      summary: input.description?.trim() || "Door jou toegevoegd.",
+      description: input.description?.trim() || undefined,
+      metrics: base?.metrics || {},
+      gain: base?.gain ?? 0,
+      estimate: base?.estimate,
+      priority: input.priority,
+      priorityRank: 0,
+      evidence: base?.evidence || "redelijk",
+      evidenceReason: base?.evidenceReason || "Eigen taak: geen automatisch bewijs.",
+      score: 0,
+      generatedAt: new Date().toISOString(),
+      intent: base?.intent,
+      place: base?.place,
+      action: input.title.trim(),
+      effort: input.effort || "middel",
+      risk: "laag",
+    }
+    const task: Task = { key: signal.key, signal, status: "nieuw", note: null, snoozeUntil: null, snoozed: false, current: true, updatedAt: null, experiments: [] }
+    const ok = await setStatus(task, input.status, {})
+    return ok ? signal.key : null
+  }, [keywords, pages, ctrModel, setStatus])
+
   const value: WorkspaceValue = {
     user,
     loading, error, authError, storageError,
-    keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory,
+    keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments,
     newSinceLastVisit, lastVisit,
-    setStatus, openTask, openSubject, closePanel, panelTask,
+    setStatus, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),

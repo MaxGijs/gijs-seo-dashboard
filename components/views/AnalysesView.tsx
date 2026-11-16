@@ -252,7 +252,8 @@ function DataTables({ data, loading, onOpen }: { data: AnalyticsData | null; loa
           </div>
           {rows.length > limit && (
             <div style={{ padding: "12px 22px 18px", textAlign: "center" }}>
-              <button className="btn btn-secondary btn-sm" onClick={() => setLimit(l => l + 100)}>Nog {num(Math.min(100, rows.length - limit))} tonen{rows.length - limit > 100 && <span className="subtle">van {num(rows.length - limit)}</span>}</button>
+              <p className="field-hint" style={{ marginBottom: 8 }}>{num(limit)} van {num(rows.length)} {tab === "zoekwoorden" ? "zoekwoorden" : "pagina's"} getoond{q ? " (gefilterd)" : ""}</p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setLimit(l => l + 100)}>{rows.length - limit > 100 ? `Volgende 100 tonen` : `Laatste ${num(rows.length - limit)} tonen`}</button>
             </div>
           )}
         </>

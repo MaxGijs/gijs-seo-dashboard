@@ -1,4 +1,4 @@
-import type { ActionType, AdviceDetail, GscRow, MetricSet, Signal } from "./types"
+import type { ActionType, AdviceDetail, GscRow, Level, MetricSet, Signal } from "./types"
 import type { CtrModel } from "./ctr"
 import { gainFromMove } from "./ctr"
 import { capitalize, dateShort, normalize, num, pct, pos } from "./format"
@@ -24,6 +24,18 @@ export interface Diagnosis {
   successMetric: SuccessMetric
   actionType: ActionType
   plan: MeasurePlan
+  effort: Level
+  risk: Level
+  cluster: PageCluster | null
+}
+
+// Zoekwoordcluster van een pagina: waar gaat de pagina (volgens Google) vooral over?
+export interface PageCluster {
+  page: string
+  topic: string | null          // hoofdonderwerp (woord met het meeste vertoningsgewicht)
+  topicShare: number            // aandeel vertoningen van zoekwoorden met dat woord
+  queries: { query: string; impressions: number; share: number; inTopic: boolean }[]
+  query?: { share: number; inTopic: boolean } // het zoekwoord van dit advies
 }
 
 const STOP = new Set(["de", "het", "een", "in", "van", "voor", "en", "met", "op", "bij", "te", "wat", "hoe", "is", "je", "mijn", "uw", "aan", "of"])
@@ -54,6 +66,27 @@ function missingTokens(q: string, text?: string) {
   if (!text) return toks
   const t = normalize(text)
   return toks.filter(tok => !t.includes(tok) && !t.includes(stem(tok)))
+}
+
+export function pageCluster(page: string, pq: { query: string; impressions: number }[], q?: string | null): PageCluster | null {
+  if (!pq.length) return null
+  const placeToks = new Set(page.split("/").filter(Boolean).flatMap(seg => seg.split("-")))
+  const skip = (t: string) => STOP.has(t) || GENERIC.has(t) || placeToks.has(t) || t.length < 4 || /^gijs$/.test(t)
+  const weight = new Map<string, number>()
+  for (const r of pq) for (const t of new Set(tokens(r.query).map(stem))) if (!skip(t)) weight.set(t, (weight.get(t) || 0) + r.impressions)
+  const total = pq.reduce((a, r) => a + r.impressions, 0) || 1
+  const topicStem = [...weight.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+  const has = (query: string) => !!topicStem && tokens(query).map(stem).includes(topicStem)
+  // Toon het onderwerp als het meest voorkomende volledige woord met die stam
+  const topicWord = topicStem ? (pq.flatMap(r => tokens(r.query)).find(t => stem(t) === topicStem) || topicStem) : null
+  const queries = pq.map(r => ({ query: r.query, impressions: r.impressions, share: r.impressions / total, inTopic: has(r.query) }))
+  const own = q ? queries.find(r => r.query === q) : undefined
+  return {
+    page, topic: topicWord,
+    topicShare: queries.filter(r => r.inTopic).reduce((a, r) => a + r.share, 0),
+    queries,
+    query: q ? { share: own?.share ?? 0, inTopic: has(q) } : undefined,
+  }
 }
 
 function placeFromPath(path: string | null) {
@@ -143,6 +176,11 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
       break
     case "dubbel":
       situation = `Meerdere eigen pagina's gaan over hetzelfde onderwerp: ${(signal.relatedPages || []).join(", ")}.`
+      break
+    case "eigen":
+      situation = signal.description || `Door jou toegevoegde taak${target ? ` voor ${target}` : q ? ` voor "${q}"` : ""}.`
+      if (q && m.position) situation += ` "${q}" staat nu gemiddeld op positie ${pos(m.position)} (${num(m.impressions)} vertoningen in 28 dagen).`
+      else if (!q && target && m.impressions) situation += ` ${target} had ${num(m.impressions)} vertoningen in 28 dagen, gemiddeld positie ${pos(m.position)}.`
       break
     case "techniek": {
       const t = signal.tech
@@ -280,9 +318,17 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     }
   }
 
-  // ── Bevindingen: waar rankt de pagina verder op
+  // ── Bevindingen: waar rankt de pagina verder op (zoekwoordcluster)
   const pq = detail?.pageQueries || []
-  if (target && pq.length && q) {
+  const cluster = target && pq.length ? pageCluster(target, pq, q) : null
+  if (cluster && cluster.topic && q && pq.length >= 3) {
+    const top = cluster.queries.slice(0, 3).map(r => `"${r.query}"`).join(", ")
+    findings.push({
+      tone: cluster.query?.inTopic ? "feit" : "aanwijzing",
+      text: `Zoekwoordcluster van ${target}: vooral "${cluster.topic}" (${Math.round(cluster.topicShare * 100)}% van de vertoningen; top: ${top}). "${q}" ${cluster.query?.inTopic ? "valt binnen dat hoofdonderwerp" : "valt erbuiten"} en is ${Math.round((cluster.query?.share ?? 0) * 100)}% van de vertoningen van deze pagina.`,
+    })
+  }
+  if (target && pq.length && q && !(cluster?.topic && pq.length >= 3)) {
     const own = pq.findIndex(r => r.query === q)
     const best = pq[0]
     if (own === -1 || own > 2) {
@@ -366,12 +412,18 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   // Title en H1 alleen aanpassen als het de moeite waard is en de pagina niet breder moet blijven.
   // Eén longtail-zoekwoord mag een brede pagina niet overnemen (overoptimalisatie).
   const broadPage = !!target && (target.startsWith("/maatregelen/") || target === "/" || target.split("/").filter(Boolean).length === 1)
-  const protectTitle = signal.gain < 1 || opbouwFase || (broadPage && (signal.intent === "informatief" || tokens(q || "").length >= 3))
+  // Valt het zoekwoord buiten het hoofdcluster van de pagina, of is het er maar een klein deel van,
+  // dan beschermen we title en H1: die moeten het hoofdonderwerp blijven dienen.
+  const outsideCluster = !!cluster?.query && pq.length >= 3 && (!cluster.query.inTopic || cluster.query.share < 0.15)
+  const protectTitle = signal.gain < 1 || opbouwFase || outsideCluster || (broadPage && (signal.intent === "informatief" || tokens(q || "").length >= 3))
   const onPageSteps = () => {
     if (!q || !target || !audit?.ok) return
     if (localMismatch) { localSteps(); return }
     if (protectTitle && (titleMissing.length || h1Missing.length)) {
-      const why = opbouwFase ? "de pagina zit nog in de opbouwfase" : signal.gain < 1 ? "de verwachte winst is minder dan één click per maand" : `${target} moet een breder onderwerp blijven dekken dan dit ene zoekwoord`
+      const why = opbouwFase ? "de pagina zit nog in de opbouwfase"
+        : signal.gain < 1 ? "de verwachte winst is minder dan één click per maand"
+        : outsideCluster ? `het hoofdonderwerp van deze pagina is "${cluster!.topic}"; dit zoekwoord is daar ${cluster!.query!.inTopic ? "maar een klein deel van" : "geen onderdeel van"}`
+        : `${target} moet een breder onderwerp blijven dekken dan dit ene zoekwoord`
       findings.push({ tone: "aanwijzing", text: `Title en H1 niet aanpassen voor "${q}": ${why}. Een exacte longtail in title én H1 kan de pagina voor haar hoofdonderwerp juist verzwakken.` })
       steps.push({
         title: `Beantwoord "${q}" in een eigen alinea op ${target}`,
@@ -472,6 +524,9 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     }
     case "techniek":
       break
+    case "eigen":
+      steps.push({ title: signal.headline, detail: signal.description })
+      break
     case "dubbel": {
       const rel = signal.relatedPages || []
       const main = signal.page || rel[0]
@@ -535,11 +590,20 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     : signal.kind === "techniek" ? (signal.tech?.type === "niet-geindexeerd" ? "indexering" : "technisch")
     : spoedFound && !indexIssue ? "technisch"
     : indexIssue ? "indexering"
+    : signal.kind === "eigen" ? (q || target ? "ranking" : "handmatig")
     : brand ? "merk"
     : signal.kind === "dubbel" ? "consolidatie"
     : signal.kind === "ctr" || signal.kind === "pagina" ? "snippet"
     : "ranking"
   const successMetric = SUCCESS_METRIC[actionType]
+  // Inspanning en risico van precies deze aanpassing
+  const titleChange = steps.some(st => /title|H1/i.test(st.title) && !/níet|niet aanpassen/i.test(st.title))
+  const contentWork = steps.some(st => /^Breid|eigen plek|unieke/i.test(st.title))
+  const ER: Record<ActionType, [Level, Level]> = {
+    technisch: ["middel", "laag"], indexering: ["laag", "laag"], consolidatie: ["middel", "middel"],
+    snippet: ["laag", "middel"], handmatig: [signal.effort || "middel", signal.risk || "laag"], ranking: [contentWork ? "middel" : "laag", titleChange ? "middel" : "laag"], merk: ["laag", "laag"], geen: ["laag", "laag"],
+  }
+  const [effort, risk] = ER[actionType]
   const plan = measurePlan(actionType, { page: target, query: q, count: signal.tech?.pages.length })
   const measurement = [plan.success]
 
@@ -549,6 +613,8 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   let verdict: Diagnosis["verdict"]
   if (alreadyHandled) {
     verdict = { kind: "afwachten", label: "Al opgelost", text: `${signal.resolved || "De doorverwijzing staat al."} Er hoeft niets te gebeuren: controleer en sluit dit advies.` }
+  } else if (signal.kind === "eigen" && !spoed) {
+    verdict = { kind: "inplannen", label: "Eigen taak", text: "Door jou toegevoegd. De diagnose hieronder helpt bij de uitvoering." }
   } else if (spoed) {
     verdict = { kind: "spoed", label: "Spoed", text: "Er is een technische blokkade gevonden. Los die eerst op; daarna pas inhoudelijke aanpassingen." }
   } else if (opbouwFase && ["daler", "trend-dalend", "pagina", "analyse"].includes(signal.kind)) {
@@ -564,7 +630,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   const importance = {
     gainText: signal.kind === "techniek" ? "Randvoorwaarde: geen directe clicks, wel nodig voordat andere verbeteringen effect hebben" : capitalize(gainText),
     relativeText: signal.priorityRank
-      ? `Prioriteit ${signal.priority}: nummer ${signal.priorityRank} van ${ctx.signalCount} signalen, gerangschikt op verwachte winst × bewijskracht × zoekintentie.`
+      ? `Prioriteit ${signal.priority}: nummer ${signal.priorityRank} van ${ctx.signalCount} signalen, gerangschikt op verwachte winst × bewijskracht × zoekintentie × inspanning × risico${signal.conversions?.keyEvents ? " × conversies (GA4)" : ""}.${signal.rejectedSimilar ? ` Je wees ${signal.rejectedSimilar} vergelijkbare ${signal.rejectedSimilar === 1 ? "advies" : "adviezen"} eerder af; dat telt mee (×${Math.max(0.5, Math.pow(0.85, signal.rejectedSimilar)).toFixed(2).replace(".", ",")}).` : ""}`
       : "Eigen analyse: geen automatische prioriteit.",
     evidenceText: `Bewijskracht ${signal.evidence}. ${signal.evidenceReason}`,
     visibilityText: m.impressions ? `${num(m.impressions)} keer vertoond in 28 dagen.` : "Geen vertoningen in de laatste 28 dagen.",
@@ -574,6 +640,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     situation, target, facts,
     history: (detail?.history || []).map(h => ({ weekStart: h.weekStart, position: h.position, impressions: h.impressions })),
     importance, verdict, findings, steps: steps.slice(0, 5), expected, measurement, successMetric, actionType, plan,
+    effort, risk, cluster,
   }
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
 import { checkHttpStatus, inspectBatch, syncInventory } from "@/lib/server/inventory"
+import { logged } from "@/lib/server/synclog"
 
 export const maxDuration = 60
 
@@ -38,11 +39,11 @@ export async function POST(request: Request) {
     const { action } = await request.json()
     if (action === "sync") {
       const started = Date.now()
-      const inventaris = await syncInventory()
-      const status = await checkHttpStatus({ budgetMs: Math.max(10000, 50000 - (Date.now() - started)) })
+      const inventaris = await logged("inventaris", () => syncInventory())
+      const status = await logged("http-controle", () => checkHttpStatus({ budgetMs: Math.max(10000, 50000 - (Date.now() - started)) }))
       return NextResponse.json({ ok: true, ...inventaris, http: status })
     }
-    if (action === "inspect") return NextResponse.json({ ok: true, ...(await inspectBatch({ budgetMs: 40000, max: 300 })) })
+    if (action === "inspect") return NextResponse.json({ ok: true, ...(await logged("indexering", () => inspectBatch({ budgetMs: 40000, max: 300 }))) })
     return NextResponse.json({ error: "Onbekende actie" }, { status: 400 })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

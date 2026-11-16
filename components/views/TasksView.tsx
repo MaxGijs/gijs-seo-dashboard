@@ -1,11 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { CalendarClock, ChevronRight, Clock, Eye, KanbanSquare, List, Play, ShieldCheck, TrendingUp, Inbox, SearchX } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Play, ShieldCheck, TrendingUp, Inbox, SearchX } from "lucide-react"
 import { sortByPriority, useWorkspace } from "@/lib/workspace"
-import type { Priority, SignalKind, Task } from "@/lib/types"
+import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
+import AddTaskDialog from "./AddTaskDialog"
 import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
 
 type TypeFilter = "alle" | "techniek" | "kansen" | "dalingen" | "snippet" | "analyse"
@@ -41,9 +42,21 @@ function cardMeta(t: Task) {
   return { icon: null, text: t.updatedAt ? dateShort(t.updatedAt) : "" }
 }
 
+// Wat er gebeurt als je een kaart naar een kolom sleept
+const DROP_STATUS: Partial<Record<ColumnId, Status>> = { beoordelen: "nieuw", gepland: "goedgekeurd", uitvoering: "in_uitvoering" }
+const VIEW_KEY = "gijs.seo.tasksView"
+
 export default function TasksView() {
-  const { loading, visibleTasks, openTask, newSinceLastVisit } = useWorkspace()
-  const [view, setView] = useState<"bord" | "lijst">("bord")
+  const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, toast } = useWorkspace()
+  const [view, setViewState] = useState<"bord" | "lijst">("bord")
+  const [viewChosen, setViewChosen] = useState(false)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [overCol, setOverCol] = useState<ColumnId | null>(null)
+  const setView = (v: "bord" | "lijst") => {
+    setViewState(v); setViewChosen(true)
+    try { window.localStorage.setItem(VIEW_KEY, v) } catch { /* privémodus */ }
+  }
   const [type, setType] = useState<TypeFilter>("alle")
   const [prio, setPrio] = useState<"alle" | Priority>("alle")
   const [text, setText] = useState("")
@@ -73,6 +86,30 @@ export default function TasksView() {
     return byCol
   }, [filtered])
 
+  // Standaardweergave: je eigen keuze, anders de lijst zolang vrijwel alles nog te beoordelen is
+  useEffect(() => {
+    if (loading || viewChosen) return
+    let saved: string | null = null
+    try { saved = window.localStorage.getItem(VIEW_KEY) } catch { /* privémodus */ }
+    if (saved === "bord" || saved === "lijst") { setViewState(saved); return }
+    const total = visibleTasks.length
+    const inReview = visibleTasks.filter(t => columnOf(t.status) === "beoordelen").length
+    setViewState(total > 0 && total - inReview <= 2 ? "lijst" : "bord")
+  }, [loading, viewChosen, visibleTasks])
+
+  const drop = async (t: Task, to: ColumnId) => {
+    const from = columnOf(t.status)
+    if (from === to) return
+    if (from === "evalueren" && to !== "afgerond") {
+      toast("Een taak in evaluatie wordt gemeten. Sleep hem naar Afgerond om af te sluiten, of laat de meting lopen.", "info"); return
+    }
+    if (to === "evalueren") { openTask(t.key, "execute"); return }
+    if (to === "afgerond") { openTask(t.key, "close"); return }
+    const status = DROP_STATUS[to]!
+    const ok = await setStatus(t, status, { note: t.note, snoozeUntil: null })
+    if (ok) toast(`Verplaatst naar ${COLUMNS.find(c => c.id === to)!.label}`)
+  }
+
   const filtersActive = type !== "alle" || prio !== "alle" || text.trim() !== ""
 
   return (
@@ -80,9 +117,10 @@ export default function TasksView() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Mijn taken</h1>
-          <p className="page-sub">Elk SEO-advies van signaal tot resultaat. Open een kaart om te beslissen wat ermee gebeurt.</p>
+          <p className="page-sub">Elk SEO-advies van signaal tot resultaat. Open een kaart om te beslissen wat ermee gebeurt, of sleep hem naar een andere kolom.</p>
         </div>
         <div className="page-actions">
+          <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Taak toevoegen</button>
           <div className="seg" role="group" aria-label="Weergave">
             <button className={view === "bord" ? "is-active" : ""} onClick={() => setView("bord")} aria-pressed={view === "bord"}><KanbanSquare aria-hidden />Bord</button>
             <button className={view === "lijst" ? "is-active" : ""} onClick={() => setView("lijst")} aria-pressed={view === "lijst"}><List aria-hidden />Lijst</button>
@@ -123,27 +161,47 @@ export default function TasksView() {
       ) : filtered.length === 0 ? (
         <div className="card"><EmptyState icon={<SearchX />} title="Geen taken met deze filters" action={<button className="btn btn-secondary btn-sm" onClick={() => { setType("alle"); setPrio("alle"); setText("") }}>Filters wissen</button>} /></div>
       ) : view === "bord" ? (
-        <div className="board">
+        <div className={`board${dragKey ? " is-dragging" : ""}`}>
           {COLUMNS.map(c => {
             const items = columns[c.id]
             const showAll = expanded[c.id]
             const visible = showAll ? items : items.slice(0, COLUMN_LIMIT)
+            // Lege kolommen klappen in, behalve tijdens slepen (dan zijn ze een doel)
+            const collapsed = items.length === 0 && !dragKey && !expanded[`open-${c.id}`]
+            const dragged = dragKey ? filtered.find(t => t.key === dragKey) : null
+            const canDrop = !!dragged && columnOf(dragged.status) !== c.id
+            if (collapsed) {
+              return (
+                <button key={c.id} className="col col-collapsed" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: true }))} aria-label={`${c.label}: leeg. Klik om uit te klappen`} title={c.hint}>
+                  <span className="col-collapsed-label">{c.label}</span><span className="col-count">0</span>
+                </button>
+              )
+            }
             return (
-              <section key={c.id} className="col" aria-labelledby={`col-${c.id}`}>
-                <div className="col-head"><h2 id={`col-${c.id}`}>{c.label}</h2><span className="col-count">{items.length}</span></div>
-                <p className="col-hint">{c.hint}</p>
+              <section key={c.id} className={`col${overCol === c.id && canDrop ? " is-over" : ""}`} aria-labelledby={`col-${c.id}`}
+                onDragOver={e => { if (!canDrop) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== c.id) setOverCol(c.id) }}
+                onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setOverCol(o => (o === c.id ? null : o)) }}
+                onDrop={e => { e.preventDefault(); const key = e.dataTransfer.getData("text/plain") || dragKey; setOverCol(null); setDragKey(null); const t = filtered.find(x => x.key === key); if (t) drop(t, c.id) }}>
+                <div className="col-head">
+                  <h2 id={`col-${c.id}`}>{c.label}</h2><span className="col-count">{items.length}</span>
+                  {items.length === 0 && expanded[`open-${c.id}`] && <button className="icon-btn col-fold" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: false }))} aria-label={`${c.label} inklappen`}>–</button>}
+                </div>
+                <p className="col-hint">{c.id === "evalueren" ? "Sleep hierheen als het is aangepast: je beschrijft kort wat en de meting start" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.hint}</p>
                 {items.length === 0 ? (
                   <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "afgerond" ? "Nog niets afgerond" : "Leeg"}</p>
                 ) : visible.map(t => {
                   const meta = cardMeta(t)
                   return (
-                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}`} onClick={() => openTask(t.key)}>
+                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)}
+                      draggable onDragStart={e => { e.dataTransfer.setData("text/plain", t.key); e.dataTransfer.effectAllowed = "move"; setDragKey(t.key) }}
+                      onDragEnd={() => { setDragKey(null); setOverCol(null) }}
+                      aria-roledescription="versleepbare kaart">
                       <span className="tcard-top">
                         <KindLabel signal={t.signal} />
                         {c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
                       </span>
                       <span className="tcard-title">{t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
-                      <span className="tcard-sub clamp" title={t.signal.title}>{t.signal.action || t.signal.title}</span>
+                      <span className="tcard-sub" title={t.signal.title}>{t.signal.action || t.signal.title}</span>
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
                         {newSinceLastVisit.has(t.key) && c.id === "beoordelen" ? <span className="new-dot">Nieuw</span>
@@ -187,6 +245,7 @@ export default function TasksView() {
           </div>
         </div>
       )}
+      {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
     </>
   )
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { dateWindow, gscQuery, serviceSearchConsole, toUrl } from "@/lib/server/gsc"
+import { logged } from "@/lib/server/synclog"
+import { LAUNCH_DATES } from "@/lib/pages"
 
 export const maxDuration = 120
 
@@ -16,6 +18,21 @@ const today = () => new Date().toISOString().split("T")[0]
 type Result = Record<string, any> & { measuredAt: string; summary: string }
 type Verdict = "succesvol" | "niet_succesvol" | "onduidelijk"
 
+// ── Verstorende factoren ─────────────────────────────────────────────────────
+// Sitebrede groei (bv. door nieuwe provincies) en lanceringen tijdens de meetperiode.
+async function context(supabase: any, exp: any) {
+  const { data } = await supabase.from("seo_daily_overview").select("impressions, clicks").gte("snapshot_date", daysAgo(10))
+  const perDay = data?.length ? data.reduce((a: number, r: any) => a + r.impressions, 0) / data.length : null
+  const base = exp.baseline?.site?.impressionsPerDay
+  const growth = perDay && base ? Math.round((perDay / base) * 100) / 100 : null
+  const confounders: string[] = []
+  for (const [prov, date] of Object.entries(LAUNCH_DATES)) {
+    if (date > exp.changed_at && date <= today()) confounders.push(`Provincie ${prov} gelanceerd op ${date}`)
+  }
+  if (growth && (growth > 1.3 || growth < 0.75)) confounders.push(`Sitebrede vertoningen ${growth > 1 ? "+" : ""}${Math.round((growth - 1) * 100)}% t.o.v. de nulmeting`)
+  return { site: { impressionsPerDay: perDay ? Math.round(perDay) : null, growth }, confounders }
+}
+
 // ── Metingen per soort aanpassing ───────────────────────────────────────────
 
 // Zoekwoord, pagina of zoekwoord-paginacombinatie, live uit Search Console (laatste 7 dagen,
@@ -30,9 +47,15 @@ async function measureSearch(supabase: any, query: string | null, page: string |
       const rows = await gscQuery(serviceSearchConsole(), { ...win, dimensions: query ? ["query"] : ["page"], dimensionFilterGroups: [{ filters }], rowLimit: 1 })
       const r = rows[0]
       const scope = query && page ? "zoekwoord-pagina" : query ? "zoekwoord" : "pagina"
-      if (!r) return { measuredAt: today(), window: win, scope, position: null, impressions: 0, clicks: 0, ctr: 0, sampleDays: 7, summary: "Geen vertoningen in de meetweek" }
+      // 28 dagen, voor de vergelijking met de nulmeting (die ook over 28 dagen gaat)
+      let clicks28: number | null = null, impressions28: number | null = null
+      try {
+        const r28 = await gscQuery(serviceSearchConsole(), { ...dateWindow(28, 0), dimensions: query ? ["query"] : ["page"], dimensionFilterGroups: [{ filters }], rowLimit: 1 })
+        clicks28 = r28[0]?.clicks ?? 0; impressions28 = r28[0]?.impressions ?? 0
+      } catch { /* alleen weekcijfers */ }
+      if (!r) return { measuredAt: today(), window: win, scope, position: null, impressions: 0, clicks: 0, ctr: 0, sampleDays: 7, clicks28, impressions28, summary: "Geen vertoningen in de meetweek" }
       return {
-        measuredAt: today(), window: win, scope, sampleDays: 7,
+        measuredAt: today(), window: win, scope, sampleDays: 7, clicks28, impressions28,
         position: Math.round(r.position * 10) / 10, impressions: r.impressions, clicks: r.clicks, ctr: Math.round(r.ctr * 1000) / 1000,
         summary: `positie ${r.position.toFixed(1).replace(".", ",")} · ${r.impressions} vertoningen (7 d)`,
       }
@@ -106,8 +129,12 @@ async function measureConsolidation(supabase: any, exp: any): Promise<{ result: 
     measuredAt: today(), scope: "paginagroep", redirected, others: others.length, mainImpressions: mainImp, sumBefore,
     summary: `${redirected} van ${others.length} doorverwezen · hoofdpagina ${mainImp ?? "?"} van ${sumBefore} vertoningen (28 d)`,
   }
-  const ok = redirected === others.length && mainImp !== null && mainImp >= sumBefore * 0.9
-  const bad = redirected < others.length || (mainImp !== null && mainImp < sumBefore * 0.6)
+  // Gecorrigeerd voor sitebrede groei, zodat nieuwe provincies het resultaat niet opblazen
+  const { site } = await context(supabase, exp)
+  const adj = mainImp !== null && site.growth ? mainImp / site.growth : mainImp
+  result.mainImpressionsCorrected = adj !== null ? Math.round(adj) : null
+  const ok = redirected === others.length && adj !== null && adj >= sumBefore * 0.9
+  const bad = redirected < others.length || (adj !== null && adj < sumBefore * 0.6)
   return { result, final: ok ? "succesvol" : bad ? "niet_succesvol" : "onduidelijk" }
 }
 
@@ -183,7 +210,24 @@ export async function GET(request: Request) {
             if (days >= 56) verdict = finalSearchVerdict(exp, m)
           }
         }
-        if (update[col]) results.measured++
+        if (update[col]) {
+          const ctx = await context(supabase, exp)
+          update[col] = { ...update[col], ...ctx }
+          // Voorspeld versus werkelijk (alleen bij zoekmetingen, gecorrigeerd voor sitebrede groei)
+          const r = update[col]
+          if (typeof r.clicks28 === "number" && typeof exp.baseline?.clicks === "number") {
+            const corrected = ctx.site.growth ? r.clicks28 / ctx.site.growth : r.clicks28
+            r.actualGain = Math.round((r.clicks28 - exp.baseline.clicks) * 10) / 10
+            r.actualGainCorrected = Math.round((corrected - exp.baseline.clicks) * 10) / 10
+            r.predictedGain = exp.predicted?.gain ?? exp.baseline?.predictedGain ?? null
+          }
+          if (days >= 56) {
+            // Leerbewijs alleen bij voldoende volume (zoekmetingen) of een harde technische uitkomst
+            const enough = ["technisch", "indexering"].includes(metric) || (exp.baseline?.impressions ?? 0) >= 100
+            r.evidence = enough ? "telt mee" : "te weinig data"
+          }
+          results.measured++
+        }
       }
 
       if (verdict) {
@@ -196,8 +240,10 @@ export async function GET(request: Request) {
       if (Object.keys(update).length) await supabase.from("seo_experiments").update(update).eq("id", exp.id)
     }
 
+    await logged("experimenten", async () => results)
     return NextResponse.json({ ok: true, ...results })
   } catch (err: any) {
+    await logged("experimenten", async () => { throw err }).catch(() => {})
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 })
   }
 }

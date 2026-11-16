@@ -29,6 +29,30 @@ export async function GET(request: Request) {
   const endDate = offset === 0 ? "today" : `${offset}daysAgo`
 
   try {
+    // Per landingspagina: sessies en key events (aanvragen, energiescans) — voor de prioriteit per pagina
+    if (searchParams.get("type") === "pages") {
+      const [response] = await client.runReport({
+        property: `properties/${propertyId}`,
+        dateRanges: [{ startDate, endDate }],
+        metrics: [{ name: "sessions" }, { name: "keyEvents" }],
+        dimensions: [{ name: "landingPage" }],
+        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+        limit: 2000,
+      })
+      const rows = (response.rows || []).map(r => {
+        const raw = r.dimensionValues?.[0]?.value || "/"
+        const path = (raw.split("?")[0] || "/").replace(/\/$/, "") || "/"
+        return { path, sessions: Number(r.metricValues?.[0]?.value || 0), keyEvents: Number(r.metricValues?.[1]?.value || 0) }
+      })
+      // Dezelfde pagina kan met verschillende querystrings voorkomen: optellen
+      const merged = new Map<string, { path: string; sessions: number; keyEvents: number }>()
+      for (const r of rows) {
+        const m = merged.get(r.path) || { path: r.path, sessions: 0, keyEvents: 0 }
+        m.sessions += r.sessions; m.keyEvents += r.keyEvents
+        merged.set(r.path, m)
+      }
+      return NextResponse.json({ rows: [...merged.values()], startDate, endDate })
+    }
     const [response] = await client.runReport({
       property: `properties/${propertyId}`,
       dateRanges: [{ startDate, endDate }],
