@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { google } from "googleapis"
 
-const SITE_URL = "https://groeninjestraat.nl/"
+const SITE_URL = "https://www.groeninjestraat.nl/"
 
 export async function GET(request: Request) {
   const session = await auth()
