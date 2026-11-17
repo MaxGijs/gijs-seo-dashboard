@@ -961,3 +961,19 @@ img, svg { display: block; max-width: 100%; }
 .tcard-note { display: flex; gap: 6px; align-items: flex-start; padding: 6px 8px; background: #fdf8e6; border-radius: 6px; font-size: 11.5px; color: #6b5512; line-height: 1.4; font-weight: 400; margin-top: 2px; }
 .tcard-note svg { width: 12px; height: 12px; flex: none; margin-top: 2px; }
 .tcard-note > span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Legenda takenbord */
+.board-legend { margin-bottom: 18px; }
+.legend-steps { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.legend-step { display: flex; gap: 10px; padding: 12px; border-radius: var(--radius-md); background: var(--grey-100); border-top: 4px solid var(--col-tone); }
+.legend-step b { font-size: var(--fs-sm); color: var(--green-800); }
+.legend-step p { margin: 4px 0 0; font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.45; }
+.legend-num { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--white); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.legend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.legend-grid h3 { font-size: var(--fs-sm); margin-bottom: 8px; }
+.legend-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.45; }
+.legend-list b { color: var(--green-800); margin-right: 4px; }
+.legend-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--grey-100); font-size: 11px; font-weight: 600; color: var(--grey-800); margin-right: 4px; }
+.legend-chip svg { width: 12px; height: 12px; }
+.legend-list .new-dot, .legend-list .owner-chip, .legend-list .tcard-note { margin-right: 4px; }
+@media (max-width: 1000px) { .legend-steps { grid-template-columns: 1fr; } .legend-grid { grid-template-columns: 1fr; } }

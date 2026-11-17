@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote } from "lucide-react"
+import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
 import { sortByPriority, useWorkspace } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
+import BoardLegend from "./BoardLegend"
 import ContentPanel from "@/components/content/ContentPanel"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
@@ -70,6 +71,7 @@ export default function TasksView() {
   const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, toast, users, me } = useWorkspace()
   const content = useContentIdeas()
   const [openIdea, setOpenIdea] = useState<string | null>(null)
+  const [legend, setLegend] = useState(false)
   const [view, setViewState] = useState<"bord" | "lijst">("bord")
   const [viewChosen, setViewChosen] = useState(false)
   const [dragKey, setDragKey] = useState<string | null>(null)
@@ -169,12 +171,15 @@ export default function TasksView() {
         </div>
         <div className="page-actions">
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Taak toevoegen</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setLegend(l => !l)} aria-expanded={legend}><CircleHelp aria-hidden />Hoe werkt het bord?</button>
           <div className="seg" role="group" aria-label="Weergave">
             <button className={view === "bord" ? "is-active" : ""} onClick={() => setView("bord")} aria-pressed={view === "bord"}><KanbanSquare aria-hidden />Bord</button>
             <button className={view === "lijst" ? "is-active" : ""} onClick={() => setView("lijst")} aria-pressed={view === "lijst"}><List aria-hidden />Lijst</button>
           </div>
         </div>
       </div>
+
+      {legend && <BoardLegend onClose={() => setLegend(false)} />}
 
       <div className="toolbar">
         <div className="toolbar-left" role="group" aria-label="Filter op type">
