@@ -3,7 +3,7 @@
 
 import type { ActionType } from "./types"
 
-export type SuccessMetric = "technisch" | "indexering" | "consolidatie" | "ctr" | "position" | "geen" | "controle"
+export type SuccessMetric = "technisch" | "indexering" | "consolidatie" | "ctr" | "position" | "geen" | "controle" | "conversie"
 
 // Succes bij positie: een betekenisvolle stap, groter dan normale meetruis.
 // Geslaagd = pagina 1 bereikt (van >10 naar ≤10) óf minstens 2 posities en 15% beter.
@@ -28,6 +28,7 @@ export const SUCCESS_METRIC: Record<ActionType, SuccessMetric> = {
   geen: "geen",
   handmatig: "geen",
   controle: "controle",
+  conversie: "conversie",
 }
 
 export interface MeasurePlan {
@@ -40,6 +41,18 @@ export interface MeasurePlan {
 export function measurePlan(type: ActionType, ctx: { page?: string | null; query?: string | null; count?: number } = {}): MeasurePlan {
   const page = ctx.page || "de pagina"
   switch (type) {
+    case "conversie":
+      return {
+        label: "Meer aanvragen (conversie)",
+        timeline: [
+          { l: "Nulmeting", s: "28 dagen vóór de aanpassing" },
+          { l: "14 dagen", s: "eerste meting" },
+          { l: "28 dagen", s: "tussenmeting" },
+          { l: "56 dagen", s: "eindoordeel" },
+        ],
+        success: `Gemeten op energiescanaanvragen in GA4${ctx.page && ctx.page !== "/" ? ` via ${ctx.page}` : " op de hele site"}, niet op posities in Google. Geslaagd als het aandeel bezoeken met een aanvraag minstens 20% hoger is dan in dezelfde periode vóór de aanpassing én er minstens 2 aanvragen meer zijn. Bij te weinig aanvragen of een meting die nog niet klopt is het oordeel "geen duidelijk effect".`,
+        baselineText: "het aantal sessies en energiescanaanvragen in de periode vóór de aanpassing (automatisch uit GA4)",
+      }
     case "controle":
       return {
         label: "Controle of reparatie van een meting",

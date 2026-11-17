@@ -26,7 +26,7 @@ export interface MetricScope {
 }
 
 // Soort aanpassing: bepaalt nulmeting en succescriterium
-export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen" | "handmatig" | "controle"
+export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen" | "handmatig" | "controle" | "conversie"
 
 // Technisch signaal uit de pagina-audit (gegroepeerd)
 export interface DataCheck {
@@ -109,6 +109,7 @@ export interface Signal {
   conversions?: { page: string; sessions: number; keyEvents: number } | null  // GA4, laatste 28 dagen
   lesson?: { key: string; title: string; factor: number } | null  // prioriteit aangepast door een les
   routeNote?: string          // waarom een andere route dan normaal wordt geadviseerd
+  goal?: "seo" | "conversie" | "overig"  // eigen taak: wat moet het opleveren (bepaalt de meting)
 }
 
 export type Level = "laag" | "middel" | "hoog"

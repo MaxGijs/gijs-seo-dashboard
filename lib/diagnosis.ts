@@ -144,7 +144,9 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     { label: "Doorklik (CTR)", value: pct(m.ctr), sub: m.position ? `verwacht ±${pct(ctx.model.at(m.position))}` : undefined },
   ]
 
-  if (signal.kind === "techniek" && signal.tech?.type === "datakwaliteit" && signal.tech.check) {
+  if (signal.kind === "eigen" && signal.goal && signal.goal !== "seo") {
+    facts.splice(0, facts.length)
+  } else if (signal.kind === "techniek" && signal.tech?.type === "datakwaliteit" && signal.tech.check) {
     facts.splice(0, facts.length, { label: "Onderdeel", value: signal.tech.check.area }, { label: "Ernst", value: signal.tech.check.severity === "error" ? "Hoog" : "Middel" })
   } else if (signal.kind === "techniek" && signal.tech) {
     const byProv = new Map<string, number>()
@@ -597,6 +599,8 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     : signal.kind === "techniek" ? (signal.tech?.type === "datakwaliteit" ? "controle" : signal.tech?.type === "niet-geindexeerd" ? "indexering" : "technisch")
     : spoedFound && !indexIssue ? "technisch"
     : indexIssue ? "indexering"
+    : signal.kind === "eigen" && signal.goal === "conversie" ? "conversie"
+    : signal.kind === "eigen" && signal.goal === "overig" ? "handmatig"
     : signal.kind === "eigen" ? (q || target ? "ranking" : "handmatig")
     : brand ? "merk"
     : signal.kind === "dubbel" ? "consolidatie"
@@ -607,7 +611,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   const titleChange = steps.some(st => /title|H1/i.test(st.title) && !/níet|niet aanpassen/i.test(st.title))
   const contentWork = steps.some(st => /^Breid|eigen plek|unieke/i.test(st.title))
   const ER: Record<ActionType, [Level, Level]> = {
-    technisch: ["middel", "laag"], indexering: ["laag", "laag"], controle: ["laag", "laag"], consolidatie: ["middel", "middel"],
+    technisch: ["middel", "laag"], indexering: ["laag", "laag"], controle: ["laag", "laag"], conversie: [signal.effort || "middel", signal.risk || "laag"], consolidatie: ["middel", "middel"],
     snippet: ["laag", "middel"], handmatig: [signal.effort || "middel", signal.risk || "laag"], ranking: [contentWork ? "middel" : "laag", titleChange ? "middel" : "laag"], merk: ["laag", "laag"], geen: ["laag", "laag"],
   }
   const [effort, risk] = ER[actionType]

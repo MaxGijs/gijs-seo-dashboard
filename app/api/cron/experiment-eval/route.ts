@@ -6,6 +6,7 @@ import { LAUNCH_DATES } from "@/lib/pages"
 import { recomputeLessons } from "@/lib/server/learning"
 import { readChecks } from "@/lib/server/checks"
 import { positionVerdict } from "@/lib/measure"
+import { addDaysIso, conversionVerdict, conversionWindows } from "@/lib/server/conversion"
 
 export const maxDuration = 120
 
@@ -188,7 +189,20 @@ export async function GET(request: Request) {
       let verdict: Verdict | null = null
 
       for (const [days, col] of milestones) {
-        if (metric === "controle") {
+        if (metric === "conversie") {
+          // Even lange periode vóór en na de aanpassing (niet over de dag van de aanpassing zelf)
+          try {
+            const before = { start: addDaysIso(exp.changed_at, -days), end: addDaysIso(exp.changed_at, -1) }
+            const after = { start: addDaysIso(exp.changed_at, 1), end: addDaysIso(exp.changed_at, days) }
+            const { measurement, windows } = await conversionWindows([before, after], exp.page)
+            const [b, a] = windows
+            const v = conversionVerdict(b, a, measurement)
+            update[col] = { measuredAt: today(), scope: "conversie", before: b, after: a, measurement: measurement.status, summary: `${a.requests ?? "—"} aanvragen in ${a.sessions} sessies (was ${b.requests ?? "—"} in ${b.sessions}) · ${v.reason}` }
+            if (days >= 56) verdict = v.verdict
+          } catch (e: any) {
+            update[col] = { measuredAt: today(), scope: "conversie", summary: `Meting mislukt: ${e?.message || "GA4 niet bereikbaar"}` }
+          }
+        } else if (metric === "controle") {
           const open = await readChecks(true).catch(() => null)
           const still = open ? open.some(c => c.id === exp.baseline?.checkId) : true
           update[col] = { measuredAt: today(), scope: "controle", summary: still ? "Probleem nog aanwezig" : "Probleem niet meer gevonden" }

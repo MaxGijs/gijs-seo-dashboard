@@ -18,6 +18,7 @@ import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleto
 import OwnerSelect from "@/components/OwnerSelect"
 import LinkSuggestions from "./LinkSuggestions"
 import RouteHistory from "./RouteHistory"
+import ConversionFacts from "./ConversionFacts"
 
 const SITE = "https://www.groeninjestraat.nl"
 
@@ -37,7 +38,7 @@ const FINDING_TAG: Record<FindingTone, { label: string; tone: "info" | "warning"
 type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback" | "close"
 
 function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => void; intent: "execute" | "close" | null }) {
-  const { getDetail, ctrModel, pages, signals, setStatus, setOwner, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
+  const { getDetail, ctrModel, pages, signals, setStatus, setOwner, setGoal, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
   const [detail, setDetail] = useState<AdviceDetail | null>(null)
   const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading")
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -49,7 +50,9 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
   const closeRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const raw = task.signal
-  const needsDetail = raw.kind !== "techniek" && !(raw.kind === "eigen" && !raw.query && !raw.page)
+  // Eigen taken met een ander doel dan vindbaarheid (bijv. meer aanvragen) krijgen geen SEO-analyse
+  const isSeo = !(raw.kind === "eigen" && raw.goal && raw.goal !== "seo")
+  const needsDetail = isSeo && raw.kind !== "techniek" && !(raw.kind === "eigen" && !raw.query && !raw.page)
 
   useEffect(() => {
     let cancelled = false
@@ -181,6 +184,16 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
           {raw.kind !== "analyse" && <PriorityMeter priority={raw.priority} />}
           {raw.intent && <IntentBadge intent={raw.intent} />}
           <OwnerSelect value={task.owner} onChange={o => setOwner(task, o)} />
+          {raw.kind === "eigen" && (
+            <label className="owner-select" title="Wat moet deze taak opleveren? Bepaalt hoe er gemeten wordt.">
+              <Target aria-hidden /><span className="sr-only">Doel</span>
+              <select value={raw.goal || "seo"} onChange={e => setGoal(task, e.target.value as "seo" | "conversie" | "overig").then(ok => ok && toast("Doel aangepast"))}>
+                <option value="seo">Doel: beter gevonden worden</option>
+                <option value="conversie">Doel: meer aanvragen</option>
+                <option value="overig">Doel: overig</option>
+              </select>
+            </label>
+          )}
         </div>
         <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
       </div>
@@ -240,8 +253,10 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               {diag.verdict.kind !== "inplannen" && <p className="summary-note">{diag.verdict.text}</p>}
               <dl className="summary-meta">
                 <div><dt>Soort aanpassing</dt><dd>{diag.plan.label}</dd></div>
-                <div><dt>Verwachte winst</dt><dd>{signal.kind === "techniek" ? "randvoorwaarde" : signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
-                <div><dt>Bewijskracht</dt><dd>{capitalizeFirst(signal.evidence)}</dd></div>
+                {isSeo ? <>
+                  <div><dt>Verwachte winst</dt><dd>{signal.kind === "techniek" ? "randvoorwaarde" : signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
+                  <div><dt>Bewijskracht</dt><dd>{capitalizeFirst(signal.evidence)}</dd></div>
+                </> : <div><dt>Gemeten op</dt><dd>{raw.goal === "conversie" ? "Energiescanaanvragen (GA4)" : "Niet automatisch"}</dd></div>}
                 <div><dt>Inspanning · risico</dt><dd>{capitalizeFirst(diag.effort)} · {diag.risk}</dd></div>
                 {signal.priorityRank ? <div><dt>Prioriteit</dt><dd>#{signal.priorityRank} van {signals.length}</dd></div> : null}
               </dl>
@@ -252,7 +267,8 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
           <section className="psec" aria-labelledby="sec-probleem">
             <h3 className="psec-title" id="sec-probleem"><span className="psec-num">1</span>Wat speelt er</h3>
             <p className="lead">{diag.situation}</p>
-            <div className="kpis-inline">
+            {raw.goal === "conversie" && <ConversionFacts page={target} />}
+            {isSeo && <div className="kpis-inline">
               {diag.facts.map(f => (
                 <div className="kpi-inline" key={f.label}>
                   <span className="kpi-inline-label">{f.label}</span>
@@ -260,9 +276,9 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                   {f.sub && <span className="kpi-inline-sub">{f.sub}</span>}
                 </div>
               ))}
-            </div>
-            <p className="scope-line"><Database aria-hidden /><span>{rec!.scopeText}</span></p>
-            {rec!.changes.length > 0 && (
+            </div>}
+            {isSeo && <p className="scope-line"><Database aria-hidden /><span>{rec!.scopeText}</span></p>}
+            {isSeo && rec!.changes.length > 0 && (
               <div className="scope-changes">
                 <p><b>Bijgewerkt na de live controle.</b> Cijfers, schatting en oordeel zijn opnieuw berekend:</p>
                 <ul>{rec!.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
@@ -315,6 +331,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             ) : null}
           </section>
 
+          {isSeo && (<>
           {/* 2. Diagnose: belangrijkste bevindingen eerst, de rest inklapbaar */}
           <section className="psec" aria-labelledby="sec-diagnose">
             <h3 className="psec-title" id="sec-diagnose"><span className="psec-num">2</span>Waardoor komt dit{detailState === "loading" && <span className="subtle">pagina wordt gecontroleerd…</span>}</h3>
@@ -346,9 +363,11 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             )}
           </section>
 
+          </>)}
+
           {/* 3. Aanbeveling */}
           <section className="psec" aria-labelledby="sec-stappen">
-            <h3 className="psec-title" id="sec-stappen"><span className="psec-num">3</span>Wat je aanpast</h3>
+            <h3 className="psec-title" id="sec-stappen"><span className="psec-num">{isSeo ? 3 : 2}</span>Wat je aanpast</h3>
             {detailState === "loading" ? (
               <div style={{ display: "grid", gap: 12 }}><Skeleton height={40} /><Skeleton height={40} /></div>
             ) : (
@@ -363,12 +382,15 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             )}
           </section>
 
-          {raw.kind !== "techniek" && <RouteHistory taskKey={task.key} page={target} query={raw.query} routeNote={raw.routeNote} />}
-          {target && raw.kind !== "techniek" && raw.kind !== "dubbel" && <LinkSuggestions target={target} query={raw.query} />}
+          {isSeo && raw.kind !== "techniek" && <RouteHistory taskKey={task.key} page={target} query={raw.query} routeNote={raw.routeNote} />}
+          {isSeo && target && raw.kind !== "techniek" && raw.kind !== "dubbel" && <LinkSuggestions target={target} query={raw.query} />}
 
           {/* 4. Resultaat en meting */}
           <section className="psec" aria-labelledby="sec-impact">
-            <h3 className="psec-title" id="sec-impact"><span className="psec-num">4</span>Verwacht resultaat en meting</h3>
+            <h3 className="psec-title" id="sec-impact"><span className="psec-num">{isSeo ? 4 : 3}</span>Verwacht resultaat en meting</h3>
+            {!isSeo ? (
+              <p className="impact-headline"><Target aria-hidden /><span><b>{raw.goal === "conversie" ? "Gemeten op energiescanaanvragen, niet op Google" : "Geen automatische meting"}</b></span></p>
+            ) : <>
             <p className="impact-headline"><TrendingUp aria-hidden /><span><b>{diag.importance.gainText}</b> <span className="muted">(indicatief)</span></span></p>
             <ul className="why-list">
               <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
@@ -376,12 +398,13 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               {conv && <li className="why-item"><Target aria-hidden /><span>{conv}</span></li>}
               <li className="why-item"><FlaskConical aria-hidden /><span>{learned}</span></li>
             </ul>
+            </>}
             <p className="field-hint" style={{ marginTop: 14 }}>Meetplan voor: <b>{diag.plan.label.toLowerCase()}</b>. De nulmeting legt {diag.plan.baselineText} vast.</p>
             <div className="timeline" aria-label="Meetplan" style={{ gridTemplateColumns: `repeat(${diag.plan.timeline.length}, minmax(0, 1fr))` }}>
               {diag.plan.timeline.map(t => <div className="timeline-step" key={t.l}><span className="timeline-dot" aria-hidden /><b>{t.l}</b><span>{t.s}</span></div>)}
             </div>
             <p className="field-hint" style={{ marginTop: 8 }}><b>Succes:</b> {diag.plan.success}</p>
-            <details className="evidence-details">
+            {isSeo && <details className="evidence-details">
               <summary>Hoe is deze schatting berekend?</summary>
               <div style={{ marginTop: 12 }}>
                 {signal.estimate ? <EstimateTable e={signal.estimate} /> : (
@@ -393,7 +416,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                   {diag.expected.map((e, i) => <li key={i}>{e}</li>)}
                 </ul>
               </div>
-            </details>
+            </details>}
             {task.experiments.length > 0 && (
               <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
                 {task.experiments.map(e => <ExperimentSummary key={e.id} exp={e} />)}

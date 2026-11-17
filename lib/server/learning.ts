@@ -7,13 +7,14 @@ import { computeLessons, featuresOf, type ContentFact, type DecisionFact, type E
 export async function recomputeLessons(by = "systeem") {
   const sb = getSupabase()
   const [{ data: exps }, { data: statuses }, { data: ideas }, { data: existing }] = await Promise.all([
-    sb.from("seo_experiments").select("advice_key, description, outcome, query, page"),
+    sb.from("seo_experiments").select("advice_key, description, outcome, query, page, baseline"),
     sb.from("seo_advice_status").select("advice_key, status, note, snapshot"),
     sb.from("content_ideas").select("service, origin, status, feedback, format, evals"),
     sb.from("seo_lessons").select("*"),
   ])
   const snap = new Map((statuses || []).map(s => [s.advice_key, s.snapshot]))
-  const experiments: ExperimentFact[] = (exps || []).map(e => {
+  // Alleen SEO-aanpassingen: conversie- en controletaken leren niets over routes in Google
+  const experiments: ExperimentFact[] = (exps || []).filter(e => !['conversie', 'controle', 'geen'].includes(e.baseline?.successMetric)).map(e => {
     const s: any = snap.get(e.advice_key) || {}
     return {
       outcome: e.outcome,

@@ -50,7 +50,7 @@ function ExpOutcome({ e }: { e: Experiment }) {
 
 const TYPE_LABEL: Record<string, string> = {
   technisch: "Technische reparatie", indexering: "Indexering", consolidatie: "Samenvoegen", snippet: "Title en description",
-  ranking: "Positie (links en inhoud)", merk: "Controle", geen: "Geen aanpassing", handmatig: "Eigen taak",
+  ranking: "Positie (links en inhoud)", merk: "Controle", geen: "Geen aanpassing", handmatig: "Eigen taak", conversie: "Meer aanvragen", controle: "Controletaak",
 }
 
 // Wat heeft Gijs geleerd? Per soort aanpassing: hoeveel experimenten, hoeveel succesvol, voorspeld vs werkelijk
@@ -151,12 +151,14 @@ export default function ExperimentsView() {
               const base = e.baseline || {}
               const metric: "position" | "ctr" = base.successMetric === "ctr" ? "ctr" : "position"
               // Technisch, indexering en samenvoegen worden niet op positie gemeten
-              const other = ["technisch", "indexering", "consolidatie", "geen"].includes(base.successMetric)
+              const other = ["technisch", "indexering", "consolidatie", "geen", "conversie", "controle"].includes(base.successMetric)
               const pair = !!(e.query && e.page && base.targetPage)
               const basePos = pair ? (base.pairPosition ?? null) : base.position ?? base.positionNow
               const baseText = base.successMetric === "technisch" ? `${num(base.count ?? base.paths?.length)} fout`
                 : base.successMetric === "indexering" ? `${num(base.paths?.length ?? 1)} niet geïndexeerd`
                 : base.successMetric === "consolidatie" ? `${num((base.pages || []).reduce((a: number, p: any) => a + (p.impressions || 0), 0))} vert.`
+                : base.successMetric === "conversie" ? "28 d ervoor"
+                : base.successMetric === "controle" ? "probleem open"
                 : "—"
               const subject = task ? (task.signal.query ? `"${task.signal.query}"` : task.signal.headline) : e.query ? `"${e.query}"` : e.page || e.advice_key
               const ms: { label: string; days: number; d: Record<string, any> | null }[] = [
@@ -173,7 +175,7 @@ export default function ExperimentsView() {
                     <p className="exp-desc">{e.description}</p>
                     {e.hypothesis && <p className="exp-hyp"><b>Hypothese:</b> {e.hypothesis}</p>}
                     <ExpOutcome e={e} />
-                    <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {other ? ({ technisch: "HTTP-status en sitemap", indexering: "indexeringsstatus", consolidatie: "doorverwijzing en vertoningen", geen: "niets" } as Record<string, string>)[base.successMetric] : metric === "ctr" ? "doorklik" : pair ? `positie van ${e.page}` : "positie"}</p>
+                    <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {other ? ({ technisch: "HTTP-status en sitemap", indexering: "indexeringsstatus", consolidatie: "doorverwijzing en vertoningen", geen: "niets", conversie: "energiescanaanvragen (GA4)", controle: "of het probleem weg is" } as Record<string, string>)[base.successMetric] : metric === "ctr" ? "doorklik" : pair ? `positie van ${e.page}` : "positie"}</p>
                   </div>
                   <div className="exp-measures">
                     <div className="measure">

@@ -70,6 +70,7 @@ export interface NewTask {
   priority: Priority
   status: "nieuw" | "goedgekeurd" | "in_uitvoering"
   effort?: Level
+  goal?: "seo" | "conversie" | "overig"
 }
 
 // Waarmee het zijpaneel opent (bv. na slepen naar Evalueren: direct "wat heb je aangepast?")
@@ -103,6 +104,7 @@ interface WorkspaceValue {
   // acties
   setStatus: (task: Task, to: Status, opts?: StatusOptions) => Promise<boolean>
   setOwner: (task: Task, owner: string | null) => Promise<boolean>
+  setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
   openTask: (key: string, intent?: PanelIntent) => void
   panelIntent: PanelIntent
@@ -387,6 +389,26 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [toast])
 
+  // Doel van een eigen taak wijzigen: bepaalt hoe er gemeten wordt (posities of aanvragen)
+  const setGoal = useCallback(async (task: Task, goal: "seo" | "conversie" | "overig") => {
+    const s = task.signal
+    const signal: Signal = goal === "seo"
+      ? { ...s, goal }
+      : { ...s, goal, query: undefined, metrics: {}, gain: 0, estimate: undefined, intent: undefined, place: undefined, scope: undefined,
+          evidence: "redelijk", evidenceReason: goal === "conversie" ? "Eigen taak, gemeten op energiescanaanvragen in GA4." : "Eigen taak: geen automatisch bewijs." }
+    try {
+      const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ advice_key: task.key, advice_title: `${s.headline} — ${s.title}`, advice_type: s.legacyType, status: task.status, snapshot: signal }),
+      })
+      setRecords(rs => [res.row, ...rs.filter(r => r.advice_key !== task.key)])
+      return true
+    } catch (e: any) {
+      toast(`Opslaan mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return false
+    }
+  }, [toast])
+
   // Eigenaar toewijzen (wie pakt dit op). Status blijft zoals hij is.
   const setOwner = useCallback(async (task: Task, owner: string | null) => {
     try {
@@ -405,9 +427,11 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   // Eigen taak toevoegen: wordt als statusregel met momentopname opgeslagen, net als adviezen
   const addTask = useCallback(async (input: NewTask) => {
     const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-    const query = input.query?.trim() || undefined
+    const goal = input.goal || "seo"
+    // Alleen SEO-taken krijgen een zoekwoord en een Search Console-analyse; conversie- en overige taken niet
+    const query = goal === "seo" ? input.query?.trim() || undefined : undefined
     const page = input.page?.trim() ? toPath(input.page.trim()).replace(/\/$/, "") || "/" : undefined
-    const base = query || page ? buildAdhocSignal({ query, page: query ? undefined : page }, { keywords, pages }, ctrModel) : null
+    const base = goal === "seo" && (query || page) ? buildAdhocSignal({ query, page: query ? undefined : page }, { keywords, pages }, ctrModel) : null
     const signal: Signal = {
       key: signalKey("eigen", id),
       kind: "eigen",
@@ -423,7 +447,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       priority: input.priority,
       priorityRank: 0,
       evidence: base?.evidence || "redelijk",
-      evidenceReason: base?.evidenceReason || "Eigen taak: geen automatisch bewijs.",
+      evidenceReason: base?.evidenceReason || (goal === "conversie" ? "Eigen taak, gemeten op energiescanaanvragen in GA4." : "Eigen taak: geen automatisch bewijs."),
+      goal,
       score: 0,
       generatedAt: new Date().toISOString(),
       intent: base?.intent,
@@ -443,7 +468,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
+    setStatus, setOwner, setGoal, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),

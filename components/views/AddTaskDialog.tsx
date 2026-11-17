@@ -16,6 +16,7 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
   const [priority, setPriority] = useState<Priority>("middel")
   const [effort, setEffort] = useState<Level>("middel")
   const [status, setStatusValue] = useState<NewTask["status"]>("goedgekeurd")
+  const [goal, setGoal] = useState<NonNullable<NewTask["goal"]>>("seo")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const firstRef = useRef<HTMLInputElement>(null)
@@ -35,12 +36,12 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
       setError("Vul een pad in zoals /regio/overijssel/zwolle, of een volledige URL van groeninjestraat.nl."); return
     }
     setBusy(true)
-    const key = await addTask({ title, description, query, page: p, priority, status, effort })
+    const key = await addTask({ title, description, query: goal === "seo" ? query : "", page: p, priority, status, effort, goal })
     setBusy(false)
     if (key) {
       toast("Taak toegevoegd")
       onClose()
-      if (query.trim() || p) openTask(key)
+      if (goal !== "seo" || query.trim() || p) openTask(key)
     }
   }
 
@@ -59,17 +60,25 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
           <label className="field-label" htmlFor="t-desc">Wat moet er gebeuren? <span className="subtle">(optioneel)</span></label>
           <textarea id="t-desc" className="textarea" value={description} onChange={e => setDescription(e.target.value)} placeholder="Korte omschrijving, zodat je later weet wat de bedoeling was" />
 
+          <span className="field-label">Wat moet het opleveren?</span>
+          <div className="seg goal-seg" role="radiogroup" aria-label="Doel van de taak">
+            {([["seo", "Beter gevonden worden"], ["conversie", "Meer aanvragen"], ["overig", "Overig"]] as const).map(([v, l]) => (
+              <button type="button" key={v} role="radio" aria-checked={goal === v} className={goal === v ? "is-active" : ""} onClick={() => setGoal(v)}>{l}</button>
+            ))}
+          </div>
+          <p className="field-hint" style={{ marginBottom: 12 }}>{goal === "seo" ? "Gemeten op posities, vertoningen en klikken in Google." : goal === "conversie" ? "Bijvoorbeeld de woningscan verkorten of het formulier verbeteren. Gemeten op energiescanaanvragen in GA4 (vóór en na), niet op Google-posities." : "Wordt niet automatisch gemeten."}</p>
+
           <div className="modal-row">
-            <div>
+            {goal === "seo" && <div>
               <label className="field-label" htmlFor="t-query">Zoekwoord <span className="subtle">(optioneel)</span></label>
               <input id="t-query" className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="isolatie zwolle" />
-            </div>
+            </div>}
             <div>
-              <label className="field-label" htmlFor="t-page">Pagina <span className="subtle">(optioneel)</span></label>
+              <label className="field-label" htmlFor="t-page">{goal === "conversie" ? "Alleen bezoekers via deze pagina meten" : "Pagina"} <span className="subtle">(optioneel{goal === "conversie" ? "; leeg = hele site" : ""})</span></label>
               <input id="t-page" className="input" value={page} onChange={e => { setPage(e.target.value); setError(null) }} placeholder="/regio/overijssel/zwolle" />
             </div>
           </div>
-          <p className="field-hint">Met een zoekwoord of pagina krijgt de taak een live diagnose en, als je hem uitvoert, een automatische meting.</p>
+          {goal === "seo" && <p className="field-hint">Met een zoekwoord of pagina krijgt de taak een live diagnose en, als je hem uitvoert, een automatische meting.</p>}
 
           <div className="modal-row modal-row-3">
             <div>

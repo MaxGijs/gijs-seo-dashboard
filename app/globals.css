@@ -905,3 +905,4 @@ img, svg { display: block; max-width: 100%; }
 .route-list { display: flex; flex-direction: column; gap: 10px; }
 .route-list li { border-left: 3px solid var(--border); padding-left: 10px; }
 .route-top { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.goal-seg { margin-bottom: 6px; } .goal-seg button { height: 34px; }
