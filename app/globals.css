@@ -943,3 +943,18 @@ img, svg { display: block; max-width: 100%; }
 .rank-stat small { font-size: 10.5px; color: var(--text-subtle); white-space: nowrap; }
 @media (max-width: 1100px) { .rank-list { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .rank-row { grid-template-columns: 22px minmax(0, 1fr) 64px; } .rank-row .rank-stat:nth-child(4), .rank-row .rank-stat:nth-child(5) { display: none; } }
+
+/* Meldingen en laadsnelheid */
+.alert-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.alert-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: start; width: 100%; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--white); text-align: left; color: inherit; }
+.alert-row:not(:disabled):hover { background: var(--grey-050, #f6f8f7); }
+.alert-row:disabled { cursor: default; }
+.alert-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: #d9a520; }
+.alert-row.is-error .alert-dot { background: #c2412e; }
+.alert-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alert-main b { font-size: var(--fs-sm); color: var(--green-800); }
+.alert-main span { font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.45; }
+.alert-since { font-size: 11px; color: var(--text-subtle); white-space: nowrap; }
+.cwv-summary { display: flex; gap: 12px; font-size: var(--fs-xs); font-weight: 600; }
+.txt-warn { color: #a87810; }
+.dash-cwv .card-head { flex-wrap: wrap; gap: 10px; }

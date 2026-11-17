@@ -21,6 +21,7 @@ import { columnOf, COLUMNS, KIND_META, STATUS_META } from "@/lib/workflow"
 import { reconcile } from "@/lib/contract"
 import { baselineFrom, buildDiagnosis } from "@/lib/diagnosis"
 import { addDays, today } from "@/lib/format"
+import { readAlerts } from "@/lib/server/alerts"
 import { GET as campGET, POST as campPOST } from "@/app/api/campaigns/route"
 import { CAMPAIGN_KINDS, describe, type Campaign } from "@/lib/campaigns"
 import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Priority, Signal, Status, Task } from "@/lib/types"
@@ -158,6 +159,7 @@ export const TOOLS: Tool[] = [
         search_console_tot: ws.overview.length ? ws.overview[ws.overview.length - 1].keys[0] : null,
         te_beoordelen: { aantal: g.toReview.length, hoog: g.toReview.filter(t => t.signal.priority === "hoog").length, eerst_doen: g.toReview.filter(mine).filter(t => t.signal.intent !== "merk").slice(0, 6).map(t => brief(ws, t)) },
         bezig: g.active.filter(mine).slice(0, 10).map(t => brief(ws, t)),
+        meldingen: (await readAlerts(0).catch(() => [])).map(a => ({ wat: a.title, detail: a.detail, sinds: a.first_seen.slice(0, 10) })),
         controletaken: ws.checks.map((c: any) => ({ wat: c.what, effect: c.effect, ernst: c.severity })),
         al_opgelost_te_sluiten: g.resolved.length,
         contentkansen_nieuw: { aantal: (content?.ideas || []).filter((i: any) => i.status === "nieuw").length, voorbeelden: ideas.map((i: any) => ({ titel: i.title, dienst: i.service, waarom_nu: i.why_now })) },

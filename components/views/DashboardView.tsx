@@ -16,6 +16,7 @@ import { LAUNCH_DATES, prettySlug } from "@/lib/pages"
 import { dateShort, num, pct, pos } from "@/lib/format"
 import { Alert, EmptyState, Skeleton } from "@/components/ui"
 import TodayView from "./TodayView"
+import { AlertsBlock, CwvBlock } from "@/components/dashboard/Alerts"
 import type { Report } from "./ReportsView"
 
 const STORE_KEY = "gijs.dashboard.filters"
@@ -123,6 +124,8 @@ export default function DashboardView() {
 
           <Conclusion data={data} loading={loading && !data} />
 
+          <AlertsBlock />
+
           <div className="dash-cards">
             <Card id="page1" icon={<Award />} label="Zoekwoorden op pagina 1" loading={!data} onOpen={setOpen}
               value={data?.cards.page1.value != null ? num(data.cards.page1.value) : "—"}
@@ -162,6 +165,8 @@ export default function DashboardView() {
             <Channels data={data} />
             <Local data={data} />
           </div>
+
+          <CwvBlock />
 
           <div className="dash-grid">
             <Competitors data={data} />

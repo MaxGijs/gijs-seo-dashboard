@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useMemo } from "react"
+import { AlertsBlock } from "@/components/dashboard/Alerts"
 import { ArrowRight, ArrowUpRight, CalendarClock, CheckCircle2, Eye, FlaskConical, Play, ShieldCheck, TrendingUp, ListTodo } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
@@ -201,6 +202,7 @@ export default function TodayView({ embedded = false }: { embedded?: boolean }) 
         </div>
       </div>
 
+      <div style={{ marginBottom: 20 }}><AlertsBlock /></div>
       {body()}
     </>
   )
