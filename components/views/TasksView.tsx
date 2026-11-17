@@ -208,7 +208,7 @@ export default function TasksView() {
       {loading ? (
         <div className="board">
           {COLUMNS.map(c => (
-            <div key={c.id} className="col"><div className="col-head"><h2>{c.label}</h2></div><Skeleton height={96} radius={12} /><Skeleton height={96} radius={12} /></div>
+            <div key={c.id} className={`col col-${c.id}`}><div className="col-head"><h2>{c.label}</h2></div><Skeleton height={96} radius={12} /><Skeleton height={96} radius={12} /></div>
           ))}
         </div>
       ) : entries.length === 0 ? (
@@ -224,7 +224,7 @@ export default function TasksView() {
             const dragged = dragKey ? filtered.find(e => e.key === dragKey) : null
             const canDrop = !!dragged && dragged.col !== c.id
             return (
-              <section key={c.id} className={`col${overCol === c.id && canDrop ? " is-over" : ""}`} aria-labelledby={`col-${c.id}`}
+              <section key={c.id} className={`col col-${c.id}${overCol === c.id && canDrop ? " is-over" : ""}`} aria-labelledby={`col-${c.id}`} title={c.hint}
                 onDragOver={e => { if (!canDrop) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== c.id) setOverCol(c.id) }}
                 onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setOverCol(o => (o === c.id ? null : o)) }}
                 onDrop={e => { e.preventDefault(); const key = e.dataTransfer.getData("text/plain") || dragKey; setOverCol(null); setDragKey(null); const en = filtered.find(x => x.key === key); if (en?.kind === "seo") drop(en.t, c.id); else if (en) dropContent(en.i, en.col, c.id) }}>
@@ -236,9 +236,9 @@ export default function TasksView() {
                     return <span className="col-count" title={rest ? `${open} openstaand, ${rest} uitgesteld of al opgelost` : undefined}>{open}{rest ? <small> +{rest}</small> : null}</span>
                   })()}
                 </div>
-                <p className="col-hint">{c.id === "evalueren" ? "Sleep hierheen als het is aangepast: je beschrijft kort wat en de meting start" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.hint}</p>
+                <div className="col-body">
                 {items.length === 0 ? (
-                  <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "afgerond" ? "Nog niets afgerond" : "Leeg"}</p>
+                  <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "evalueren" ? "Sleep een taak hierheen als hij is aangepast; de meting start dan" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.id === "gepland" ? "Sleep een taak hierheen om hem in te plannen" : "Sleep een taak hierheen als je ermee begint"}</p>
                 ) : visible.map(en => {
                   const dragProps = {
                     draggable: true,
@@ -255,7 +255,7 @@ export default function TasksView() {
                           {c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
                         </span>
                         <span className="tcard-title">{i.title}</span>
-                        <span className="tcard-sub">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
+                        <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
                         <span className="tcard-foot"><span>{meta.icon}{meta.text}</span>{i.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(i.owner, users, me)}</span> : null}{i.status === "later" ? <span>Later</span> : null}</span>
                       </button>
                     )
@@ -269,7 +269,7 @@ export default function TasksView() {
                         {c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
                       </span>
                       <span className="tcard-title">{t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
-                      <span className="tcard-sub" title={t.signal.title}>{t.signal.action || t.signal.title}</span>
+                      <span className="tcard-sub clamp2" title={t.signal.action || t.signal.title}>{t.signal.action || t.signal.title}</span>
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
                         {t.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span> : null}
@@ -285,6 +285,7 @@ export default function TasksView() {
                     {showAll ? "Minder tonen" : `Nog ${items.length - COLUMN_LIMIT} tonen`}
                   </button>
                 )}
+                </div>
               </section>
             )
           })}

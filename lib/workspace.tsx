@@ -3,12 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AdviceDetail, AdviceRecord, DataCheck, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
 import { buildCtrModel, type CtrModel } from "./ctr"
-import { buildAdhocSignal, buildSignals, signalKey, toPath } from "./signals"
-import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
+import { buildAdhocSignal, signalKey, toPath } from "./signals"
+import { isVisible, mergeTasks } from "./workflow"
 import { today } from "./format"
 import type { PageRow } from "./pages"
 import type { Lesson } from "./learning"
-import { toTries } from "./routes"
+import { signalsFrom, groupTasks, sortByPriority } from "./taskset"
 
 // ── Data-ophalen ─────────────────────────────────────────────────────────────
 
@@ -239,12 +239,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const signals = useMemo(
     () => {
       if (loading) return []
-      const feedback = records
-        .filter(r => (r.status === "afgewezen" || r.status === "onvoldoende_bewijs") && r.snapshot?.kind && !(r.note || "").startsWith("Al opgelost"))
-        .map(r => ({ key: r.advice_key, kind: r.snapshot!.kind, intent: r.snapshot!.intent }))
-        // Teruggedraaide afwijzingslessen: die afwijzingen tellen niet meer mee voor de prioriteit
-        .filter(f => !lessons.some(l => l.status === "teruggedraaid" && l.effect?.type === "afwijzing" && l.effect.match?.kind === f.kind && (l.effect.match?.intent ?? undefined) === (l.effect.match?.intent ? f.intent : undefined)))
-      return buildSignals({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages: ga4Pages || undefined, feedback, lessons, checks, tries: toTries(experiments) }, ctrModel)
+      return signalsFrom({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, lessons, checks, experiments }, ctrModel)
     },
     [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments]
   )
@@ -481,21 +476,12 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
 
 // ── Afgeleide selecties die meerdere schermen gebruiken ──────────────────────
 
-export function sortByPriority(a: Task, b: Task) {
-  return PRIORITY_ORDER[a.signal.priority] - PRIORITY_ORDER[b.signal.priority] || b.signal.score - a.signal.score
-}
+export { sortByPriority }
 
 export function useTaskGroups() {
   const { visibleTasks } = useWorkspace()
   return useMemo(() => {
-    // Al opgeloste signalen (bv. doorverwijzing staat al) tellen niet mee in de wachtrij: controleer en sluit
-    const resolved = visibleTasks.filter(t => columnOf(t.status) === "beoordelen" && !!t.signal.resolved && t.current)
-    const toReview = visibleTasks.filter(t => columnOf(t.status) === "beoordelen" && !t.snoozed && !(t.signal.resolved && t.current)).sort(sortByPriority)
-    const snoozed = visibleTasks.filter(t => t.snoozed)
-    const active = visibleTasks.filter(t => ["gepland", "uitvoering"].includes(columnOf(t.status)))
-      .sort((a, b) => (a.status === "in_uitvoering" ? -1 : 0) - (b.status === "in_uitvoering" ? -1 : 0) || sortByPriority(a, b))
-    const evaluating = visibleTasks.filter(t => columnOf(t.status) === "evalueren")
-    const done = visibleTasks.filter(t => columnOf(t.status) === "afgerond")
+    const { toReview, snoozed, active, evaluating, done, resolved } = groupTasks(visibleTasks)
     return { toReview, snoozed, active, evaluating, done, resolved }
   }, [visibleTasks])
 }

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { BookOpenCheck, CalendarCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
+import { BookOpenCheck, CalendarCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper, MessageSquare } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
@@ -27,6 +27,7 @@ export const CONTENT_NAV = [
 
 const SYSTEM_NAV = [
   { href: "/data", label: "Datastatus", icon: Database },
+  { href: "/koppeling", label: "Claude-koppeling", icon: MessageSquare },
 ] as const
 
 export default function Sidebar({ user }: { user: { name?: string | null; email?: string | null; image?: string | null } }) {

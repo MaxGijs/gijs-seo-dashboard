@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { createClient } from "@supabase/supabase-js"
+import { currentActor } from "./actor"
 
 // Endpoints die met de Supabase service-role sleutel werken mogen alleen door
 // ingelogde Gijs-medewerkers gebruikt worden. Zonder deze check kon iedereen met
@@ -18,6 +19,12 @@ function isAllowed(email: string | null | undefined) {
 }
 
 export async function requireUser() {
+  // Verzoek via de Claude-koppeling: de gebruiker is al via het koppeltoken geverifieerd
+  const actor = currentActor()
+  if (actor) {
+    if (!isAllowed(actor.email)) return { error: NextResponse.json({ error: "Geen toegang" }, { status: 403 }) }
+    return { session: { user: { email: actor.email, name: actor.name, image: null }, expires: "" } as any }
+  }
   const session = await auth()
   if (!session?.user?.email) {
     return { error: NextResponse.json({ error: "Niet ingelogd" }, { status: 401 }) }
