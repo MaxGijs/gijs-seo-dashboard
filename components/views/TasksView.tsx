@@ -221,17 +221,8 @@ export default function TasksView() {
             const items = columns[c.id]
             const showAll = expanded[c.id]
             const visible = showAll ? items : items.slice(0, COLUMN_LIMIT)
-            // Lege kolommen klappen in, behalve tijdens slepen (dan zijn ze een doel)
-            const collapsed = items.length === 0 && !dragKey && !expanded[`open-${c.id}`]
             const dragged = dragKey ? filtered.find(e => e.key === dragKey) : null
             const canDrop = !!dragged && dragged.col !== c.id
-            if (collapsed) {
-              return (
-                <button key={c.id} className="col col-collapsed" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: true }))} aria-label={`${c.label}: leeg. Klik om uit te klappen`} title={c.hint}>
-                  <span className="col-collapsed-label">{c.label}</span><span className="col-count">0</span>
-                </button>
-              )
-            }
             return (
               <section key={c.id} className={`col${overCol === c.id && canDrop ? " is-over" : ""}`} aria-labelledby={`col-${c.id}`}
                 onDragOver={e => { if (!canDrop) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overCol !== c.id) setOverCol(c.id) }}
@@ -244,7 +235,6 @@ export default function TasksView() {
                     const rest = items.length - open
                     return <span className="col-count" title={rest ? `${open} openstaand, ${rest} uitgesteld of al opgelost` : undefined}>{open}{rest ? <small> +{rest}</small> : null}</span>
                   })()}
-                  {items.length === 0 && expanded[`open-${c.id}`] && <button className="icon-btn col-fold" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: false }))} aria-label={`${c.label} inklappen`}>–</button>}
                 </div>
                 <p className="col-hint">{c.id === "evalueren" ? "Sleep hierheen als het is aangepast: je beschrijft kort wat en de meting start" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.hint}</p>
                 {items.length === 0 ? (

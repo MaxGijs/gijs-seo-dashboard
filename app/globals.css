@@ -335,8 +335,8 @@ img, svg { display: block; max-width: 100%; }
 /* ── Mijn taken ───────────────────────────────────────────────────────── */
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .toolbar-left { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
-.board > .col { flex: 1 1 0; min-width: 240px; }
+.board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; align-items: stretch; }
+.board > .col { flex: 1 1 0; min-width: 190px; }
 .col { background: var(--grey-100); border-radius: var(--radius-lg); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 160px; }
 .col-head { display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px; }
 .col-head h2 { font-size: var(--fs-base); }
@@ -601,10 +601,6 @@ img, svg { display: block; max-width: 100%; }
 @media (max-width: 1024px) { .ds-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* ── Kanban: slepen en ingeklapte lege kolommen ─────────────────────────── */
-.board > .col-collapsed { flex: 0 0 52px; min-width: 52px; min-height: 220px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 6px; border: 0; cursor: pointer; color: var(--text-muted); }
-.board > .col-collapsed:hover { background: var(--grey-200, #e9ecea); }
-.col-collapsed-label { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 700; font-size: var(--fs-sm); color: var(--green-800); white-space: nowrap; }
-.col-fold { margin-left: auto; width: 26px; height: 26px; font-weight: 700; }
 .board.is-dragging .col { outline: 2px dashed transparent; transition: outline-color .12s, background .12s; }
 .board.is-dragging .col:not(.col-collapsed) { outline-color: var(--grey-300); }
 .col.is-over { outline-color: var(--accent-600) !important; background: var(--accent-050); }
