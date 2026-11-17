@@ -977,3 +977,7 @@ img, svg { display: block; max-width: 100%; }
 .legend-chip svg { width: 12px; height: 12px; }
 .legend-list .new-dot, .legend-list .owner-chip, .legend-list .tcard-note { margin-right: 4px; }
 @media (max-width: 1000px) { .legend-steps { grid-template-columns: 1fr; } .legend-grid { grid-template-columns: 1fr; } }
+.legend-table td { vertical-align: top; padding: 8px 10px; color: var(--text-muted); line-height: 1.45; }
+.legend-table td:first-child { white-space: nowrap; color: var(--green-800); }
+.legend-table th { position: static; }
+@media (max-width: 640px) { .legend-table td:first-child { white-space: normal; } }

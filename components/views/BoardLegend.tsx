@@ -29,23 +29,29 @@ export default function BoardLegend({ onClose }: { onClose: () => void }) {
         <div className="legend-grid">
           <div>
             <h3>Op de kaarten</h3>
-            <ul className="legend-list">
-              <li><span className="legend-chip"><BarChart3 aria-hidden />Hoog</span> Prioriteit: hoog, middel of laag. Rekent met verwachte winst, bewijs en wat eerder werkte.</li>
-              <li><span className="new-dot">Nieuw</span> Nieuw sinds je vorige bezoek.</li>
-              <li><span className="tcard-note" style={{ display: "inline-flex", marginTop: 0 }}><StickyNote aria-hidden /><span>Notitie</span></span> Notitie bij de taak.</li>
-              <li><span className="owner-chip"><UserRound aria-hidden />Thom</span> Wie de taak oppakt.</li>
-              <li><span className="legend-chip"><Dot aria-hidden />Niet actueel</span> Het signaal komt niet meer uit de data (bijvoorbeeld vanzelf opgelost). Controleer en sluit af.</li>
-              <li><span className="legend-chip">Uitgesteld</span> Lichter weergegeven tot de gekozen datum; daarna komt de taak terug.</li>
-            </ul>
+            <table className="table small legend-table">
+              <thead><tr><th>Label</th><th>Betekenis</th></tr></thead>
+              <tbody>
+                <tr><td><span className="legend-chip"><BarChart3 aria-hidden />Hoog</span></td><td>Prioriteit: hoog, middel of laag. Rekent met verwachte winst, bewijs en wat eerder werkte.</td></tr>
+                <tr><td><span className="new-dot">Nieuw</span></td><td>Nieuw sinds je vorige bezoek.</td></tr>
+                <tr><td><span className="tcard-note" style={{ display: "inline-flex", marginTop: 0 }}><StickyNote aria-hidden /><span>Notitie</span></span></td><td>Notitie bij de taak.</td></tr>
+                <tr><td><span className="owner-chip"><UserRound aria-hidden />Thom</span></td><td>Wie de taak oppakt.</td></tr>
+                <tr><td><span className="legend-chip"><Dot aria-hidden />Niet actueel</span></td><td>Het signaal komt niet meer uit de data (bijvoorbeeld vanzelf opgelost). Controleer en sluit af.</td></tr>
+                <tr><td><span className="legend-chip">Uitgesteld</span></td><td>Lichter weergegeven tot de gekozen datum; daarna komt de taak terug.</td></tr>
+              </tbody>
+            </table>
           </div>
           <div>
             <h3>Soorten taken</h3>
-            <ul className="legend-list">
-              <li><b>Kans / daling / dubbele pagina&apos;s</b> SEO-adviezen; gemeten op positie en klikken in Google.</li>
-              <li><b>Technisch</b> Fouten, indexering en controletaken (zoals de meting van aanvragen); geslaagd als het probleem weg is.</li>
-              <li><b>Content</b> Contentkansen uit nieuws en zoekdata; gemeten na publicatie.</li>
-              <li><b>Eigen taak</b> Zelf toegevoegd. Met doel &quot;meer aanvragen&quot; wordt gemeten op energiescanaanvragen in GA4, niet op Google.</li>
-            </ul>
+            <table className="table small legend-table">
+              <thead><tr><th>Soort</th><th>Wat het is</th><th>Gemeten op</th></tr></thead>
+              <tbody>
+                <tr><td><b>Kans, daling, dubbele pagina&apos;s</b></td><td>SEO-adviezen uit Search Console</td><td>Positie en klikken in Google</td></tr>
+                <tr><td><b>Technisch</b></td><td>Fouten, indexering en controletaken (zoals de meting van aanvragen)</td><td>Of het probleem weg is</td></tr>
+                <tr><td><b>Content</b></td><td>Contentkansen uit nieuws en zoekdata</td><td>Bezoek en posities na publicatie</td></tr>
+                <tr><td><b>Eigen taak</b></td><td>Zelf toegevoegd, met een doel</td><td>Doel &quot;meer aanvragen&quot;: energiescanaanvragen in GA4. Doel &quot;beter gevonden worden&quot;: Google. Doel &quot;overig&quot;: niet automatisch</td></tr>
+              </tbody>
+            </table>
             <p className="subtle small" style={{ marginTop: 10 }}>Tip: meld een taak pas als uitgevoerd als de wijziging echt live staat, anders start de meting te vroeg.</p>
           </div>
         </div>
