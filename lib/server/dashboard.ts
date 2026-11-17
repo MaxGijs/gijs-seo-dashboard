@@ -2,6 +2,7 @@
 // Alles leest alleen: Search Console via het service-account, GA4 via hetzelfde account,
 // en de eigen opslag (Supabase) voor sitemap-status en synchronisaties.
 
+import { buildCtrModel, clicksAt } from "@/lib/ctr"
 import { readCampaigns } from "./campaigns"
 import { describe, effectEnd, overlaps, type Campaign } from "@/lib/campaigns"
 import { BetaAnalyticsDataClient } from "@google-analytics/data"
@@ -14,7 +15,7 @@ import { SERVICE_TERMS } from "@/lib/content/model"
 import {
   type Compare, type Conclusion, type DashboardData, type DashboardQuery, type DataNote, type Driver, type KeywordItem,
   type LeadEvent, type Measurement, type Metric, type PageItem, type Range, type SeriesPoint, type TrendItem, type TrendSet,
-  type Warning, deltaPct, FORM_EVENT_RE, LEAD_EVENTS, TREND_MIN_IMPRESSIONS,
+  type RankedKeyword, type Warning, deltaPct, FORM_EVENT_RE, LEAD_EVENTS, TREND_MIN_IMPRESSIONS,
 } from "@/lib/dashboard"
 
 const DAY = 86400000
@@ -156,6 +157,7 @@ function totals(rows: GscRow[]) {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10
+const pctTxt = (v: number) => `${(v * 100).toFixed(1).replace(".", ",")}%`
 
 function kwItem(r: GscRow, prev?: GscRow): KeywordItem {
   return { query: r.keys[0], position: round1(r.position), prevPosition: prev ? round1(prev.position) : null, impressions: r.impressions, clicks: r.clicks }
@@ -472,6 +474,30 @@ export async function readDashboard(q: DashboardQuery, fresh = false): Promise<D
     brand: kwCur.filter(r => isBrandQuery(r.keys[0])).map(r => kwItem(r, prevKw.get(r.keys[0]))).sort(kwSort).slice(0, 20),
   }
 
+  // ── Beste en slechtste zoekwoorden ──
+  // Beste = meeste klikken. Slechtste = veel gezocht maar weinig opbrengst: de klikken die je laat liggen
+  // t.o.v. een top-3-positie. Dalers = duidelijk gezakt t.o.v. de vergelijkingsperiode.
+  const model = buildCtrModel(kwCur)
+  const minImp = Math.max(20, Math.round((tCur.impressions || 0) / 1000))
+  const ranked = (r: GscRow, reason: string, missed?: number): RankedKeyword => {
+    const p = prevKw.get(r.keys[0])
+    return { ...kwItem(r, p), prevClicks: p ? p.clicks : null, reason, ...(missed !== undefined ? { missed: Math.round(missed) } : {}) }
+  }
+  const best = nonBrand.filter(r => r.clicks > 0).sort((a, b) => b.clicks - a.clicks || a.position - b.position).slice(0, 10)
+    .map(r => ranked(r, r.position <= 3 ? `Top 3 · CTR ${pctTxt(r.clicks / r.impressions)}` : r.position <= 10 ? `Pagina 1 · CTR ${pctTxt(r.clicks / r.impressions)}` : `Positie ${String(round1(r.position)).replace(".", ",")}, toch klikken`))
+  const worst = nonBrand.filter(r => r.impressions >= minImp)
+    .map(r => ({ r, missed: Math.max(0, clicksAt(model, r.impressions, Math.min(3, r.position)) - r.clicks) }))
+    .filter(x => x.missed >= 1).sort((a, b) => b.missed - a.missed).slice(0, 10)
+    .map(({ r, missed }) => ranked(r,
+      r.position > 20 ? `Staat te laag (positie ${String(round1(r.position)).replace(".", ",")}): bijna niemand ziet de pagina`
+        : r.position > 10 ? `Net buiten pagina 1 (positie ${String(round1(r.position)).replace(".", ",")})`
+        : `Op pagina 1 maar weinig klikken (CTR ${pctTxt(r.clicks / r.impressions)}): titel en omschrijving trekken niet`, missed))
+  const fallers = cmp ? nonBrand.filter(r => r.impressions >= minImp).map(r => ({ r, p: prevKw.get(r.keys[0]) }))
+    .filter((x): x is { r: GscRow; p: GscRow } => !!x.p && x.r.position - x.p.position >= Math.max(2, x.p.position * 0.15))
+    .sort((a, b) => (b.r.position - b.p.position) * b.r.impressions - (a.r.position - a.p.position) * a.r.impressions).slice(0, 10)
+    .map(({ r, p }) => ranked(r, `Gezakt van ${String(round1(p.position)).replace(".", ",")} naar ${String(round1(r.position)).replace(".", ",")}${p.clicks > r.clicks ? `, ${p.clicks - r.clicks} klikken minder` : ""}`)) : []
+  const ranking = { best, worst, fallers, minImpressions: minImp }
+
   // ── Pagina's ──
   const sess = new Map<string, number>(), sessPrev = new Map<string, number>(), reqByPage = new Map<string, number>()
   for (const r of g?.landing || []) sess.set(ga4Path(r.dims[0]), (sess.get(ga4Path(r.dims[0])) || 0) + r.mets[0])
@@ -550,7 +576,7 @@ export async function readDashboard(q: DashboardQuery, fresh = false): Promise<D
   const value: DashboardData = {
     range: cur, compareRange: cmp, dataUntil, filters: { regio, dienst },
     cards, series, keywords, pages: pages.slice(0, 200), channels, local, drivers, trends, warnings, notes, measurement,
-    conclusion: buildConclusion(partial), errors, stalled, competitors, campaigns,
+    conclusion: buildConclusion(partial), errors, stalled, competitors, campaigns, ranking,
   }
   if (!errors.gsc && !errors.ga4) cache.set(cacheKey, { at: Date.now(), value })
   return value

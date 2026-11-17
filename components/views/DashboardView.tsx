@@ -154,6 +154,8 @@ export default function DashboardView() {
 
           <GoogleDevelopment data={data} loading={!data} />
 
+          <KeywordRanking data={data} />
+
           <div className="dash-grid">
             <Drivers data={data} />
             <TopPages data={data} />
@@ -502,6 +504,50 @@ function Drivers({ data }: { data: DashboardData | null }) {
           <ul className="dash-drivers">
             {data.drivers.map((d, i) => <li key={i} className={`tone-${d.tone}`}>{d.tone === "up" ? <TrendingUp aria-hidden /> : <TrendingDown aria-hidden />}<span>{d.text}</span></li>)}
           </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ── Beste en slechtste zoekwoorden ──────────────────────────────────────────
+const RANK_TABS = [
+  { key: "best", label: "Beste", sub: "Meeste Google-klikken (zonder merk)" },
+  { key: "worst", label: "Slechtste", sub: "Veel gezocht, weinig opbrengst: klikken die je laat liggen t.o.v. een top-3-positie" },
+  { key: "fallers", label: "Grootste dalers", sub: "Duidelijk gezakt t.o.v. de vergelijkingsperiode" },
+] as const
+
+function KeywordRanking({ data }: { data: DashboardData | null }) {
+  const { openSubject } = useWorkspace()
+  const [tab, setTab] = useState<(typeof RANK_TABS)[number]["key"]>("best")
+  const r = data?.ranking
+  const tabs = RANK_TABS.filter(t => t.key !== "fallers" || !!data?.compareRange)
+  const rows = r ? r[tab] : []
+  const meta = RANK_TABS.find(t => t.key === tab)!
+  return (
+    <section className="card dash-rank" aria-labelledby="rank-title">
+      <div className="card-head">
+        <div>
+          <h2 className="card-title" id="rank-title"><Award aria-hidden />Beste en slechtste zoekwoorden</h2>
+          <p className="card-sub">{meta.sub}{tab !== "best" && r ? `. Alleen zoekwoorden met minstens ${r.minImpressions} vertoningen.` : "."} Klik voor de analyse.</p>
+        </div>
+        <div className="seg" role="tablist" aria-label="Beste of slechtste zoekwoorden">
+          {tabs.map(t => <button key={t.key} role="tab" aria-selected={tab === t.key} className={tab === t.key ? "is-active" : ""} onClick={() => setTab(t.key)}>{t.label}{r ? <small> {r[t.key].length}</small> : null}</button>)}
+        </div>
+      </div>
+      <div className="card-body">
+        {!data ? <Skeleton height={180} /> : !r || rows.length === 0 ? <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>{tab === "best" ? "Nog geen zoekwoorden met klikken in deze periode." : tab === "worst" ? "Geen zoekwoorden die opvallend weinig opleveren." : "Geen zoekwoorden die duidelijk zijn gezakt."}</p> : (
+          <ol className="rank-list">
+            {rows.map((k, i) => (
+              <li key={k.query}><button className={`rank-row is-${tab}`} onClick={() => openSubject({ query: k.query })}>
+                <span className="rank-n">{i + 1}</span>
+                <span className="rank-main"><b className="truncate">{k.query}</b><span className="rank-reason">{k.reason}</span></span>
+                <span className="rank-stat"><b>{pos(k.position)}</b><small>positie{k.prevPosition !== null && Math.abs(k.prevPosition - k.position) >= 0.5 ? <> · was {pos(k.prevPosition)}</> : null}</small></span>
+                <span className="rank-stat"><b>{num(k.clicks)}</b><small>klikken{k.prevClicks !== null && data.compareRange ? <> · <Diff v={k.clicks - k.prevClicks} /></> : null}</small></span>
+                <span className="rank-stat">{tab === "worst" && k.missed ? <><b className="txt-down">±{num(k.missed)}</b><small>laat je liggen</small></> : <><b>{num(k.impressions)}</b><small>vertoningen</small></>}</span>
+              </button></li>
+            ))}
+          </ol>
         )}
       </div>
     </section>

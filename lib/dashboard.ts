@@ -35,6 +35,13 @@ export interface KeywordItem {
   clicks: number
 }
 
+// Beste en slechtste zoekwoorden (zonder merk), met in gewone taal waarom
+export interface RankedKeyword extends KeywordItem {
+  prevClicks: number | null
+  reason: string
+  missed?: number   // klikken die je laat liggen t.o.v. een top-3-positie
+}
+
 export interface PageItem {
   path: string
   clicks: number
@@ -117,6 +124,7 @@ export interface DashboardData {
   }
   series: SeriesPoint[]
   keywords: { page1: KeywordItem[]; bijna: KeywordItem[]; newPage1: KeywordItem[]; lostPage1: KeywordItem[]; brand: KeywordItem[] }
+  ranking?: { best: RankedKeyword[]; worst: RankedKeyword[]; fallers: RankedKeyword[]; minImpressions: number }
   pages: PageItem[]
   channels: { name: string; sessions: number; prevSessions: number | null; requests: number | null }[]
   local: { key: string; label: string; provincie: string | null; clicks: number; impressions: number; prevImpressions: number | null; position: number | null }[]
