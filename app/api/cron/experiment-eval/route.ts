@@ -4,6 +4,8 @@ import { dateWindow, gscQuery, serviceSearchConsole, toUrl } from "@/lib/server/
 import { logged } from "@/lib/server/synclog"
 import { LAUNCH_DATES } from "@/lib/pages"
 import { recomputeLessons } from "@/lib/server/learning"
+import { readChecks } from "@/lib/server/checks"
+import { positionVerdict } from "@/lib/measure"
 
 export const maxDuration = 120
 
@@ -151,7 +153,7 @@ function finalSearchVerdict(exp: any, m: Result): Verdict | null {
   const pair = !!(exp.query && exp.page && b.targetPage)
   const base = pair ? (typeof b.pairPosition === "number" ? b.pairPosition : 100) : (b.position ?? b.positionNow)
   if (typeof base !== "number" || typeof m.position !== "number") return null
-  return m.position < base - 0.5 ? "succesvol" : m.position > base + 0.5 ? "niet_succesvol" : "onduidelijk"
+  return positionVerdict(base, m.position)
 }
 
 // GET /api/cron/experiment-eval — dagelijks: meet experimenten na 14, 28 en 56 dagen,
@@ -186,7 +188,13 @@ export async function GET(request: Request) {
       let verdict: Verdict | null = null
 
       for (const [days, col] of milestones) {
-        if (metric === "technisch") {
+        if (metric === "controle") {
+          const open = await readChecks(true).catch(() => null)
+          const still = open ? open.some(c => c.id === exp.baseline?.checkId) : true
+          update[col] = { measuredAt: today(), scope: "controle", summary: still ? "Probleem nog aanwezig" : "Probleem niet meer gevonden" }
+          if (open && !still) verdict = "succesvol"
+          else if (days >= 28) verdict = "niet_succesvol"
+        } else if (metric === "technisch") {
           const { result, verdict: v } = await measureTechnical(supabase, exp)
           update[col] = result
           // Technisch: geslaagd zodra alles hersteld is; eindoordeel na 28 dagen

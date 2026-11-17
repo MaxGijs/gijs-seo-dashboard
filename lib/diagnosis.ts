@@ -40,7 +40,7 @@ export interface PageCluster {
 
 const STOP = new Set(["de", "het", "een", "in", "van", "voor", "en", "met", "op", "bij", "te", "wat", "hoe", "is", "je", "mijn", "uw", "aan", "of"])
 
-const MAATREGEL_PAGES: [RegExp, string, string][] = [
+export const MAATREGEL_PAGES: [RegExp, string, string][] = [
   [/spouw/, "/maatregelen/spouwmuurisolatie", "spouwmuurisolatie"],
   [/dakisol/, "/maatregelen/dakisolatie", "dakisolatie"],
   [/vloerisol/, "/maatregelen/vloerisolatie", "vloerisolatie"],
@@ -144,7 +144,9 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     { label: "Doorklik (CTR)", value: pct(m.ctr), sub: m.position ? `verwacht ±${pct(ctx.model.at(m.position))}` : undefined },
   ]
 
-  if (signal.kind === "techniek" && signal.tech) {
+  if (signal.kind === "techniek" && signal.tech?.type === "datakwaliteit" && signal.tech.check) {
+    facts.splice(0, facts.length, { label: "Onderdeel", value: signal.tech.check.area }, { label: "Ernst", value: signal.tech.check.severity === "error" ? "Hoog" : "Middel" })
+  } else if (signal.kind === "techniek" && signal.tech) {
     const byProv = new Map<string, number>()
     for (const p of signal.tech.pages) byProv.set(p.provincie || "overig", (byProv.get(p.provincie || "overig") || 0) + 1)
     facts.splice(0, facts.length,
@@ -184,7 +186,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
       break
     case "techniek": {
       const t = signal.tech
-      situation = t?.type === "sitemap-fout"
+      situation = t?.type === "datakwaliteit" && t.check ? `${t.check.what} ${t.check.effect}` : t?.type === "sitemap-fout"
         ? `${num(t.pages.length)} URL's uit de sitemap geven een foutmelding. Google probeert ze te bezoeken en treft een lege pagina aan. Dat kost crawlbudget en vertrouwen, en de bedoelde pagina's krijgen geen bezoek.`
         : `${num(t?.pages.length || 0)} belangrijke pagina's zijn niet geïndexeerd en staan langer live dan de opbouwfase. Zolang Google ze niet opneemt, kunnen ze nergens op ranken.`
       break
@@ -342,7 +344,12 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   // ── Technische signalen uit de pagina-audit
   if (signal.kind === "techniek" && signal.tech) {
     const t = signal.tech
-    if (t.type === "sitemap-fout") {
+    if (t.type === "datakwaliteit" && t.check) {
+      findings.push({ tone: "spoed", text: t.check.what })
+      findings.push({ tone: "feit", text: `Gevolg: ${t.check.effect}` })
+      for (const st of t.check.steps) steps.push(st)
+      steps.push({ title: "Laat het dashboard opnieuw controleren", detail: "Elke nacht wordt dit opnieuw nagekeken. Is het opgelost, dan verdwijnt deze taak vanzelf uit de lijst." })
+    } else if (t.type === "sitemap-fout") {
       const same = t.pages.filter(p => p.plaats && p.gemeente && p.plaats === p.gemeente)
       const statuses = [...new Set(t.pages.map(p => p.status ?? "geen antwoord"))]
       findings.push({ tone: "spoed", text: `${num(t.pages.length)} URL's in de sitemap geven HTTP ${statuses.join("/")} (nachtelijke controle).` })
@@ -587,7 +594,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   const alreadyResolved = signal.kind === "dubbel" && steps[0]?.title.startsWith("Niets aanpassen")
   const actionType: ActionType =
     alreadyResolved ? "geen"
-    : signal.kind === "techniek" ? (signal.tech?.type === "niet-geindexeerd" ? "indexering" : "technisch")
+    : signal.kind === "techniek" ? (signal.tech?.type === "datakwaliteit" ? "controle" : signal.tech?.type === "niet-geindexeerd" ? "indexering" : "technisch")
     : spoedFound && !indexIssue ? "technisch"
     : indexIssue ? "indexering"
     : signal.kind === "eigen" ? (q || target ? "ranking" : "handmatig")
@@ -600,7 +607,7 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
   const titleChange = steps.some(st => /title|H1/i.test(st.title) && !/níet|niet aanpassen/i.test(st.title))
   const contentWork = steps.some(st => /^Breid|eigen plek|unieke/i.test(st.title))
   const ER: Record<ActionType, [Level, Level]> = {
-    technisch: ["middel", "laag"], indexering: ["laag", "laag"], consolidatie: ["middel", "middel"],
+    technisch: ["middel", "laag"], indexering: ["laag", "laag"], controle: ["laag", "laag"], consolidatie: ["middel", "middel"],
     snippet: ["laag", "middel"], handmatig: [signal.effort || "middel", signal.risk || "laag"], ranking: [contentWork ? "middel" : "laag", titleChange ? "middel" : "laag"], merk: ["laag", "laag"], geen: ["laag", "laag"],
   }
   const [effort, risk] = ER[actionType]
@@ -674,6 +681,7 @@ export function baselineFrom(signal: Signal, detail: AdviceDetail | null, diag: 
   if (signal.kind === "techniek" && signal.tech) {
     base.paths = signal.tech.pages.map(p => p.path)
     base.count = signal.tech.pages.length
+    if (signal.tech.check) base.checkId = signal.tech.check.id
   }
   return base
 }

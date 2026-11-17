@@ -3,7 +3,20 @@
 
 import type { ActionType } from "./types"
 
-export type SuccessMetric = "technisch" | "indexering" | "consolidatie" | "ctr" | "position" | "geen"
+export type SuccessMetric = "technisch" | "indexering" | "consolidatie" | "ctr" | "position" | "geen" | "controle"
+
+// Succes bij positie: een betekenisvolle stap, groter dan normale meetruis.
+// Geslaagd = pagina 1 bereikt (van >10 naar ≤10) óf minstens 2 posities en 15% beter.
+// Niet geslaagd = net zo'n stap achteruit. Daartussen = geen duidelijk effect.
+export function positionStep(base: number) { return Math.max(2, Math.round(base * 0.15 * 10) / 10) }
+export function positionVerdict(base: number, now: number): "succesvol" | "niet_succesvol" | "onduidelijk" {
+  if (base > 10 && now <= 10) return "succesvol"
+  const step = positionStep(base)
+  if (now <= base - step) return "succesvol"
+  if (now >= base + step || (base <= 10 && now > 10)) return "niet_succesvol"
+  return "onduidelijk"
+}
+export const POSITION_RULE = "pagina 1 bereikt (top 10) of minstens 2 posities én 15% beter dan bij de nulmeting; even ver achteruit (of van pagina 1 af) is niet geslaagd, daartussen is geen duidelijk effect"
 
 export const SUCCESS_METRIC: Record<ActionType, SuccessMetric> = {
   technisch: "technisch",
@@ -14,6 +27,7 @@ export const SUCCESS_METRIC: Record<ActionType, SuccessMetric> = {
   merk: "geen",
   geen: "geen",
   handmatig: "geen",
+  controle: "controle",
 }
 
 export interface MeasurePlan {
@@ -26,6 +40,18 @@ export interface MeasurePlan {
 export function measurePlan(type: ActionType, ctx: { page?: string | null; query?: string | null; count?: number } = {}): MeasurePlan {
   const page = ctx.page || "de pagina"
   switch (type) {
+    case "controle":
+      return {
+        label: "Controle of reparatie van een meting",
+        timeline: [
+          { l: "Nu", s: "probleem vastgelegd" },
+          { l: "Elke nacht", s: "opnieuw gecontroleerd" },
+          { l: "Opgelost", s: "taak sluit vanzelf" },
+          { l: "28 dagen", s: "eindoordeel" },
+        ],
+        success: "Geslaagd zodra de nachtelijke controle het probleem niet meer vindt. Lukt dat niet binnen 28 dagen, dan blijft de taak open staan.",
+        baselineText: "het gevonden probleem",
+      }
     case "technisch":
       return {
         label: "Technische reparatie",
@@ -84,8 +110,8 @@ export function measurePlan(type: ActionType, ctx: { page?: string | null; query
           { l: "56 dagen", s: "eindoordeel" },
         ],
         success: ctx.query && ctx.page
-          ? `Geslaagd als ${ctx.page} voor "${ctx.query}" na 56 dagen minstens 0,5 positie beter staat dan bij de nulmeting (gemeten op deze zoekwoord-paginacombinatie).`
-          : "Geslaagd als de gemiddelde positie na 56 dagen minstens 0,5 beter is dan bij de nulmeting.",
+          ? `Na 56 dagen, gemeten op ${ctx.page} voor "${ctx.query}": geslaagd bij ${POSITION_RULE}.`
+          : `Na 56 dagen: geslaagd bij ${POSITION_RULE}.`,
         baselineText: ctx.query && ctx.page ? `de positie van ${ctx.page} voor "${ctx.query}" én van het zoekwoord als geheel` : "positie, vertoningen, clicks en doorklik",
       }
     case "merk":

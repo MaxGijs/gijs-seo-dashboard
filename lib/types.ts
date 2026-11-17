@@ -26,11 +26,21 @@ export interface MetricScope {
 }
 
 // Soort aanpassing: bepaalt nulmeting en succescriterium
-export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen" | "handmatig"
+export type ActionType = "technisch" | "indexering" | "consolidatie" | "snippet" | "ranking" | "merk" | "geen" | "handmatig" | "controle"
 
 // Technisch signaal uit de pagina-audit (gegroepeerd)
+export interface DataCheck {
+  id: string
+  area: string                // waar het over gaat: "Meting", "Nieuwsbronnen", "Synchronisatie"
+  severity: "error" | "warning"
+  what: string                // wat is er mis
+  effect: string              // wat is het gevolg
+  steps: { title: string; detail: string }[]
+}
+
 export interface TechIssue {
-  type: "sitemap-fout" | "niet-geindexeerd"
+  type: "sitemap-fout" | "niet-geindexeerd" | "datakwaliteit"
+  check?: DataCheck
   pages: { path: string; status: number | null; provincie: string | null; gemeente: string | null; plaats: string | null; reason?: string }[]
 }
 

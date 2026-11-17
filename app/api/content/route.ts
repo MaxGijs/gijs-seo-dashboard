@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
-import { buildIdea, siteContext } from "@/lib/server/content"
+import { buildIdea, siteContext, sourceOverview } from "@/lib/server/content"
 import { termsInText, topicKeywords } from "@/lib/content/build"
 import { impactOf, PROVINCES, regionsIn, reliabilityOf, servicesIn, SCAN_SERVICE } from "@/lib/content/model"
 
@@ -23,6 +23,7 @@ export async function GET(req: Request) {
     sb.from("seo_pages").select("path").eq("page_type", "maatregel").eq("in_sitemap", true),
     sb.from("content_news").select("id", { count: "exact", head: true }),
   ])
+  const sources = await sourceOverview().catch(() => [])
   if (ideas.error) return NextResponse.json({ error: ideas.error.message }, { status: 500 })
   const list = (services.data || []).map(p => p.path.split("/")[2]).filter(Boolean)
   return NextResponse.json({
@@ -31,6 +32,7 @@ export async function GET(req: Request) {
     lastScan: scan.data ?? null,
     services: [SCAN_SERVICE, ...list],
     newsCount: news.count ?? 0,
+    sources,
   })
 }
 

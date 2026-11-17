@@ -4,7 +4,9 @@
 //
 // Veiligheidsregels (afgesproken met Max):
 // 1. Elke les toont de conclusie, het bewijs en wat er aan de prioritering verandert.
-// 2. Alleen lessen met minstens middelmatige zekerheid worden automatisch toegepast.
+// 2. Eén regel, overal hetzelfde: een les uit metingen ontstaat én wordt toegepast vanaf
+//    LESSON_MIN_MEASUREMENTS vergelijkbare afgeronde metingen. Afwijzingen tellen direct mee
+//    (×0,85 per afwijzing); vanaf LESSON_MIN_REJECTIONS verschijnt daar een les van.
 // 3. Per advies telt hooguit één les mee (de sterkste), zodat effecten niet opstapelen.
 // 4. Elke les kan worden teruggedraaid; dat wordt vastgelegd.
 
@@ -127,7 +129,9 @@ export interface ExperimentFact { outcome: "succesvol" | "niet_succesvol" | "ond
 export interface DecisionFact { kind: string; intent?: string; status: string; note?: string | null }
 export interface ContentFact { service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null }
 
-export const MIN_GROUP = 4
+export const LESSON_MIN_MEASUREMENTS = 6
+export const LESSON_MIN_REJECTIONS = 3
+export const MIN_GROUP = LESSON_MIN_MEASUREMENTS
 
 export function computeLessons(input: { experiments: ExperimentFact[]; decisions: DecisionFact[]; content: ContentFact[] }): Lesson[] {
   const out: Lesson[] = []
@@ -152,7 +156,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       if (Math.abs(diff) < 0.2) continue
       const match = Object.fromEntries(k.split("|").map(p => p.split("="))) as LessonMatch
       const factor = Math.round(Math.min(1.3, Math.max(0.7, 1 + diff)) * 20) / 20
-      const confidence = list.length >= 12 ? "hoog" : list.length >= 6 ? "middel" : "laag"
+      const confidence = list.length >= 12 ? "hoog" : "middel"
       const good = diff > 0
       out.push({
         key: `meting|${k}`, source: "meting",
@@ -162,9 +166,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
         confidence,
         effect: {
           type: "prioriteit", factor, match,
-          text: confidence === "laag"
-            ? `Nog niet toegepast: pas vanaf 6 metingen past het systeem dit zelf toe (×${factorNl(factor)}).`
-            : `Vergelijkbare adviezen ${good ? "krijgen voorrang" : "zakken in de prioriteit"} (×${factorNl(factor)}).`,
+          text: `Vergelijkbare adviezen ${good ? "krijgen voorrang" : "zakken in de prioriteit"} (×${factorNl(factor)}).`,
         },
       })
     }
@@ -175,7 +177,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
   const byGroup = new Map<string, DecisionFact[]>()
   for (const d of rej) byGroup.set(`${d.kind}|${d.intent || "-"}`, [...(byGroup.get(`${d.kind}|${d.intent || "-"}`) || []), d])
   for (const [k, list] of byGroup) {
-    if (list.length < 3) continue
+    if (list.length < LESSON_MIN_REJECTIONS) continue
     const [kind, intent] = k.split("|")
     const accepted = input.decisions.filter(d => d.kind === kind && (d.intent || "-") === intent && ["goedgekeurd", "in_uitvoering", "uitgevoerd", "in_evaluatie", "succesvol", "niet_succesvol"].includes(d.status)).length
     const reasons = [...new Set(list.map(d => (d.note || "").trim()).filter(Boolean))].slice(0, 5)
@@ -195,7 +197,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
   const cGroups = new Map<string, ContentFact[]>()
   for (const c of cRej) cGroups.set(`${c.service || "-"}|${c.origin}`, [...(cGroups.get(`${c.service || "-"}|${c.origin}`) || []), c])
   for (const [k, list] of cGroups) {
-    if (list.length < 3) continue
+    if (list.length < LESSON_MIN_REJECTIONS) continue
     const [service, origin] = k.split("|")
     const tags = new Map<string, number>()
     list.forEach(c => c.tags.forEach(t => tags.set(t, (tags.get(t) || 0) + 1)))
@@ -214,7 +216,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
   for (const c of measured) if (c.format) byFormat.set(c.format, [...(byFormat.get(c.format) || []), c])
   const avgAll = measured.length ? measured.reduce((s, c) => s + (c.clicks30 || 0), 0) / measured.length : 0
   for (const [format, list] of byFormat) {
-    if (list.length < 3 || measured.length < 6) continue
+    if (list.length < LESSON_MIN_MEASUREMENTS) continue
     const avg = list.reduce((s, c) => s + (c.clicks30 || 0), 0) / list.length
     if (!avgAll || Math.abs(avg / avgAll - 1) < 0.3) continue
     out.push({
@@ -222,7 +224,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       title: `${format} ${avg > avgAll ? "trekt meer bezoekers dan gemiddeld" : "trekt minder bezoekers dan gemiddeld"}`,
       conclusion: `Gemiddeld ${Math.round(avg)} klikken na 30 dagen, tegen ${Math.round(avgAll)} voor alle gemeten publicaties (${list.length} van ${measured.length} publicaties).`,
       evidence: { n: list.length },
-      confidence: list.length >= 6 ? "middel" : "laag",
+      confidence: "middel",
       effect: { type: "info", text: "Alleen ter informatie: het systeem past dit nog niet zelf toe." },
     })
   }

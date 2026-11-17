@@ -1,4 +1,4 @@
-import type { Evidence, GscRow, Level, Priority, Signal, SignalKind, Streak } from "./types"
+import type { DataCheck, Evidence, GscRow, Level, Priority, Signal, SignalKind, Streak } from "./types"
 import { buildCtrModel, clicksAt, gainFromMove, type CtrModel } from "./ctr"
 import { num, pos, pct } from "./format"
 import { actionFor, classifyPage, classifyQuery, estimateFor, INTENT_META, placeIn, regionSegments } from "./intent"
@@ -61,6 +61,7 @@ export interface SignalInput {
   ga4Pages?: { path: string; sessions: number; keyEvents: number }[]  // GA4 per landingspagina (28 d)
   feedback?: { key: string; kind: SignalKind; intent?: string }[]    // eerder afgewezen of 'onvoldoende bewijs'
   lessons?: Pick<Lesson, "key" | "title" | "effect" | "status" | "confidence">[]  // wat we geleerd hebben (Wat hebben we geleerd?)
+  checks?: DataCheck[]     // metingen of koppelingen die niet goed werken (controletaken)
 }
 
 // Inspanning en wijzigingsrisico per soort signaal (in het zijpaneel verfijnd per aanpassing)
@@ -326,11 +327,26 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     }
   }
 
+  // Controletaken: wat niet (goed) gemeten wordt of niet werkt. Altijd bovenaan, net als technische blokkades.
+  for (const c of input.checks || []) {
+    techDrafts.push({
+      key: signalKey("techniek", `controle-${c.id}`),
+      kind: "techniek",
+      headline: c.what.length > 90 ? `${c.what.slice(0, 87)}…` : c.what,
+      title: `${c.area}: ${c.severity === "error" ? "werkt niet" : "controleren"}`,
+      summary: `${c.what} ${c.effect}`,
+      metrics: {}, gain: 0, evidence: "sterk",
+      evidenceReason: "Automatisch vastgesteld door de controle van het dashboard.",
+      action: c.steps[0]?.title || "Controleer en herstel",
+      tech: { type: "datakwaliteit", pages: [], check: c },
+    })
+  }
+
   // Score en prioriteit. Prioriteit is relatief: de beste kansen in jóuw huidige data,
   // gewogen naar verwachte winst, bewijskracht, urgentie en zoekintentie (zakelijke waarde).
   const scored = [
     // Technische blokkades eerst, op volgorde van omvang
-    ...techDrafts.map(d => ({ ...d, ...EFFORT_RISK.techniek, score: 10000 + (d.tech?.pages.length || 0) })),
+    ...techDrafts.map(d => ({ ...d, ...EFFORT_RISK.techniek, score: 10000 + (d.tech?.check ? (d.tech.check.severity === "error" ? 50 : 5) : d.tech?.pages.length || 0) })),
     ...drafts.map(d => {
       const intentWeight = INTENT_META[d.intent || "informatief"].weight
       // Al opgelost: blijft zichtbaar als "controleer en sluit", maar telt niet mee in de wachtrij

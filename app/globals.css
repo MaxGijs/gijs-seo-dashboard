@@ -893,3 +893,10 @@ img, svg { display: block; max-width: 100%; }
 .link-anchors .chip { height: 28px; font-size: var(--fs-xs); }
 .link-anchors .chip svg { width: 12px; height: 12px; }
 .today-link { color: inherit; display: inline-flex; align-items: center; gap: 6px; } .today-link svg { width: 18px; height: 18px; color: var(--accent-700); } .today-link:hover { color: var(--accent-700); }
+.content-side-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.content-sources { margin-top: 16px; }
+.src-group { font-size: var(--fs-sm); margin: 4px 0 8px; }
+.src-group + .table-wrap { margin-bottom: 16px; }
+.src-web { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-sm); margin-bottom: 10px; }
+@media (max-width: 1024px) { .content-side-2 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .card-head { flex-wrap: wrap; } }

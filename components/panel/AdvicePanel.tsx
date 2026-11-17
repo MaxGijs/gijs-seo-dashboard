@@ -267,7 +267,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 <ul>{rec!.changes.map((c, i) => <li key={i}>{c}</li>)}</ul>
               </div>
             )}
-            {signal.kind === "techniek" && signal.tech && (
+            {signal.kind === "techniek" && signal.tech && signal.tech.pages.length > 0 && (
               <details className="evidence-details">
                 <summary>Alle {signal.tech.pages.length} betrokken URL&apos;s</summary>
                 <table className="mini-table" style={{ marginTop: 10 }}>

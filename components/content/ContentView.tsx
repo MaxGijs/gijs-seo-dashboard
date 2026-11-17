@@ -12,12 +12,15 @@ import {
 import ContentPanel from "./ContentPanel"
 import AddIdeaDialog from "./AddIdeaDialog"
 
+export interface SourceRow { id: string; name: string; publisher: string; region: string | null; status: "actief" | "storing" | "geblokkeerd" | "web"; lastOk: string | null; lastError: string | null; failedRuns: number; itemsLastRun: number | null; new24h: number; relevant30d: number; why?: string }
+
 export interface ContentData {
   ideas: ContentIdea[]
   capacity: { service: string; mode: CapacityMode; note: string | null; updated_at: string; updated_by: string | null }[]
   lastScan: { run_at: string; ok: boolean; details: any; error: string | null } | null
   services: string[]
   newsCount: number
+  sources?: SourceRow[]
 }
 
 type Tab = "beoordelen" | "productie" | "gepubliceerd" | "archief"
@@ -97,7 +100,7 @@ function Capacity({ data, onSaved }: { data: ContentData; onSaved: () => void })
       <div className="card-head">
         <div>
           <h2 className="card-title" id="cap-title">Capaciteit per dienst</h2>
-          <p className="card-sub">Telt mee in de score en bepaalt de call-to-action (bijvoorbeeld alleen digitale scans).</p>
+          <p className="card-sub">Telt mee in de score: actief promoten geeft voorrang, minder promoten laat kansen zakken.</p>
         </div>
       </div>
       <div className="card-body">
@@ -174,23 +177,49 @@ function sourceName(id: string) {
   return `Rijksoverheid · "${id.replace(/^ro-/, "")}"`
 }
 
+const SRC_STATUS: Record<SourceRow["status"], { label: string; tone: "success" | "warning" | "error" | "neutral" }> = {
+  actief: { label: "Actief", tone: "success" }, storing: { label: "Storing", tone: "warning" }, geblokkeerd: { label: "Geblokkeerd", tone: "error" }, web: { label: "Alleen via webonderzoek", tone: "neutral" },
+}
+
 function Sources({ data }: { data: ContentData }) {
-  const st: { id: string; ok: boolean; items: number; error?: string }[] = data.lastScan?.details?.bronStatus || []
+  const rows = data.sources || []
+  const nightly = rows.filter(r => r.status !== "web").sort((a, b) => a.name.localeCompare(b.name))
+  const web = rows.filter(r => r.status === "web")
+  const when = (iso: string | null) => (iso ? `${ago(iso)}` : "—")
   return (
-    <section className="card" aria-labelledby="src-title">
+    <section className="card content-sources" aria-labelledby="src-title">
       <div className="card-head">
         <div>
           <h2 className="card-title" id="src-title">Bronnen</h2>
-          <p className="card-sub">Elke nacht gelezen: overheid, Milieu Centraal en landelijk en regionaal nieuws. Alleen berichten over woningen en een dienst van Gijs worden een kans. Op maandag zoekt Claude daarnaast het hele web af.</p>
+          <p className="card-sub">{nightly.filter(r => r.status === "actief").length} van {nightly.length} automatische bronnen werken. Alleen berichten met een dienst van Gijs of een verduurzamingsthema in de kop of de eerste zinnen worden een kans; de rest blijft in het archief.</p>
         </div>
       </div>
       <div className="card-body">
-        {!st.length ? <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Nog niet gescand.</p> : (
-          <ul className="src-list">
-            {st.sort((a, b) => sourceName(a.id).localeCompare(sourceName(b.id))).map(s => (
-              <li key={s.id}><span>{sourceName(s.id)}</span>{s.ok ? <Badge tone="success" dot>{s.items} berichten</Badge> : <Badge tone="error" dot title={s.error}>niet bereikbaar</Badge>}</li>
-            ))}
-          </ul>
+        {!rows.length ? <p className="muted small">Nog niet gescand.</p> : (
+          <>
+            <h3 className="src-group">Elke nacht automatisch gelezen</h3>
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Bron</th><th>Status</th><th>Laatst gelukt</th><th className="num">Laatste scan</th><th className="num">Nieuw (24 u)</th><th className="num">Relevant (30 d)</th></tr></thead>
+                <tbody>
+                  {nightly.map(r => (
+                    <tr key={r.id}>
+                      <td>{r.name}{r.region ? <span className="subtle"> · {r.region[0].toUpperCase() + r.region.slice(1)}</span> : null}</td>
+                      <td><Badge tone={SRC_STATUS[r.status].tone} dot title={r.lastError || undefined}>{SRC_STATUS[r.status].label}</Badge>{r.lastError && <span className="subtle small" style={{ display: "block" }}>{r.lastError}{r.failedRuns > 1 ? ` (${r.failedRuns}× op rij)` : ""}</span>}</td>
+                      <td className="nowrap">{when(r.lastOk)}</td>
+                      <td className="num">{r.itemsLastRun ?? "—"}</td>
+                      <td className="num">{r.new24h}</td>
+                      <td className="num">{r.relevant30d}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <h3 className="src-group">Alleen via webonderzoek</h3>
+            <ul className="src-web">
+              {web.map(r => <li key={r.id}><b>{r.name}</b> <span className="subtle">· {r.why}{r.id === "claude-web" && r.lastOk ? ` · laatste vondst ${ago(r.lastOk)}, ${r.relevant30d} relevant (30 d)` : ""}</span></li>)}
+            </ul>
+          </>
         )}
         <p className="field-hint">{num(data.newsCount)} berichten in het archief. Vakmedia en eigen klantvragen kun je toevoegen via “Idee toevoegen”.</p>
       </div>
@@ -294,11 +323,11 @@ export default function ContentView() {
             </div>
           )}
 
-          <div className="content-side">
+          <div className="content-side content-side-2">
             <Capacity data={data} onSaved={load} />
             <WhatWorks ideas={data.ideas} />
-            <Sources data={data} />
           </div>
+          <Sources data={data} />
         </>
       )}
 

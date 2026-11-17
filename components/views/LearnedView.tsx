@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { BookOpenCheck, CheckCircle2, CircleSlash, History, RotateCcw, Sparkles, Undo2 } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import type { Lesson } from "@/lib/learning"
+import { LESSON_MIN_MEASUREMENTS, LESSON_MIN_REJECTIONS, type Lesson } from "@/lib/learning"
 import { dateShort } from "@/lib/format"
 import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
 
@@ -51,6 +51,7 @@ export default function LearnedView() {
         <div>
           <h1 className="page-title">Wat hebben we geleerd?</h1>
           <p className="page-sub">Conclusies uit afgeronde metingen en jullie beslissingen, en wat het systeem daardoor zelf anders doet. Alles is terug te draaien.</p>
+          <p className="page-sub small"><Rule /></p>
         </div>
         <button className="btn btn-secondary btn-sm" disabled={!!busy} onClick={() => act({ action: "recompute" }, "Lessen opnieuw berekend")}><RotateCcw aria-hidden />Nu opnieuw berekenen</button>
       </div>
@@ -66,14 +67,14 @@ export default function LearnedView() {
 
       {!data ? <Skeleton height={160} /> : data.lessons.length === 0 ? (
         <div className="card"><EmptyState icon={<BookOpenCheck />} title="Nog niets geleerd"
-          text={<>Lessen ontstaan pas als er genoeg uitkomsten zijn: minstens {4} afgeronde metingen van dezelfde soort aanpassing, of 3 afwijzingen van dezelfde soort advies. Een meting is na 14, 28 en 56 dagen klaar. <b>Zo versnel je dit:</b> markeer elke uitgevoerde taak als uitgevoerd (dan start de meting), pas per pagina één ding tegelijk aan, en geef bij afwijzen altijd een reden.</>} /></div>
+          text={<><Rule /> Een meting is na 14, 28 en 56 dagen klaar. <b>Zo versnel je dit:</b> markeer elke uitgevoerde taak als uitgevoerd (dan start de meting), pas per pagina één ding tegelijk aan, en geef bij afwijzen altijd een reden.</>} /></div>
       ) : (
         <>
           <Section title="Automatisch toegepast" sub="Deze lessen veranderen nu de volgorde van adviezen of de score van contentkansen." icon={<Sparkles aria-hidden />}>
             {applied.length === 0 ? <p className="muted small">Nog geen lessen met voldoende zekerheid om zelf toe te passen.</p> : applied.map(l => <LessonCard key={l.key} l={l} busy={busy === l.key} onRevert={() => act({ action: "revert", key: l.key }, "Les teruggedraaid")} />)}
           </Section>
           {watching.length > 0 && (
-            <Section title="Observaties" sub="Opvallend, maar nog te weinig bewijs om zelf toe te passen." icon={<BookOpenCheck aria-hidden />}>
+            <Section title="Ter informatie" sub="Wordt (nog) niet automatisch toegepast." icon={<BookOpenCheck aria-hidden />}>
               {watching.map(l => <LessonCard key={l.key} l={l} busy={busy === l.key} onRevert={() => act({ action: "revert", key: l.key }, "Les uitgezet")} />)}
             </Section>
           )}
@@ -135,4 +136,9 @@ function LessonCard({ l, busy, onRevert, onRestore }: { l: Lesson; busy: boolean
       </div>
     </article>
   )
+}
+
+// Eén regel, op elke plek hetzelfde (komt uit lib/learning.ts)
+function Rule() {
+  return <>De regel: een les uit metingen ontstaat én wordt automatisch toegepast vanaf {LESSON_MIN_MEASUREMENTS} vergelijkbare afgeronde metingen. Een afgewezen advies telt direct mee voor vergelijkbare adviezen (×0,85 per afwijzing, nooit lager dan ×0,5); vanaf {LESSON_MIN_REJECTIONS} afwijzingen van dezelfde soort staat dat hier als les.</>
 }

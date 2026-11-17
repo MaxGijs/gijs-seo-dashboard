@@ -552,10 +552,10 @@ function Local({ data }: { data: DashboardData | null }) {
   return (
     <section className="card" aria-labelledby="local-title">
       <div className="card-head">
-        <div><h2 className="card-title" id="local-title"><MapPin aria-hidden />Lokale prestaties</h2><p className="card-sub">Per plaats waar de pagina over gaat</p></div>
-        <div className="seg" role="tablist" aria-label="Beste of slechtste">
-          <button role="tab" aria-selected={mode === "best"} className={mode === "best" ? "is-active" : ""} onClick={() => setMode("best")}>{data?.compareRange ? "Stijgers" : "Meeste"}</button>
-          <button role="tab" aria-selected={mode === "worst"} className={mode === "worst" ? "is-active" : ""} onClick={() => setMode("worst")}>{data?.compareRange ? "Dalers" : "Minste"}</button>
+        <div><h2 className="card-title" id="local-title"><MapPin aria-hidden />Lokale prestaties</h2><p className="card-sub">Per plaats waar de pagina over gaat. Gemeten op vertoningen in Google{data?.compareRange ? ": meer of minder dan in de vergelijkingsperiode" : ""}.</p></div>
+        <div className="seg" role="tablist" aria-label="Meer of minder vertoningen">
+          <button role="tab" aria-selected={mode === "best"} className={mode === "best" ? "is-active" : ""} onClick={() => setMode("best")}>{data?.compareRange ? "Meer" : "Meeste"}</button>
+          <button role="tab" aria-selected={mode === "worst"} className={mode === "worst" ? "is-active" : ""} onClick={() => setMode("worst")}>{data?.compareRange ? "Minder" : "Minste"}</button>
         </div>
       </div>
       <div className="card-body">
@@ -741,7 +741,7 @@ function LearnedBlock() {
     <section className="card" aria-labelledby="learn-title">
       <div className="card-head"><div><h2 className="card-title" id="learn-title"><BookOpenCheck aria-hidden />Wat hebben we geleerd?</h2><p className="card-sub">{applied.length ? `${applied.length} ${applied.length === 1 ? "les wordt" : "lessen worden"} automatisch toegepast` : "Uit afgeronde metingen en beslissingen"}</p></div><Link href="/geleerd" className="section-link">Alles<ArrowRight aria-hidden /></Link></div>
       <div className="card-body">
-        {active.length === 0 ? <p className="muted small">Nog niets: lessen ontstaan zodra er afgeronde metingen zijn (14, 28 en 56 dagen na een uitgevoerde taak) of adviezen herhaaldelijk worden afgewezen.</p> : (
+        {active.length === 0 ? <p className="muted small">Nog niets. Een les ontstaat en wordt toegepast vanaf 6 vergelijkbare afgeronde metingen, of vanaf 3 afwijzingen van dezelfde soort advies.</p> : (
           <ul className="dash-drivers">{active.slice(0, 3).map(l => <li key={l.key} className="tone-up"><BookOpenCheck aria-hidden /><span><b>{l.title}.</b> {l.effect?.text}</span></li>)}</ul>
         )}
       </div>

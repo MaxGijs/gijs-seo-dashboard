@@ -12,7 +12,8 @@ export type Impact = "regelgeving" | "subsidie" | "kosten" | "net" | "advies" | 
 export type Angle = "probleemgericht" | "negatief" | "positief" | "neutraal"
 export type Advice = "nieuw" | "bijwerken" | "samenvoegen" | "niets"
 export type Reliability = "overheid" | "voorlichting" | "vakmedia" | "nieuws" | "web" | "eigen-data" | "kalender" | "medewerker"
-export type CapacityMode = "actief" | "normaal" | "minder" | "alleen-digitaal" | "clustering" | "niet-beschikbaar"
+// Digitaal of fysiek hoort niet bij de beoordeling van een contentkans (operationele planning) en is bewust weggelaten.
+export type CapacityMode = "actief" | "normaal" | "minder" | "niet-beschikbaar"
 
 export interface SourceRef { title: string; url?: string; publisher: string; date?: string | null; reliability: Reliability; firstSeen?: boolean }
 // Gemeten = rechtstreeks uit data (Search Console, publicatiedatum); afgeleid = door een regel bepaald uit
@@ -118,8 +119,6 @@ export const CAPACITY_META: Record<CapacityMode, { label: string; factor: number
   actief: { label: "Actief promoten", factor: 1.15, hint: "Kansen voor deze dienst krijgen voorrang." },
   normaal: { label: "Normale capaciteit", factor: 1, hint: "Geen aanpassing." },
   minder: { label: "Tijdelijk minder promoten", factor: 0.7, hint: "Kansen zakken in de lijst." },
-  "alleen-digitaal": { label: "Alleen digitale scans", factor: 1, hint: "Call-to-action wordt de digitale energiescan." },
-  clustering: { label: "Fysiek alleen bij clustering", factor: 0.9, hint: "Regionale kansen: eerst digitaal, fysiek pas bij 2–3 afspraken per dag." },
   "niet-beschikbaar": { label: "Dienst tijdelijk niet beschikbaar", factor: 0, hint: "Kansen voor deze dienst worden niet voorgesteld." },
 }
 
@@ -196,6 +195,25 @@ const OWNERS = /(huiseigena|woningeigena|woningbezitter|koopwoning|eigen woning|
 export function isForHouseholds(text: string) {
   if (RENTERS.test(text) && !OWNERS.test(text)) return false
   return !BUSINESS.test(text) || HOUSEHOLD.test(text)
+}
+
+// Harde relevantiecontrole vóór er een kans van wordt gemaakt. Een dienst moet in de kop of de
+// eerste zinnen staan (niet ergens terloops onderaan), een algemeen verduurzamingsthema in de kop.
+// Gaat de kop over iets anders (zorgpremie, pensioen …), dan alleen door als er een dienst in de kop staat.
+// Bij twijfel: archiveren, niet als kans tonen.
+const OFFTOPIC = /(zorgpremie|zorgverzeker|zorgkosten|basisverzekering|ziekenhuis|pensioen|uitkering|kinderopvang|benzine|diesel|brandstofprijs|vliegtax|boodschappen|huurprijs|hypotheekrente|loonkosten|minimumloon)/i
+export function relevanceOf(title: string, summary: string, siteServices: string[]): { relevant: boolean; services: string[]; reason: string } {
+  const t = title.toLowerCase()
+  const lead = `${title} ${(summary || "").slice(0, 300)}`.toLowerCase()
+  const termsOf = (s: string) => SERVICE_TERMS[s] || [s.replace(/-/g, " ")]
+  const inTitle = siteServices.filter(s => termsOf(s).some(term => t.includes(term)))
+  const inLead = siteServices.filter(s => termsOf(s).some(term => lead.includes(term)))
+  const generalTitle = GENERAL_TERMS.some(g => t.includes(g))
+  const services = inLead.length ? inLead : generalTitle ? [SCAN_SERVICE] : []
+  if (!services.length) return { relevant: false, services: [], reason: "Geen dienst van Gijs of verduurzamingsthema in de kop of de eerste zinnen." }
+  if (OFFTOPIC.test(t) && !inTitle.length) return { relevant: false, services, reason: `Gaat in de kern over iets anders ("${(t.match(OFFTOPIC) || [""])[0]}"); verduurzaming wordt alleen terloops genoemd.` }
+  if (!isForHouseholds(`${title} ${summary}`)) return { relevant: false, services, reason: "Niet gericht op particuliere woningeigenaren." }
+  return { relevant: true, services, reason: inTitle.length ? "Dienst van Gijs in de kop." : inLead.length ? "Dienst van Gijs in de eerste zinnen." : "Verduurzamingsthema in de kop." }
 }
 
 export function impactOf(text: string): Impact {
@@ -384,19 +402,15 @@ export function formatFor(origin: Origin, impact: Impact, ageDays: number | null
   return "Uitgebreid kennisartikel"
 }
 
-export function ctaFor(service: string | null, capacity: CapacityMode, regions: string[]): string {
-  if (capacity === "alleen-digitaal") return "Plan een digitale energiescan"
-  if (regions.length && regions.every(r => r !== "overijssel")) return "Start met een digitale energiescan (fysiek alleen bij voldoende afspraken in de regio)"
+export function ctaFor(service: string | null, _capacity: CapacityMode, _regions: string[]): string {
   if (!service || service === SCAN_SERVICE) return "Doe de subsidiecheck of plan een energiescan"
   return `Laat in een energiescan uitzoeken of ${serviceLabel(service)} past bij jouw huis`
 }
 
-// Let op: dit is een bedrijfsregel. Het dashboard kent (nog) geen aantallen energiescans per regio.
-export function regionNote(regions: string[], capacity: CapacityMode): string | null {
+export function regionNote(regions: string[], _capacity: CapacityMode): string | null {
   if (!regions.length) return null
   const names = regions.map(r => r[0].toUpperCase() + r.slice(1)).join(", ")
-  if (regions.includes("overijssel")) return `Raakt ${names}. Bedrijfsregel: Overijssel is de sterkste regio, fysieke scans zijn daar goed te combineren (nog niet gemeten: scandata per regio is niet gekoppeld).`
-  return `Raakt ${names}. Stuur primair op de digitale energiescan en verzamel belangstelling; een fysieke scandag loont pas bij 2–3 afspraken op één dag${capacity === "clustering" ? " (capaciteit staat op clustering)" : ""}. Dit is een bedrijfsregel; het dashboard kent nog geen aantallen scans per regio.`
+  return `Raakt ${names}. Noem de regio in de tekst en link naar de passende regiopagina.`
 }
 
 export function risksFor(impact: Impact, reliability: Reliability, firstSeen: boolean): string[] {

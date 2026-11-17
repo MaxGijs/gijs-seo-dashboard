@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
+import type { AdviceDetail, AdviceRecord, DataCheck, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
 import { buildCtrModel, type CtrModel } from "./ctr"
 import { buildAdhocSignal, buildSignals, signalKey, toPath } from "./signals"
 import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
@@ -155,6 +155,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [records, setRecords] = useState<AdviceRecord[]>([])
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
+  const [checks, setChecks] = useState<DataCheck[]>([])
   const [users, setUsers] = useState<{ email: string; name: string | null; image: string | null }[]>([])
   const [me, setMe] = useState<string | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
@@ -198,10 +199,11 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       getJson(`/api/ga4?type=pages&days=28`),
       getJson(`/api/lessons`),
       getJson(`/api/users`),
+      getJson(`/api/checks`),
     ])
 
     Promise.all([core, stored])
-      .then(([[kw, prevKw, pg, ov, prevOv], [tr, adv, exp, inv, ga, les, us]]) => {
+      .then(([[kw, prevKw, pg, ov, prevOv], [tr, adv, exp, inv, ga, les, us, chk]]) => {
         if (cancelled) return
         setKeywords(kw.rows || [])
         setPrevKeywords(prevKw.rows || [])
@@ -215,6 +217,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
         setRecords(adv.status === "fulfilled" ? adv.value.rows || [] : [])
         setExperiments(exp.status === "fulfilled" ? exp.value.rows || [] : [])
         setLessons(les.status === "fulfilled" ? les.value.lessons || [] : [])
+        setChecks(chk.status === "fulfilled" ? chk.value.rows || [] : [])
         if (us.status === "fulfilled") { setUsers(us.value.rows || []); setMe(us.value.me || null) }
         const failed = [adv, exp].find(r => r.status === "rejected") as PromiseRejectedResult | undefined
         setStorageError(failed ? (failed.reason?.message || "Opslag niet bereikbaar") : null)
@@ -238,9 +241,9 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
         .map(r => ({ key: r.advice_key, kind: r.snapshot!.kind, intent: r.snapshot!.intent }))
         // Teruggedraaide afwijzingslessen: die afwijzingen tellen niet meer mee voor de prioriteit
         .filter(f => !lessons.some(l => l.status === "teruggedraaid" && l.effect?.type === "afwijzing" && l.effect.match?.kind === f.kind && (l.effect.match?.intent ?? undefined) === (l.effect.match?.intent ? f.intent : undefined)))
-      return buildSignals({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages: ga4Pages || undefined, feedback, lessons }, ctrModel)
+      return buildSignals({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages: ga4Pages || undefined, feedback, lessons, checks }, ctrModel)
     },
-    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons]
+    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks])

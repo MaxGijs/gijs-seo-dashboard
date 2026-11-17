@@ -22,7 +22,7 @@ export default function LinkSuggestions({ target, query }: { target: string; que
       const r = await fetch(`/api/links?target=${encodeURIComponent(target)}${query ? `&query=${encodeURIComponent(query)}` : ""}`, { cache: "no-store" })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
-      setRows([...j.suggestions].sort((a: Suggestion, b: Suggestion) => Number(a.alreadyLinks) - Number(b.alreadyLinks) || b.impressions - a.impressions)); setState("ready")
+      setRows([...j.suggestions].sort((a: Suggestion, b: Suggestion) => Number(a.alreadyLinks) - Number(b.alreadyLinks))); setState("ready")
     } catch (e: any) { setErr(e.message); setState("error") }
   }
   const copy = (t: string) => { navigator.clipboard?.writeText(t).then(() => toast("Linktekst gekopieerd")).catch(() => {}) }

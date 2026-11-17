@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo } from "react"
 import { ArrowRight, ArrowUpRight, CalendarClock, CheckCircle2, Eye, FlaskConical, Play, ShieldCheck, TrendingUp, ListTodo } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
+import { useContentIdeas } from "@/lib/content/useContent"
 import type { Experiment, Task } from "@/lib/types"
 import { addDays, dateLong, dateShort, gainShort, greeting, num, plural, signedPct, today } from "@/lib/format"
 import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
@@ -22,6 +23,8 @@ function nextMeasurement(e: Experiment) {
 export default function TodayView({ embedded = false }: { embedded?: boolean }) {
   const { user, loading, overview, prevOverview, tasks, experiments, newSinceLastVisit, lastVisit, openTask } = useWorkspace()
   const { toReview, snoozed, active, evaluating, resolved } = useTaskGroups()
+  const content = useContentIdeas()
+  const contentNew = (content.ideas || []).filter(i => i.status === "nieuw").length
   const first = user.name?.split(" ")[0] || ""
 
   const clicks = sum(overview, "clicks"), prevClicks = sum(prevOverview, "clicks")

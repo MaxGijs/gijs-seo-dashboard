@@ -8,7 +8,7 @@ import { type Item, parseMilieuCentraal, parseRss } from "@/lib/content/parse"
 import { gscQuery, serviceSearchConsole, toPath } from "./gsc"
 import {
   type CapacityMode, type ContentIdea, type Impact, type KeywordRef, type Reliability, type SourceRef,
-  impactOf, isForHouseholds, jaccard, regionsIn, reliabilityOf, SCAN_SERVICE, servicesIn, tokens,
+  impactOf, isForHouseholds, jaccard, relevanceOf, regionsIn, reliabilityOf, SCAN_SERVICE, servicesIn, tokens,
 } from "@/lib/content/model"
 import { ageOf, buildIdea, type Ctx, dayMs, keywordOverlap, newsDraft, type Place, searchDrafts, seasonDrafts } from "@/lib/content/build"
 import { prettySlug } from "@/lib/pages"
@@ -43,6 +43,56 @@ export const SOURCES: Source[] = [
   { id: "gld", name: "Omroep Gelderland", publisher: "Omroep Gelderland", kind: "rss", url: "https://www.gld.nl/rss/index.xml", reliability: "nieuws", region: "gelderland" },
   { id: "rtvutrecht", name: "RTV Utrecht", publisher: "RTV Utrecht", kind: "rss", url: "https://www.rtvutrecht.nl/rss/index.xml", reliability: "nieuws", region: "utrecht" },
 ]
+
+// Bronnen die we níet elke nacht automatisch lezen: geen bruikbare feed. Die zoekt de wekelijkse
+// webzoektaak (maandag) gericht af.
+export const WEB_ONLY: { name: string; publisher: string; why: string }[] = [
+  { name: "Omroep Flevoland", publisher: "Omroep Flevoland", why: "Geen RSS-feed beschikbaar" },
+  { name: "De Gelderlander", publisher: "De Gelderlander", why: "Geen bruikbare RSS-feed" },
+  { name: "Utrechts Nieuwsblad", publisher: "Utrechts Nieuwsblad", why: "Geen bruikbare RSS-feed" },
+  { name: "Flevopost", publisher: "Flevopost", why: "Geen RSS-feed beschikbaar" },
+  { name: "RTL Nieuws, NU.nl, AD, Volkskrant, NRC, Trouw", publisher: "landelijke media", why: "Gezocht via webonderzoek" },
+  { name: "RVO, Warmtefonds, netbeheerders, CBS, provincies en gemeenten", publisher: "primaire bronnen", why: "Gezocht via webonderzoek" },
+]
+
+export interface SourceOverview {
+  id: string; name: string; publisher: string; region: string | null
+  status: "actief" | "storing" | "geblokkeerd" | "web"
+  lastOk: string | null; lastError: string | null; failedRuns: number
+  itemsLastRun: number | null; new24h: number; relevant30d: number
+  why?: string
+}
+
+// Per bron: werkt hij, wanneer voor het laatst gelukt, en hoeveel nieuws levert hij op.
+// "Storing" = laatste keer mislukt; "geblokkeerd" = de laatste 3 keer of vaker mislukt.
+export async function sourceOverview(): Promise<SourceOverview[]> {
+  const sb = getSupabase()
+  const [{ data: runs }, { data: news }] = await Promise.all([
+    sb.from("seo_sync_log").select("run_at, details").eq("job", "actualiteiten").order("run_at", { ascending: false }).limit(30),
+    sb.from("content_news").select("source_id, fetched_at, relevant").gte("fetched_at", new Date(Date.now() - 30 * dayMs).toISOString()),
+  ])
+  const dayAgo = Date.now() - dayMs
+  const out: SourceOverview[] = SOURCES.map(src => {
+    let lastOk: string | null = null, lastError: string | null = null, failedRuns = 0, itemsLastRun: number | null = null, seen = false, streak = true
+    for (const r of runs || []) {
+      const st = (r.details?.bronStatus || []).find((b: any) => b.id === src.id)
+      if (!st) continue
+      if (!seen) { itemsLastRun = st.ok ? st.items : 0; lastError = st.ok ? null : st.error || "mislukt"; seen = true }
+      if (st.ok) { if (!lastOk) lastOk = r.run_at; streak = false } else if (streak) failedRuns++
+    }
+    const mine = (news || []).filter(n => n.source_id === src.id)
+    const status: SourceOverview["status"] = !seen ? "actief" : failedRuns >= 3 ? "geblokkeerd" : failedRuns >= 1 ? "storing" : "actief"
+    return {
+      id: src.id, name: src.name, publisher: src.publisher, region: src.region || null, status, lastOk, lastError, failedRuns, itemsLastRun,
+      new24h: mine.filter(n => new Date(n.fetched_at).getTime() > dayAgo).length,
+      relevant30d: mine.filter(n => n.relevant).length,
+    }
+  })
+  const web = (news || []).filter(n => n.source_id === "claude-web")
+  for (const w of WEB_ONLY) out.push({ id: `web:${w.name}`, name: w.name, publisher: w.publisher, region: null, status: "web", lastOk: null, lastError: null, failedRuns: 0, itemsLastRun: null, new24h: 0, relevant30d: 0, why: w.why })
+  out.push({ id: "claude-web", name: "Wekelijkse webzoektaak (maandag)", publisher: "Claude", region: null, status: "web", lastOk: web.length ? web.map(n => n.fetched_at).sort().pop()! : null, lastError: null, failedRuns: 0, itemsLastRun: null, new24h: web.filter(n => new Date(n.fetched_at).getTime() > dayAgo).length, relevant30d: web.filter(n => n.relevant).length, why: "Zoekt het hele web af, inclusief bovenstaande bronnen" })
+  return out
+}
 
 const MAX_AGE_DAYS = 120
 const UA = "GijsIntelligence/1.0 (+contentkansen, alleen lezen)"
@@ -132,16 +182,16 @@ export async function scanContent() {
   const recent = items.filter(i => (ageOf(i.published) ?? 0) <= MAX_AGE_DAYS)
   const classified = recent.map(i => {
     const text = `${i.title} ${i.summary}`
-    const services = servicesIn(text, ctx.services)
+    const rel = relevanceOf(i.title, i.summary, ctx.services)
     const src = SOURCES.find(x => x.id === i.sourceId)
     const regions = [...new Set([...regionsIn(text), ...(src?.region ? [src.region] : [])])]
-    return { ...i, services, impact: impactOf(text), regions, relevant: services.length > 0 && isForHouseholds(text) }
+    return { ...i, services: rel.services, impact: impactOf(text), regions, relevant: rel.relevant, relevanceNote: rel.reason }
   })
   if (classified.length) {
     const { error } = await sb.from("content_news").upsert(classified.map(i => ({
       source_id: i.sourceId, url: i.url, title: i.title.slice(0, 400), summary: i.summary.slice(0, 1500),
       published_at: i.published || new Date().toISOString(), date_is_first_seen: i.firstSeen,
-      services: i.services, impact: i.impact, regions: i.regions, relevant: i.relevant,
+      services: i.services, impact: i.impact, regions: i.regions, relevant: i.relevant, relevance_note: i.relevanceNote,
     })), { onConflict: "url", ignoreDuplicates: true })
     if (error) throw new Error(`nieuws opslaan: ${error.message}`)
   }
@@ -151,11 +201,35 @@ export async function scanContent() {
   let webChecked = 0
   for (const n of inbox || []) {
     const text = `${n.title} ${n.summary || ""} ${n.reason || ""}`
-    const services = servicesIn(text, ctx.services)
+    const rel = relevanceOf(n.title, n.summary || "", ctx.services)
     await sb.from("content_news").update({
-      services: services.length ? services : [SCAN_SERVICE], impact: impactOf(text), regions: regionsIn(text), relevant: isForHouseholds(text),
+      services: rel.services.length ? rel.services : [SCAN_SERVICE], impact: impactOf(text), regions: regionsIn(text), relevant: rel.relevant, relevance_note: rel.reason,
     }).eq("id", n.id)
     webChecked++
+  }
+
+  // 1b'. Herbeoordeling: alle bewaarde berichten opnieuw door de (strengere) relevantiecontrole.
+  //      Onaangeroerde kansen die alleen op nu-irrelevante berichten steunen, worden gearchiveerd.
+  const { data: stored } = await sb.from("content_news").select("id, title, summary, relevant, idea_id").gte("published_at", new Date(Date.now() - MAX_AGE_DAYS * dayMs).toISOString())
+  const flips: { id: string; relevant: boolean; note: string }[] = []
+  for (const n of stored || []) {
+    const rel = relevanceOf(n.title, n.summary || "", ctx.services)
+    if (rel.relevant !== n.relevant) flips.push({ id: n.id, relevant: rel.relevant, note: rel.reason })
+  }
+  for (const f of flips) await sb.from("content_news").update({ relevant: f.relevant, relevance_note: f.note }).eq("id", f.id)
+  const nowIrrelevant = new Set(flips.filter(f => !f.relevant).map(f => f.id))
+  let gearchiveerd = 0
+  if (nowIrrelevant.size) {
+    const ideaIds = [...new Set((stored || []).filter(n => nowIrrelevant.has(n.id) && n.idea_id).map(n => n.idea_id as string))]
+    for (const id of ideaIds) {
+      const still = (stored || []).some(n => n.idea_id === id && !nowIrrelevant.has(n.id) && n.relevant)
+      if (still) continue
+      const { data: idea } = await sb.from("content_ideas").select("id, status, briefing, feedback, owner, score_override").eq("id", id).maybeSingle()
+      if (!idea || idea.status !== "nieuw" || idea.briefing || (idea.feedback || []).length || idea.owner || idea.score_override !== null) continue
+      await sb.from("content_ideas").update({ status: "verlopen", decision_note: `Automatisch gearchiveerd: ${flips.find(f => (stored || []).some(n => n.id === f.id && n.idea_id === id))?.note || "niet relevant genoeg"}` }).eq("id", id)
+      ctx.existing = ctx.existing.map(e => (e.id === id ? { ...e, status: "verlopen" } : e))
+      gearchiveerd++
+    }
   }
 
   // 1c. Voorstellen van een oudere rekenregel die nog niemand heeft aangeraakt: opnieuw opbouwen
@@ -242,7 +316,7 @@ export async function scanContent() {
   const failed = status.filter(s => !s.ok)
   return {
     bronnen: status.length, bronnenMislukt: failed.length, berichten: items.length, recent: recent.length,
-    relevant: classified.filter(c => c.relevant).length, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
+    relevant: classified.filter(c => c.relevant).length, herbeoordeeld: flips.length, gearchiveerd, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
     ...(failed.length === status.length ? { fout: `Geen enkele bron bereikbaar (${failed[0]?.error})` } : {}),
     bronStatus: status, actualiteitscontrole: actueel,
   }

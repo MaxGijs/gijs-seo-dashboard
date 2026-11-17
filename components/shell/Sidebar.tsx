@@ -38,7 +38,8 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
     fetch("/api/content?count=1", { cache: "no-store" }).then(r => (r.ok ? r.json() : null)).then(j => setContentNew(j?.nieuw || 0)).catch(() => {})
   }, [pathname])
   const counts: Record<string, number> = {
-    "/taken": loading ? 0 : toReview.length,
+    // Mijn taken = SEO-adviezen én contentkansen die op beoordeling wachten (zelfde telling als de kolom op het bord)
+    "/taken": loading ? 0 : toReview.length + contentNew,
     "/vandaag": loading ? 0 : toReview.filter(t => t.signal.priority === "hoog").length,
     "/experimenten": loading ? 0 : evaluating.length,
     "/content": contentNew,

@@ -238,7 +238,12 @@ export default function TasksView() {
                 onDragLeave={e => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setOverCol(o => (o === c.id ? null : o)) }}
                 onDrop={e => { e.preventDefault(); const key = e.dataTransfer.getData("text/plain") || dragKey; setOverCol(null); setDragKey(null); const en = filtered.find(x => x.key === key); if (en?.kind === "seo") drop(en.t, c.id); else if (en) dropContent(en.i, en.col, c.id) }}>
                 <div className="col-head">
-                  <h2 id={`col-${c.id}`}>{c.label}</h2><span className="col-count">{items.length}</span>
+                  <h2 id={`col-${c.id}`}>{c.label}</h2>{(() => {
+                    // Zelfde telling als de zijbalk: uitgesteld en al-opgelost tellen niet als openstaand
+                    const open = items.filter(e => !e.dim && !(e.kind === "seo" && e.t.signal.resolved && e.t.current)).length
+                    const rest = items.length - open
+                    return <span className="col-count" title={rest ? `${open} openstaand, ${rest} uitgesteld of al opgelost` : undefined}>{open}{rest ? <small> +{rest}</small> : null}</span>
+                  })()}
                   {items.length === 0 && expanded[`open-${c.id}`] && <button className="icon-btn col-fold" onClick={() => setExpanded(e => ({ ...e, [`open-${c.id}`]: false }))} aria-label={`${c.label} inklappen`}>–</button>}
                 </div>
                 <p className="col-hint">{c.id === "evalueren" ? "Sleep hierheen als het is aangepast: je beschrijft kort wat en de meting start" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.hint}</p>

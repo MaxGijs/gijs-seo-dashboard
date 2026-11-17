@@ -12,7 +12,7 @@ function date(iso?: string | null) {
 
 export function buildBriefing(idea: ContentIdea, learned: string[] = []): string {
   const L: string[] = []
-  L.push(`Je schrijft als contentredacteur voor Gijs – Groen in je straat (${SITE}). Gijs helpt particuliere woningeigenaren hun huis te verduurzamen, met een energiescan (digitaal of bij je thuis) als startpunt, en voert daarna isolatie- en installatiemaatregelen uit.`)
+  L.push(`Je schrijft als contentredacteur voor Gijs – Groen in je straat (${SITE}). Gijs helpt particuliere woningeigenaren hun huis te verduurzamen, met een energiescan als startpunt, en voert daarna isolatie- en installatiemaatregelen uit.`)
   L.push("")
   L.push(`OPDRACHT: schrijf een concept voor een ${idea.format?.toLowerCase() || "artikel"}.`)
   L.push(`Werktitel: ${idea.title}`)

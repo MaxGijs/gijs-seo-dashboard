@@ -83,7 +83,7 @@ function ga4Filter(regio: string | null, dienst: string | null, leadEvents?: str
 
 // ── GA4 ─────────────────────────────────────────────────────────────────────
 
-function ga4Client() {
+export function ga4Client() {
   const propertyId = process.env.GA4_PROPERTY_ID
   if (!propertyId) throw new Error("GA4_PROPERTY_ID ontbreekt")
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!)
@@ -101,7 +101,7 @@ async function ga4Report(g: Ga4, body: Record<string, unknown>) {
 const ga4Path = (raw: string) => ((raw || "/").split("?")[0].replace(/\/$/, "") || "/")
 const ga4Date = (d: string) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`
 
-async function readMeasurement(g: Ga4): Promise<Measurement> {
+export async function readMeasurement(g: Ga4): Promise<Measurement> {
   const rows = await ga4Report(g, {
     dateRanges: [{ startDate: "90daysAgo", endDate: "yesterday" }],
     dimensions: [{ name: "eventName" }],
@@ -295,8 +295,10 @@ function buildConclusion(d: Pick<DashboardData, "cards" | "warnings" | "drivers"
   const totalUp = (deltaPct(imp) ?? 0) >= 0
   const mainDriver = d.drivers.find(x => x.summary && (x.tone === "up") === totalUp)
   if (mainDriver) body += ` De ${totalUp ? "groei" : "daling"} komt vooral van ${mainDriver.summary}.`
-  if (req.value === null) {
-    body += d.measurement.status === "geen-event" ? " Energiescanaanvragen worden nog niet gemeten." : " Energiescanaanvragen zijn niet beschikbaar."
+  if (d.measurement.status === "controleren") {
+    body += " Energiescanaanvragen tellen nog niet mee in de conclusie: eerst moet één officieel GA4-event worden gekozen (zie de taak in Vandaag)."
+  } else if (req.value === null) {
+    body += d.measurement.status === "geen-event" ? " Energiescanaanvragen worden nog niet gemeten (zie de taak in Vandaag)." : " Energiescanaanvragen zijn niet beschikbaar."
   } else if ((req.value || 0) + (req.prev || 0) < 10) {
     body += ` ${req.value} ${req.value === 1 ? "energiescanaanvraag" : "energiescanaanvragen"}: nog te weinig voor een betrouwbare trend.`
   } else {
