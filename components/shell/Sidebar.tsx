@@ -3,13 +3,14 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { BookOpenCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
+import { BookOpenCheck, CalendarCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
 
 export const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/vandaag", label: "Vandaag", icon: CalendarCheck },
   { href: "/taken", label: "Mijn taken", icon: KanbanSquare },
   { href: "/analyses", label: "SEO-analyses", icon: LineChart },
 ] as const
@@ -38,6 +39,7 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
   }, [pathname])
   const counts: Record<string, number> = {
     "/taken": loading ? 0 : toReview.length,
+    "/vandaag": loading ? 0 : toReview.filter(t => t.signal.priority === "hoog").length,
     "/experimenten": loading ? 0 : evaluating.length,
     "/content": contentNew,
   }

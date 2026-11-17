@@ -892,3 +892,4 @@ img, svg { display: block; max-width: 100%; }
 .link-anchors { display: flex; flex-wrap: wrap; gap: 6px; }
 .link-anchors .chip { height: 28px; font-size: var(--fs-xs); }
 .link-anchors .chip svg { width: 12px; height: 12px; }
+.today-link { color: inherit; display: inline-flex; align-items: center; gap: 6px; } .today-link svg { width: 18px; height: 18px; color: var(--accent-700); } .today-link:hover { color: var(--accent-700); }

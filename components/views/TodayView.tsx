@@ -173,7 +173,7 @@ export default function TodayView({ embedded = false }: { embedded?: boolean }) 
     <section className="today-block" aria-labelledby="vandaag-title">
       <div className="section-head">
         <div>
-          <h2 className="section-title" id="vandaag-title">Vandaag</h2>
+          <h2 className="section-title" id="vandaag-title"><Link href="/vandaag" className="today-link">Vandaag<ArrowRight aria-hidden /></Link></h2>
           <p className="section-sub">{dateLong(today())}{headline ? ` · ${headline}` : ""}{!loading && lastVisit && lastVisit !== today() ? ` · sinds ${dateShort(lastVisit)} ${newCount} ${newCount === 1 ? "nieuw signaal" : "nieuwe signalen"}` : ""}</p>
         </div>
       </div>
