@@ -51,6 +51,7 @@ export async function buildReport(by = "systeem") {
     conclusion: dash.conclusion.body,
     metrics: [metric("Zoekwoorden op pagina 1", c.page1), metric("Bijna op pagina 1", c.bijna), metric("Google-klikken", c.clicks), metric("Google-vertoningen", c.impressions), metric("Sessies", c.sessions), metric("Energiescanaanvragen", c.requests)],
     changes: [
+      ...(dash.campaigns || []).filter(c => c.inCurrent).map(c => `Offline campagne: ${c.name} (${c.kind}${c.amount ? `, ${c.amount.toLocaleString("nl-NL")} stuks` : ""}${c.regions.length ? `, ${c.regions.join(", ")}` : ""}). Extra bezoek en aanvragen kunnen hieruit komen.`),
       ...dash.drivers.map(d => d.text),
       ...(dash.trends?.keywords.nieuwPagina1.slice(0, 5).map(t => `Nieuw op pagina 1: "${t.key}" (positie ${String(t.positionNow).replace(".", ",")})`) || []),
       ...(dash.trends?.keywords.dalend.slice(0, 3).map(t => `Dalend: "${t.key}" (${String(t.positionThen).replace(".", ",")} → ${String(t.positionNow).replace(".", ",")})`) || []),

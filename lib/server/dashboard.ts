@@ -2,6 +2,8 @@
 // Alles leest alleen: Search Console via het service-account, GA4 via hetzelfde account,
 // en de eigen opslag (Supabase) voor sitemap-status en synchronisaties.
 
+import { readCampaigns } from "./campaigns"
+import { describe, effectEnd, overlaps, type Campaign } from "@/lib/campaigns"
 import { BetaAnalyticsDataClient } from "@google-analytics/data"
 import { getSupabase, supabaseConfigured } from "./guard"
 import { readStalled, type Stalled } from "./stalled"
@@ -533,12 +535,22 @@ export async function readDashboard(q: DashboardQuery, fresh = false): Promise<D
   if (gscOk && tCur.impressions < 300) notes.push({ id: "weinig", title: "Nog weinig zoekdata in deze periode", text: `${num(tCur.impressions)} vertoningen. Percentages schommelen dan sterk.`, advice: "Kies een langere periode (28 of 90 dagen) of beoordeel opnieuw zodra er meer vertoningen zijn. Meer pagina's laten indexeren en interne links naar nieuwe pagina's helpen om sneller data te verzamelen." })
   if (regio || dienst) notes.push({ id: "filter", title: "Filter actief", text: `${regio ? `Regio: ${prettySlug(regio)} (pagina's onder /regio/${regio}). ` : ""}${dienst ? `Dienst: ${prettySlug(dienst)} (zoekwoorden over deze dienst; sessies op /maatregelen/${dienst}).` : ""}`, advice: "Bij een dienstfilter telt Search Console alleen zoekwoorden die Google niet anonimiseert; totalen zijn daardoor lager dan zonder filter." })
 
+  // Offline campagnes in deze of de vergelijkingsperiode: verklaren bezoek en aanvragen buiten Google om
+  const camps = await readCampaigns().catch(() => [] as Campaign[])
+  const campaigns = camps.filter(c => overlaps(c, cur.start, cur.end) || (cmp && overlaps(c, cmp.start, cmp.end)))
+    .map(c => ({ id: c.id, name: c.name, kind: c.kind, start: c.start_date, end: effectEnd(c), endSet: !!c.end_date, regions: c.regions, amount: c.amount, inCurrent: overlaps(c, cur.start, cur.end) }))
+  if (campaigns.length) notes.push({
+    id: "campagne", title: campaigns.length === 1 ? "Offline campagne in deze periode" : `${campaigns.length} offline campagnes in deze periode`,
+    text: camps.filter(c => campaigns.some(x => x.id === c.id)).map(describe).join(". ") + ".",
+    advice: "Extra directe bezoeken, merkzoekopdrachten en aanvragen kunnen hieruit komen en niet uit SEO. Vergelijk de regio's van de campagne met de rest voordat je conclusies trekt.",
+  })
+
   const drivers = buildDrivers(pages, !!cmp)
   const partial = { cards, warnings, drivers, measurement, compareRange: cmp }
   const value: DashboardData = {
     range: cur, compareRange: cmp, dataUntil, filters: { regio, dienst },
     cards, series, keywords, pages: pages.slice(0, 200), channels, local, drivers, trends, warnings, notes, measurement,
-    conclusion: buildConclusion(partial), errors, stalled, competitors,
+    conclusion: buildConclusion(partial), errors, stalled, competitors, campaigns,
   }
   if (!errors.gsc && !errors.ga4) cache.set(cacheKey, { at: Date.now(), value })
   return value

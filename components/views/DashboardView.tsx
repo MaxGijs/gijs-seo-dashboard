@@ -365,6 +365,20 @@ function TimeChart({ data, loading }: { data: DashboardData | null; loading: boo
                 </g>
               ))}
               {hasRight && [0, niceR / 2, niceR].map(v => <text key={v} x={W - padR + 8} y={yR(v) + 4} className="dash-axis is-right">{Number.isInteger(v) ? v : ""}</text>)}
+              {(data?.campaigns || []).filter(c => c.inCurrent).map(c => {
+                // Offline campagne als gearceerde band: begin = verzonden, eind = einddatum of 3 weken na-effect
+                const i0 = pts.findIndex(p => p.date >= c.start), i1 = (() => { let k = -1; pts.forEach((p, i) => { if (p.date <= c.end) k = i }); return k })()
+                const a = i0 < 0 ? pts.length - 1 : i0, b = i1 < 0 ? 0 : i1
+                if (b < a && i0 >= 0) return null
+                const x0 = i0 < 0 ? x(pts.length - 1) : x(a), x1 = Math.max(x(b), x0 + 2)
+                return (
+                  <g key={c.id} className="dash-campaign">
+                    <rect x={x0} y={padT} width={x1 - x0} height={ih} fill="var(--warning-100, #fdf3d7)" opacity={0.55} />
+                    <line x1={x0} x2={x0} y1={padT} y2={padT + ih} stroke="#c9961a" strokeDasharray="4 3" />
+                    <text x={x0 + 4} y={padT + 11} className="dash-axis dash-campaign-label">{c.name}</text>
+                  </g>
+                )
+              })}
               {on.requests && pts.map((p, i) => p.requests ? <rect key={p.date} x={x(i) - barW / 2} y={yR(p.requests)} width={barW} height={padT + ih - yR(p.requests)} rx={2} fill="var(--accent-600)" opacity={0.85} /> : null)}
               {active.filter(s => s.type === "line").map(s => (
                 <path key={s.key} d={pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${yL((p[s.key] as number) || 0).toFixed(1)}`).join(" ")} fill="none" stroke={s.color} strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
@@ -384,6 +398,7 @@ function TimeChart({ data, loading }: { data: DashboardData | null; loading: boo
             )}
           </div>
         )}
+        {(data?.campaigns || []).some(c => c.inCurrent) && <p className="field-hint"><span className="dash-campaign-key" aria-hidden />Gele band = offline campagne (brief, flyer…) met na-effect. Extra bezoek en aanvragen in die periode komen mogelijk niet uit Google. <a href="/campagnes">Campagnes beheren</a></p>}
         {noLeads && on.requests && <p className="field-hint">Energiescanaanvragen worden nog niet gemeten; zie de kaart hierboven voor uitleg.</p>}
       </div>
     </section>

@@ -21,6 +21,8 @@ import { columnOf, COLUMNS, KIND_META, STATUS_META } from "@/lib/workflow"
 import { reconcile } from "@/lib/contract"
 import { baselineFrom, buildDiagnosis } from "@/lib/diagnosis"
 import { addDays, today } from "@/lib/format"
+import { GET as campGET, POST as campPOST } from "@/app/api/campaigns/route"
+import { CAMPAIGN_KINDS, describe, type Campaign } from "@/lib/campaigns"
 import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Priority, Signal, Status, Task } from "@/lib/types"
 
 type Handler = (req: Request) => Promise<Response>
@@ -332,6 +334,30 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "campagnes", title: "Offline campagnes", readOnly: true,
+    description: "Offline campagnes (brieven, flyers, advertenties, informatieavonden) die zijn vastgelegd. Die verklaren bezoek en aanvragen die niet uit Google komen.",
+    inputSchema: { type: "object", properties: {} },
+    run: async () => { const r = await call(campGET as any, `/api/campaigns`); return { campagnes: (r.rows as Campaign[]).map(c => ({ id: c.id, beschrijving: describe(c), verwijst_naar: c.landing_page, notitie: c.note })) } },
+  },
+  {
+    name: "campagne_toevoegen", title: "Offline campagne vastleggen", readOnly: false,
+    description: "Leg een offline campagne vast, zoals een verstuurde brief of flyer. Het dashboard toont hem dan in de grafiek en weegt hem mee bij metingen (een meting die erdoor beïnvloed kan zijn, krijgt geen oordeel). Zonder einddatum rekent het systeem 21 dagen na-effect.",
+    inputSchema: { type: "object", properties: {
+      naam: str("Bijvoorbeeld 'Brief isolatiesubsidie Borne'"),
+      soort: str("Soort", { enum: CAMPAIGN_KINDS.map(k => k.id) }),
+      startdatum: str("Datum van versturen of start, JJJJ-MM-DD"),
+      einddatum: str("Optioneel, JJJJ-MM-DD"),
+      gebied: str("Gemeenten of provincies, met komma's"),
+      aantal: { type: "number", description: "Aantal brieven/flyers (optioneel)" },
+      pagina: str("Pagina waar de brief naar verwijst (optioneel)"),
+      notitie: str("Optioneel"),
+    }, required: ["naam", "soort", "startdatum"] },
+    run: async a => {
+      const r = await call(campPOST, `/api/campaigns`, { name: a.naam, kind: a.soort, start_date: a.startdatum, end_date: a.einddatum || null, regions: a.gebied || "", amount: a.aantal || null, landing_page: a.pagina || null, note: a.notitie || null })
+      return { ok: true, vastgelegd: describe(r.row) }
+    },
+  },
+  {
     name: "collegas", title: "Collega's", readOnly: true,
     description: "Wie het dashboard gebruikt (voor het toewijzen van taken).",
     inputSchema: { type: "object", properties: {} },
@@ -362,5 +388,6 @@ Het takenbord heeft vijf kolommen: Te beoordelen → Gepland → In uitvoering �
 - Elke uitgevoerde aanpassing wordt gemeten (na 14, 28 en 56 dagen). Meld een taak pas als uitgevoerd ("taak_uitgevoerd") als de gebruiker bevestigt dat het live staat, en vraag wat er precies is aangepast.
 - Eigen taken hebben een doel: seo (gemeten in Google), conversie (gemeten op energiescanaanvragen in GA4) of overig. Kies conversie voor alles rond leads en gebruiksgemak.
 - Afwijzen vraagt een reden: het systeem leert daarvan.
+- Wordt er een brief, flyer of andere offline actie verstuurd? Leg die vast met "campagne_toevoegen", zodat metingen er rekening mee houden.
 - De live website wordt niet via deze koppeling aangepast; teksten en titels stel je voor, de gebruiker zet ze zelf live.
 Antwoord in het Nederlands.`

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { BookOpenCheck, CalendarCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper, MessageSquare } from "lucide-react"
+import { BookOpenCheck, CalendarCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper, MessageSquare, Mail } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
@@ -23,6 +23,7 @@ export const LEARN_NAV = [
 
 export const CONTENT_NAV = [
   { href: "/content", label: "Contentkansen", icon: Newspaper },
+  { href: "/campagnes", label: "Offline campagnes", icon: Mail },
 ] as const
 
 const SYSTEM_NAV = [

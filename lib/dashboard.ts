@@ -129,6 +129,7 @@ export interface DashboardData {
   stalled: { id: string; text: string; href: string; kind: "seo" | "content" }[]
   competitors: { week: string; queries: number; gijsFound: number; domains: { domain: string; count: number; above: number; examples: string[] }[] } | null
   errors: { gsc: string | null; ga4: string | null; trends: string | null }
+  campaigns?: { id: string; name: string; kind: string; start: string; end: string; endSet: boolean; regions: string[]; amount: number | null; inCurrent: boolean }[]
 }
 
 // Minimum aantal vertoningen (laatste 4 weken) voordat een zoekwoord of pagina in een trendlijst komt.

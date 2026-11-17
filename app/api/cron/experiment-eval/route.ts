@@ -1,3 +1,4 @@
+import { describe, overlaps, type Campaign } from "@/lib/campaigns"
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { dateWindow, gscQuery, serviceSearchConsole, toUrl } from "@/lib/server/gsc"
@@ -33,6 +34,9 @@ async function context(supabase: any, exp: any) {
   for (const [prov, date] of Object.entries(LAUNCH_DATES)) {
     if (date > exp.changed_at && date <= today()) confounders.push(`Provincie ${prov} gelanceerd op ${date}`)
   }
+  // Offline campagnes (brieven, flyers) in de meetperiode verklaren extra bezoek en aanvragen
+  const { data: camps } = await supabase.from("seo_campaigns").select("*")
+  for (const c of (camps || []) as Campaign[]) if (overlaps(c, exp.changed_at, today())) confounders.push(describe(c))
   if (growth && (growth > 1.3 || growth < 0.75)) confounders.push(`Sitebrede vertoningen ${growth > 1 ? "+" : ""}${Math.round((growth - 1) * 100)}% t.o.v. de nulmeting`)
   return { site: { impressionsPerDay: perDay ? Math.round(perDay) : null, growth }, confounders }
 }
@@ -196,7 +200,11 @@ export async function GET(request: Request) {
             const after = { start: addDaysIso(exp.changed_at, 1), end: addDaysIso(exp.changed_at, days) }
             const { measurement, windows } = await conversionWindows([before, after], exp.page)
             const [b, a] = windows
-            const v = conversionVerdict(b, a, measurement)
+            let v = conversionVerdict(b, a, measurement)
+            // Een offline campagne in één van beide periodes maakt de vergelijking onbetrouwbaar
+            const { data: camps } = await supabase.from("seo_campaigns").select("*")
+            const hit = ((camps || []) as Campaign[]).filter(c => overlaps(c, before.start, after.end))
+            if (hit.length && v.verdict !== "onduidelijk") v = { verdict: "onduidelijk", reason: `Geen oordeel: in de meetperiode liep ${hit.map(describe).join("; ")}.` }
             update[col] = { measuredAt: today(), scope: "conversie", before: b, after: a, measurement: measurement.status, summary: `${a.requests ?? "—"} aanvragen in ${a.sessions} sessies (was ${b.requests ?? "—"} in ${b.sessions}) · ${v.reason}` }
             if (days >= 56) verdict = v.verdict
           } catch (e: any) {
