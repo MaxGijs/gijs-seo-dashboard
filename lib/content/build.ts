@@ -193,9 +193,12 @@ export interface Ctx {
   capacity: Map<string, CapacityMode>
   places: Map<string, Place>          // "zwolle" → { name: "Zwolle", path: "/regio/overijssel/zwolle" }
   existing: Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title">[]
+  ignoreRejections?: Set<string>      // "dienst|herkomst" van teruggedraaide lessen
 }
 
 function rejectedCount(ctx: Ctx, service: string | null, origin: Origin) {
+  // Teruggedraaide les ("Wat hebben we geleerd?"): afwijzingen van deze soort tellen niet meer mee
+  if (ctx.ignoreRejections?.has(`${service || "-"}|${origin}`)) return 0
   return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin).length
 }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
+import OwnerSelect from "@/components/OwnerSelect"
 
 const BASIS_META: Record<Basis, { label: string; tone: "success" | "info" | "neutral"; hint: string }> = {
   gemeten: { label: "gemeten", tone: "success", hint: "Rechtstreeks uit data: Search Console of de publicatiedatum van de bron" },
@@ -104,6 +105,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
               <Badge tone="accent">{ORIGIN_META[idea.origin].label}</Badge>
               {idea.impact && idea.impact !== "overig" && <Badge tone="neutral">{IMPACT_META[idea.impact].label}</Badge>}
               <Badge tone={step < 0 ? "neutral" : "success"} dot>{STATUS_META[idea.status].label}</Badge>
+              <OwnerSelect value={idea.owner} onChange={o => act({ action: "owner", owner: o }, o ? "Toegewezen" : "Toewijzing verwijderd")} />
             </div>
             <button className="icon-btn" onClick={onClose} aria-label="Sluiten"><X /></button>
           </div>

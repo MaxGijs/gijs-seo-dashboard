@@ -13,6 +13,8 @@ import {
 import { ageOf, buildIdea, type Ctx, dayMs, keywordOverlap, newsDraft, type Place, searchDrafts, seasonDrafts } from "@/lib/content/build"
 import { prettySlug } from "@/lib/pages"
 import { CONTENT_MODEL_VERSION } from "@/lib/content/model"
+import { freshnessDrafts, type NewsRef } from "@/lib/content/freshness"
+import { readPageFacts, refreshPageFacts } from "./freshness"
 export { buildIdea } from "@/lib/content/build"
 
 // ── Bronnen ─────────────────────────────────────────────────────────────────
@@ -115,7 +117,9 @@ export async function siteContext(): Promise<Ctx> {
   }
 
   const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title")
-  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"] }
+  const { data: reverted } = await sb.from("seo_lessons").select("key").eq("source", "content").eq("status", "teruggedraaid")
+  const ignoreRejections = new Set((reverted || []).map(r => r.key.replace(/^content\|/, "")))
+  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"], ignoreRejections }
 }
 
 // ── Scan ────────────────────────────────────────────────────────────────────
@@ -213,6 +217,23 @@ export async function scanContent() {
     if (error) throw new Error(`voorstellen opslaan: ${error.message}`)
   }
 
+  // 3b. Actualiteitscontrole: noemt de eigen site regels of bedragen waar recent nieuws over is?
+  let actueel: Record<string, unknown> = {}
+  try {
+    actueel = await refreshPageFacts()
+    const facts = await readPageFacts()
+    const { data: upd } = await sb.from("content_news").select("url, title, summary, published_at, impact, source_id, publisher, source_kind").eq("relevant", true).gte("published_at", since)
+    const news: NewsRef[] = (upd || []).map(n => ({ ...n, reliability: n.source_kind === "web" ? reliabilityOf(n.url) : (SOURCES.find(x => x.id === n.source_id)?.reliability || "nieuws") }))
+    const known2 = new Set(ctx.existing.map(e => e.fingerprint))
+    const fresh = freshnessDrafts(facts, news, ctx).filter(d => !known2.has(d.fingerprint)).map(d => buildIdea(d, ctx))
+      .filter(b => { if ("issues" in b) { rejectedChecks.push(`${b.title}: ${(b as any).issues.join(" ")}`); return false } return true })
+    if (fresh.length) {
+      const { error } = await sb.from("content_ideas").upsert(fresh, { onConflict: "fingerprint", ignoreDuplicates: true })
+      if (error) throw new Error(error.message)
+    }
+    actueel = { ...actueel, controleKansen: fresh.length, paginasMetZinnen: facts.filter(f => f.facts.length).length }
+  } catch (e: any) { actueel = { fout: e?.message || "actualiteitscontrole mislukt" } }
+
   // 4. Onbehandelde actualiteiten die te oud zijn → verlopen
   const old = ctx.existing.filter(e => e.status === "nieuw" && (e.origin === "actualiteit" || e.origin === "trend")
     && Math.max(...(e.sources || []).map((s: SourceRef) => (s.date ? new Date(s.date).getTime() : 0))) < Date.now() - MAX_AGE_DAYS * dayMs)
@@ -223,7 +244,7 @@ export async function scanContent() {
     bronnen: status.length, bronnenMislukt: failed.length, berichten: items.length, recent: recent.length,
     relevant: classified.filter(c => c.relevant).length, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
     ...(failed.length === status.length ? { fout: `Geen enkele bron bereikbaar (${failed[0]?.error})` } : {}),
-    bronStatus: status,
+    bronStatus: status, actualiteitscontrole: actueel,
   }
 }
 

@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   AlertCircle, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Award, CircleHelp, ExternalLink, Filter, Gauge,
-  LineChart, MapPin, MousePointerClick, Eye, Users, Target, TrendingDown, TrendingUp, Minus, X, Lightbulb, Radio,
+  LineChart, MapPin, MousePointerClick, Eye, Users, Target, TrendingDown, TrendingUp, Minus, X, Lightbulb, Radio, Hourglass, BookOpenCheck, FileBarChart, Swords,
 } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import {
@@ -16,6 +16,7 @@ import { LAUNCH_DATES, prettySlug } from "@/lib/pages"
 import { dateShort, num, pct, pos } from "@/lib/format"
 import { Alert, EmptyState, Skeleton } from "@/components/ui"
 import TodayView from "./TodayView"
+import type { Report } from "./ReportsView"
 
 const STORE_KEY = "gijs.dashboard.filters"
 const DEFAULT_Q: DashboardQuery = { period: "28", compare: "prev", regio: null, dienst: null }
@@ -160,7 +161,21 @@ export default function DashboardView() {
             <Local data={data} />
           </div>
 
+          <div className="dash-grid">
+            <Competitors data={data} />
+            <LearnedBlock />
+          </div>
+          <div className="dash-grid">
+            <ReportBlock />
+          </div>
+
           {data && (data.notes.length > 0 || data.warnings.some(w => w.severity === "warning")) && <Quality data={data} />}
+        </div>
+      )}
+
+      {data && data.stalled?.length > 0 && (
+        <div className="dash-stalled" role="status">
+          {data.stalled.map(st => <Link key={st.id} href={st.href} className="slim-note"><Hourglass aria-hidden /><span>{st.text}</span></Link>)}
         </div>
       )}
 
@@ -713,5 +728,64 @@ function MiniSeries({ data, k }: { data: DashboardData; k: "clicks" | "impressio
       </div>
       <div className="chart-axis"><span>{dateShort(pts[0]?.date || data.range.start)}</span><span>{dateShort(pts[pts.length - 1]?.date || data.range.end)}</span></div>
     </div>
+  )
+}
+
+// ── Leren en rapport ────────────────────────────────────────────────────────
+
+function LearnedBlock() {
+  const { lessons } = useWorkspace()
+  const active = lessons.filter(l => l.status === "actief")
+  const applied = active.filter(l => l.confidence !== "laag" && l.effect && l.effect.type !== "info")
+  return (
+    <section className="card" aria-labelledby="learn-title">
+      <div className="card-head"><div><h2 className="card-title" id="learn-title"><BookOpenCheck aria-hidden />Wat hebben we geleerd?</h2><p className="card-sub">{applied.length ? `${applied.length} ${applied.length === 1 ? "les wordt" : "lessen worden"} automatisch toegepast` : "Uit afgeronde metingen en beslissingen"}</p></div><Link href="/geleerd" className="section-link">Alles<ArrowRight aria-hidden /></Link></div>
+      <div className="card-body">
+        {active.length === 0 ? <p className="muted small">Nog niets: lessen ontstaan zodra er afgeronde metingen zijn (14, 28 en 56 dagen na een uitgevoerde taak) of adviezen herhaaldelijk worden afgewezen.</p> : (
+          <ul className="dash-drivers">{active.slice(0, 3).map(l => <li key={l.key} className="tone-up"><BookOpenCheck aria-hidden /><span><b>{l.title}.</b> {l.effect?.text}</span></li>)}</ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ReportBlock() {
+  const [r, setR] = useState<Report | null | undefined>(undefined)
+  useEffect(() => { fetch("/api/reports", { cache: "no-store" }).then(x => x.ok ? x.json() : { rows: [] }).then(j => setR(j.rows?.[0] || null)).catch(() => setR(null)) }, [])
+  return (
+    <section className="card" aria-labelledby="report-title">
+      <div className="card-head"><div><h2 className="card-title" id="report-title"><FileBarChart aria-hidden />Vrijdagrapport</h2><p className="card-sub">{r ? `Week t/m ${dateShort(r.week_end)}` : "Elke vrijdagmiddag vastgelegd"}</p></div><Link href="/rapporten" className="section-link">Alle weken<ArrowRight aria-hidden /></Link></div>
+      <div className="card-body">
+        {r === undefined ? <Skeleton height={60} /> : r === null ? <p className="muted small">Het eerste rapport verschijnt vrijdagmiddag. Op de rapportpagina kun je er nu al een laten maken.</p> : (
+          <>
+            <p><b>{r.summary.headline}</b></p>
+            <p className="muted small" style={{ marginTop: 4 }}>{r.summary.next.length ? `Volgende week: ${r.summary.next.slice(0, 2).join(" · ")}` : r.summary.conclusion}</p>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function Competitors({ data }: { data: DashboardData | null }) {
+  const c = data?.competitors
+  return (
+    <section className="card" aria-labelledby="comp-title">
+      <div className="card-head"><div><h2 className="card-title" id="comp-title"><Swords aria-hidden />Wie staat er boven Gijs?</h2><p className="card-sub">{c ? `${c.queries} belangrijke zoekwoorden, week van ${dateShort(c.week)}. Indicatie via een webzoekmachine, niet exact Google.` : "Wekelijks gecontroleerd op de belangrijkste zoekwoorden"}</p></div></div>
+      <div className="card-body">
+        {!data ? <Skeleton height={100} /> : !c ? <p className="muted small">Nog geen gegevens. De wekelijkse zoektaak legt elke maandag vast wie er op de belangrijkste zoekwoorden boven Gijs staat.</p> : c.domains.length === 0 ? <p className="muted small">Geen concurrenten gevonden.</p> : (
+          <ul className="dash-rows">
+            {c.domains.slice(0, 6).map(d => (
+              <li key={d.domain}><div className="dash-row" style={{ cursor: "default" }}>
+                <span className="truncate"><b>{d.domain}</b></span>
+                <span className="dash-row-num">{d.above}× <small>boven Gijs</small></span>
+                <span className="dash-row-sub truncate">bv. {d.examples.map(e => `"${e}"`).join(", ")}</span>
+              </div></li>
+            ))}
+          </ul>
+        )}
+        {c && <p className="field-hint">Gijs gevonden bij {c.gijsFound} van {c.queries} zoekwoorden.</p>}
+      </div>
+    </section>
   )
 }

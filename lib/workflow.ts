@@ -117,6 +117,7 @@ export function mergeTasks(signals: Signal[], records: AdviceRecord[], experimen
       current,
       updatedAt: rec?.updated_at || null,
       experiments: expMap.get(signal.key) || [],
+      owner: rec?.owner || null,
     }
   }
 

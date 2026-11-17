@@ -4,6 +4,7 @@
 
 import { BetaAnalyticsDataClient } from "@google-analytics/data"
 import { getSupabase, supabaseConfigured } from "./guard"
+import { readStalled, type Stalled } from "./stalled"
 import { gscQuery, GSC_LAG_DAYS, serviceSearchConsole, toPath, type GscRow } from "./gsc"
 import { isBrandQuery } from "@/lib/signals"
 import { classifyPath, prettySlug } from "@/lib/pages"
@@ -385,7 +386,35 @@ export async function readDashboard(q: DashboardQuery, fresh = false): Promise<D
     return { sitemapErrors: count || 0, failedJobs: [...latest.entries()].filter(([, l]) => !l.ok).map(([j]) => j) }
   })().catch(() => ({ sitemapErrors: 0, failedJobs: [] as string[] }))
 
-  const [gsc, g, trends, measurement, store] = await Promise.all([gscP, ga4P, trendsP, measurementP, storeP])
+  // Concurrenten: laatste week van de wekelijkse webzoektaak (indicatie, niet exact Google)
+  const competitorsP: Promise<DashboardData["competitors"]> = (async () => {
+    if (!supabaseConfigured()) return null
+    const sb = getSupabase()
+    const { data: lastWeek } = await sb.from("seo_serp").select("week").order("week", { ascending: false }).limit(1).maybeSingle()
+    if (!lastWeek) return null
+    const { data: rows } = await sb.from("seo_serp").select("query, gijs_rank, results").eq("week", lastWeek.week)
+    const dom = new Map<string, { count: number; above: number; examples: string[] }>()
+    for (const r of rows || []) {
+      if (regio || dienst) {
+        if (dienst && !(SERVICE_TERMS[dienst] || [dienst]).some(t => r.query.toLowerCase().includes(t))) continue
+      }
+      for (const res of (r.results || []) as { rank: number; domain: string }[]) {
+        const d = (res.domain || "").replace(/^www\./, "").toLowerCase()
+        if (!d || d.includes("groeninjestraat")) continue
+        const x = dom.get(d) || { count: 0, above: 0, examples: [] }
+        x.count++
+        if (r.gijs_rank === null || res.rank < r.gijs_rank) x.above++
+        if (x.examples.length < 3) x.examples.push(r.query)
+        dom.set(d, x)
+      }
+    }
+    return {
+      week: lastWeek.week, queries: (rows || []).length, gijsFound: (rows || []).filter(r => r.gijs_rank !== null).length,
+      domains: [...dom.entries()].map(([domain, v]) => ({ domain, ...v })).sort((a, b) => b.above - a.above || b.count - a.count).slice(0, 8),
+    }
+  })().catch(() => null)
+  const stalledP: Promise<Stalled[]> = supabaseConfigured() ? readStalled().catch(() => []) : Promise.resolve([])
+  const [gsc, g, trends, measurement, store, stalled, competitors] = await Promise.all([gscP, ga4P, trendsP, measurementP, storeP, stalledP, competitorsP])
 
   // ── Kaarten ──
   const [ovCur, kwCur, pgCur, ovPrev, kwPrev, pgPrev] = gsc || [[], [], [], null, null, null]
@@ -507,7 +536,7 @@ export async function readDashboard(q: DashboardQuery, fresh = false): Promise<D
   const value: DashboardData = {
     range: cur, compareRange: cmp, dataUntil, filters: { regio, dienst },
     cards, series, keywords, pages: pages.slice(0, 200), channels, local, drivers, trends, warnings, notes, measurement,
-    conclusion: buildConclusion(partial), errors,
+    conclusion: buildConclusion(partial), errors, stalled, competitors,
   }
   if (!errors.gsc && !errors.ga4) cache.set(cacheKey, { at: Date.now(), value })
   return value

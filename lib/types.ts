@@ -97,6 +97,7 @@ export interface Signal {
   effort?: Level              // benodigde inspanning
   risk?: Level                // risico dat de wijziging iets anders verslechtert
   conversions?: { page: string; sessions: number; keyEvents: number } | null  // GA4, laatste 28 dagen
+  lesson?: { key: string; title: string; factor: number } | null  // prioriteit aangepast door een les
 }
 
 export type Level = "laag" | "middel" | "hoog"
@@ -113,6 +114,7 @@ export interface AdviceRecord {
   note: string | null
   snapshot: Signal | null
   snooze_until: string | null
+  owner?: string | null
   created_at: string
   updated_at: string
 }
@@ -146,6 +148,7 @@ export interface Task {
   current: boolean            // signaal komt voor in de actuele data
   updatedAt: string | null
   experiments: Experiment[]
+  owner?: string | null       // e-mail van wie de taak oppakt
 }
 
 export interface PageAudit {

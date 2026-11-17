@@ -15,7 +15,7 @@ export async function GET() {
   try {
     const { data, error } = await getSupabase()
       .from("seo_advice_status")
-      .select("advice_key, advice_title, advice_type, status, note, snapshot, snooze_until, created_at, updated_at")
+      .select("advice_key, advice_title, advice_type, status, note, snapshot, snooze_until, created_at, updated_at, owner")
       .order("updated_at", { ascending: false })
     if (error) throw error
     return NextResponse.json({ rows: data || [] })
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { advice_key, advice_title, advice_type, status, note, snapshot, snooze_until } = body
+    const { advice_key, advice_title, advice_type, status, note, snapshot, snooze_until, owner } = body
     if (!advice_key || !status) {
       return NextResponse.json({ error: "advice_key en status zijn verplicht" }, { status: 400 })
     }
@@ -56,11 +56,12 @@ export async function POST(request: Request) {
     // of momentopname niet per ongeluk wist.
     if (note !== undefined) row.note = note
     if (snapshot !== undefined) row.snapshot = snapshot
+    if (owner !== undefined) row.owner = typeof owner === "string" && /^[^\s@]+@[^\s@]+$/.test(owner) ? owner.toLowerCase() : null
 
     const { data, error } = await getSupabase()
       .from("seo_advice_status")
       .upsert(row, { onConflict: "advice_key" })
-      .select("advice_key, advice_title, advice_type, status, note, snapshot, snooze_until, created_at, updated_at")
+      .select("advice_key, advice_title, advice_type, status, note, snapshot, snooze_until, created_at, updated_at, owner")
       .single()
     if (error) throw error
 

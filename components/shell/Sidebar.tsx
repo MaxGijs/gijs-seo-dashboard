@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { Database, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
+import { BookOpenCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
@@ -12,7 +12,12 @@ export const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/taken", label: "Mijn taken", icon: KanbanSquare },
   { href: "/analyses", label: "SEO-analyses", icon: LineChart },
+] as const
+
+export const LEARN_NAV = [
   { href: "/experimenten", label: "Experimenten", icon: FlaskConical },
+  { href: "/geleerd", label: "Wat hebben we geleerd?", icon: BookOpenCheck },
+  { href: "/rapporten", label: "Vrijdagrapport", icon: FileBarChart },
 ] as const
 
 export const CONTENT_NAV = [
@@ -47,7 +52,7 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
       </Link>
 
       <nav>
-        {([["SEO", NAV], ["Content", CONTENT_NAV], ["Systeem", SYSTEM_NAV]] as const).map(([label, items]) => (
+        {([["SEO", NAV], ["Content", CONTENT_NAV], ["Leren", LEARN_NAV], ["Systeem", SYSTEM_NAV]] as const).map(([label, items]) => (
           <div key={label} className="nav-group">
             <p className="nav-label eyebrow">{label}</p>
             <ul className="sidebar-nav">

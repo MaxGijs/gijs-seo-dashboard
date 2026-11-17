@@ -73,6 +73,7 @@ export interface ContentIdea {
   published_url: string | null
   published_at: string | null
   evals: Partial<Record<"d7" | "d30" | "d90", Eval>>
+  owner?: string | null
   original: any
 }
 

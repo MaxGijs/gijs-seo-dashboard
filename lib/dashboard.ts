@@ -126,6 +126,8 @@ export interface DashboardData {
   notes: DataNote[]
   measurement: Measurement
   conclusion: Conclusion
+  stalled: { id: string; text: string; href: string; kind: "seo" | "content" }[]
+  competitors: { week: string; queries: number; gijsFound: number; domains: { domain: string; count: number; above: number; examples: string[] }[] } | null
   errors: { gsc: string | null; ga4: string | null; trends: string | null }
 }
 

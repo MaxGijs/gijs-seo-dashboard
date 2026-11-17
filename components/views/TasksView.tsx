@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX } from "lucide-react"
+import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound } from "lucide-react"
+import { ownerName } from "@/components/OwnerSelect"
 import { sortByPriority, useWorkspace } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
@@ -66,7 +67,7 @@ const DROP_STATUS: Partial<Record<ColumnId, Status>> = { beoordelen: "nieuw", ge
 const VIEW_KEY = "gijs.seo.tasksView"
 
 export default function TasksView() {
-  const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, toast } = useWorkspace()
+  const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, toast, users, me } = useWorkspace()
   const content = useContentIdeas()
   const [openIdea, setOpenIdea] = useState<string | null>(null)
   const [view, setViewState] = useState<"bord" | "lijst">("bord")
@@ -81,6 +82,7 @@ export default function TasksView() {
   const [type, setType] = useState<TypeFilter>("alle")
   const [prio, setPrio] = useState<"alle" | Priority>("alle")
   const [text, setText] = useState("")
+  const [owner, setOwnerFilter] = useState<"alle" | "ik" | "niemand" | string>("alle")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const entries = useMemo<Entry[]>(() => {
@@ -98,9 +100,10 @@ export default function TasksView() {
     return entries.filter(e =>
       (type === "alle" || (type === "content" ? e.kind === "content" : e.kind === "seo" && kinds.includes(e.t.signal.kind))) &&
       (prio === "alle" || e.prio === prio) &&
+      (owner === "alle" || (() => { const o = (e.kind === "seo" ? e.t.owner : e.i.owner) || null; return owner === "niemand" ? !o : owner === "ik" ? o === me : o === owner })()) &&
       (!n || normalize(e.kind === "seo" ? `${e.t.signal.query || ""} ${e.t.signal.page || ""} ${e.t.signal.headline}` : `${e.i.title} ${e.i.service || ""} ${e.i.target_page || ""}`).includes(n))
     )
-  }, [entries, type, prio, text])
+  }, [entries, type, prio, text, owner, me])
 
   const typeCounts = useMemo(() => Object.fromEntries(TYPE_FILTERS.map(f => [
     f.id, f.id === "alle" ? entries.length : f.id === "content" ? entries.filter(e => e.kind === "content").length : entries.filter(e => e.kind === "seo" && f.kinds.includes(e.t.signal.kind)).length,
@@ -155,7 +158,7 @@ export default function TasksView() {
     if (ok) toast(`Verplaatst naar ${COLUMNS.find(c => c.id === to)!.label}`)
   }
 
-  const filtersActive = type !== "alle" || prio !== "alle" || text.trim() !== ""
+  const filtersActive = type !== "alle" || prio !== "alle" || text.trim() !== "" || owner !== "alle"
 
   return (
     <>
@@ -191,7 +194,14 @@ export default function TasksView() {
           </select>
           <label className="sr-only" htmlFor="text-filter">Filter op zoekwoord of pagina</label>
           <input id="text-filter" className="input" style={{ width: 240, height: 36, borderRadius: 999, paddingLeft: 14 }} placeholder="Filter op zoekwoord of pagina" value={text} onChange={e => setText(e.target.value)} />
-          {filtersActive && <button className="btn btn-ghost btn-sm" onClick={() => { setType("alle"); setPrio("alle"); setText("") }}>Filters wissen</button>}
+          <label className="sr-only" htmlFor="owner-filter">Eigenaar</label>
+          <select id="owner-filter" className="select" style={{ width: 170, height: 36, borderRadius: 999 }} value={owner} onChange={e => setOwnerFilter(e.target.value)}>
+            <option value="alle">Iedereen</option>
+            <option value="ik">Alleen mijn taken</option>
+            <option value="niemand">Niet toegewezen</option>
+            {users.filter(u => u.email !== me).map(u => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
+          </select>
+          {filtersActive && <button className="btn btn-ghost btn-sm" onClick={() => { setType("alle"); setPrio("alle"); setText(""); setOwnerFilter("alle") }}>Filters wissen</button>}
         </div>
       </div>
 
@@ -251,7 +261,7 @@ export default function TasksView() {
                         </span>
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
-                        <span className="tcard-foot"><span>{meta.icon}{meta.text}</span>{i.status === "later" ? <span>Later</span> : null}</span>
+                        <span className="tcard-foot"><span>{meta.icon}{meta.text}</span>{i.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(i.owner, users, me)}</span> : null}{i.status === "later" ? <span>Later</span> : null}</span>
                       </button>
                     )
                   }
@@ -267,6 +277,7 @@ export default function TasksView() {
                       <span className="tcard-sub" title={t.signal.title}>{t.signal.action || t.signal.title}</span>
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
+                        {t.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span> : null}
                         {newSinceLastVisit.has(t.key) && c.id === "beoordelen" ? <span className="new-dot">Nieuw</span>
                           : t.status === "onderzoeken" ? <span>In onderzoek</span>
                           : !t.current && c.id !== "afgerond" ? <span title="Niet meer in de actuele signalen">Niet actueel</span> : null}
@@ -295,7 +306,7 @@ export default function TasksView() {
                   <tr key={en.key} className="is-clickable" onClick={() => setOpenIdea(en.i.id)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") setOpenIdea(en.i.id) }}>
                     <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{en.i.title}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{en.i.format} · {serviceLabel(en.i.service)}</span></td>
                     <td className="nowrap">Content<div style={{ marginTop: 4 }}><span className="badge tone-neutral">{ORIGIN_META[en.i.origin].label}</span></div></td>
-                    <td><span className="badge tone-info badge-dot">{CONTENT_STEP[en.i.status] || en.i.status}</span></td>
+                    <td><span className="badge tone-info badge-dot">{CONTENT_STEP[en.i.status] || en.i.status}</span>{en.i.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(en.i.owner, users, me)}</span></div>}</td>
                     <td><PriorityMeter priority={en.prio} /></td>
                     <td className="nowrap"><TrendingUp size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--accent-700)" }} aria-hidden />Score {effectiveScore(en.i)}</td>
                     <td className="num">{en.i.keywords?.length ? num(en.i.keywords.reduce((s, k) => s + k.impressions, 0)) : "—"}</td>
@@ -306,7 +317,7 @@ export default function TasksView() {
                   <tr key={t.key} className="is-clickable" onClick={() => openTask(t.key)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") openTask(t.key) }}>
                     <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span></td>
                     <td className="nowrap">{KIND_META[t.signal.kind].label}{t.signal.intent && <div style={{ marginTop: 4 }}><IntentBadge intent={t.signal.intent} /></div>}</td>
-                    <td><StatusBadge task={t} /></td>
+                    <td><StatusBadge task={t} />{t.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span></div>}</td>
                     <td>{t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : <span className="subtle">—</span>}</td>
                     <td className="nowrap"><TrendingUp size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--accent-700)" }} aria-hidden />{gainShort(t.signal.gain)}</td>
                     <td className="num"><Eye size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--grey-400)" }} aria-hidden />{num(t.signal.metrics.impressions)}</td>

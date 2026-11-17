@@ -25,6 +25,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   switch (body.action) {
+    case "owner": {
+      patch.owner = typeof body.owner === "string" && /^[^\s@]+@[^\s@]+$/.test(body.owner) ? body.owner.toLowerCase() : null
+      break
+    }
     case "edit": {
       // Aanpassingen door een medewerker; het oorspronkelijke voorstel blijft in "original"
       const f = body.fields || {}

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 import { dateWindow, gscQuery, serviceSearchConsole, toUrl } from "@/lib/server/gsc"
 import { logged } from "@/lib/server/synclog"
 import { LAUNCH_DATES } from "@/lib/pages"
+import { recomputeLessons } from "@/lib/server/learning"
 
 export const maxDuration = 120
 
@@ -241,7 +242,10 @@ export async function GET(request: Request) {
     }
 
     await logged("experimenten", async () => results)
-    return NextResponse.json({ ok: true, ...results })
+    // Daarna: lessen opnieuw berekenen uit alle afgeronde metingen en beslissingen
+    let lessen: unknown = null
+    try { lessen = await logged("lessen", () => recomputeLessons()) } catch (e: any) { lessen = { fout: e.message } }
+    return NextResponse.json({ ok: true, ...results, lessen })
   } catch (err: any) {
     await logged("experimenten", async () => { throw err }).catch(() => {})
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 })

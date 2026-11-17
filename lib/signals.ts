@@ -3,6 +3,7 @@ import { buildCtrModel, clicksAt, gainFromMove, type CtrModel } from "./ctr"
 import { num, pos, pct } from "./format"
 import { actionFor, classifyPage, classifyQuery, estimateFor, INTENT_META, placeIn, regionSegments } from "./intent"
 import { assessPage, type PageRow } from "./pages"
+import { featuresOf, lessonFor, type Lesson } from "./learning"
 
 export function toPath(url: string) {
   const p = url.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "")
@@ -59,6 +60,7 @@ export interface SignalInput {
   inventory?: PageRow[]    // pagina-inventaris (sitemap + nachtelijke HTTP- en indexeringscontrole)
   ga4Pages?: { path: string; sessions: number; keyEvents: number }[]  // GA4 per landingspagina (28 d)
   feedback?: { key: string; kind: SignalKind; intent?: string }[]    // eerder afgewezen of 'onvoldoende bewijs'
+  lessons?: Pick<Lesson, "key" | "title" | "effect" | "status" | "confidence">[]  // wat we geleerd hebben (Wat hebben we geleerd?)
 }
 
 // Inspanning en wijzigingsrisico per soort signaal (in het zijpaneel verfijnd per aanpassing)
@@ -336,7 +338,9 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
         * EFFORT_FACTOR[d.effort || "laag"] * RISK_FACTOR[d.risk || "laag"] * conversionFactor(d.conversions)
         // Wat je eerder afwees, telt voor vergelijkbare adviezen minder zwaar (max. halvering)
         * Math.max(0.5, Math.pow(0.85, d.rejectedSimilar || 0))
-      return { ...d, score }
+      // Geleerd uit afgeronde metingen: hooguit één les per advies, alleen met voldoende zekerheid
+      const lesson = input.lessons?.length ? lessonFor(featuresOf({ kind: d.kind, intent: d.intent, position: d.metrics.position ?? null, page: d.page || d.conversions?.page || null, action: d.action }), input.lessons) : null
+      return { ...d, score: score * (lesson?.factor ?? 1), lesson }
     }),
   ].sort((a, b) => b.score - a.score)
 

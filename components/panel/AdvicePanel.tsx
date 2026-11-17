@@ -15,6 +15,8 @@ import { reconcile } from "@/lib/contract"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
+import OwnerSelect from "@/components/OwnerSelect"
+import LinkSuggestions from "./LinkSuggestions"
 
 const SITE = "https://www.groeninjestraat.nl"
 
@@ -34,7 +36,7 @@ const FINDING_TAG: Record<FindingTone, { label: string; tone: "info" | "warning"
 type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback" | "close"
 
 function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => void; intent: "execute" | "close" | null }) {
-  const { getDetail, ctrModel, pages, signals, setStatus, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
+  const { getDetail, ctrModel, pages, signals, setStatus, setOwner, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
   const [detail, setDetail] = useState<AdviceDetail | null>(null)
   const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading")
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -177,6 +179,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
           <StatusBadge task={task} />
           {raw.kind !== "analyse" && <PriorityMeter priority={raw.priority} />}
           {raw.intent && <IntentBadge intent={raw.intent} />}
+          <OwnerSelect value={task.owner} onChange={o => setOwner(task, o)} />
         </div>
         <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
       </div>
@@ -358,6 +361,8 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               </ol>
             )}
           </section>
+
+          {target && raw.kind !== "techniek" && raw.kind !== "dubbel" && <LinkSuggestions target={target} query={raw.query} />}
 
           {/* 4. Resultaat en meting */}
           <section className="psec" aria-labelledby="sec-impact">
