@@ -70,3 +70,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+
+// DELETE /api/advice?key=eigen:… — een zelf toegevoegde taak verwijderen (bijv. per ongeluk aangemaakt).
+// Taken die uit de data komen kun je niet verwijderen: die komen terug; die wijs je af.
+export async function DELETE(request: Request) {
+  const guard = await requireUser()
+  if (guard.error) return guard.error
+  if (!supabaseConfigured()) return NextResponse.json({ error: "Opslag niet geconfigureerd" }, { status: 500 })
+  const key = new URL(request.url).searchParams.get("key") || ""
+  if (!key.startsWith("eigen:")) return NextResponse.json({ error: "Alleen zelf toegevoegde taken kun je verwijderen. Taken uit de data wijs je af, dan leert het systeem daarvan." }, { status: 400 })
+  const sb = getSupabase()
+  const { error: e1 } = await sb.from("seo_experiments").delete().eq("advice_key", key)
+  if (e1) return NextResponse.json({ error: e1.message }, { status: 500 })
+  const { error: e2 } = await sb.from("seo_advice_status").delete().eq("advice_key", key)
+  if (e2) return NextResponse.json({ error: e2.message }, { status: 500 })
+  await sb.from("seo_attachments").update({ deleted_at: new Date().toISOString() }).eq("ref_kind", "taak").eq("ref_id", key)
+  return NextResponse.json({ ok: true })
+}

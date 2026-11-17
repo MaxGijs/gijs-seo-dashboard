@@ -52,7 +52,8 @@ export default function BoardLegend({ onClose }: { onClose: () => void }) {
                 <tr><td><b>Eigen taak</b></td><td>Zelf toegevoegd, met een doel</td><td>Doel &quot;meer aanvragen&quot;: energiescanaanvragen in GA4. Doel &quot;beter gevonden worden&quot;: Google. Doel &quot;overig&quot;: niet automatisch</td></tr>
               </tbody>
             </table>
-            <p className="subtle small" style={{ marginTop: 10 }}>Tip: meld een taak pas als uitgevoerd als de wijziging echt live staat, anders start de meting te vroeg.</p>
+            <p className="subtle small" style={{ marginTop: 10 }}>Per ongeluk aangemaakt? Zelf toegevoegde taken en kansen kun je in het paneel verwijderen. Taken uit de data verwijder je niet (ze komen terug): wijs ze af, dan leert het systeem ervan.</p>
+            <p className="subtle small" style={{ marginTop: 6 }}>Tip: meld een taak pas als uitgevoerd als de wijziging echt live staat, anders start de meting te vroeg.</p>
           </div>
         </div>
       </div>

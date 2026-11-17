@@ -108,3 +108,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ idea: data })
 }
+
+// DELETE /api/content/:id — een zelf toegevoegde, nog niet gepubliceerde contentkans verwijderen
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const guard = await requireUser()
+  if (guard.error) return guard.error
+  const { id } = await params
+  const sb = getSupabase()
+  const { data: idea } = await sb.from("content_ideas").select("origin, status").eq("id", id).maybeSingle()
+  if (!idea) return NextResponse.json({ error: "Kans niet gevonden" }, { status: 404 })
+  if (idea.origin !== "handmatig") return NextResponse.json({ error: "Alleen zelf toegevoegde kansen kun je verwijderen. Kansen uit nieuws of zoekdata wijs je af, dan leert het systeem daarvan." }, { status: 400 })
+  if (idea.status === "gepubliceerd") return NextResponse.json({ error: "Een gepubliceerd artikel wordt nog gemeten en kan niet worden verwijderd." }, { status: 400 })
+  const { error } = await sb.from("content_ideas").delete().eq("id", id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await sb.from("seo_attachments").update({ deleted_at: new Date().toISOString() }).eq("ref_kind", "content").eq("ref_id", id)
+  return NextResponse.json({ ok: true })
+}

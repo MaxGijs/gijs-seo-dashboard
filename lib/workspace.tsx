@@ -104,6 +104,7 @@ interface WorkspaceValue {
   // acties
   setStatus: (task: Task, to: Status, opts?: StatusOptions) => Promise<boolean>
   setOwner: (task: Task, owner: string | null) => Promise<boolean>
+  removeTask: (task: Task) => Promise<boolean>
   setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
   openTask: (key: string, intent?: PanelIntent) => void
@@ -405,6 +406,20 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [toast])
 
   // Eigenaar toewijzen (wie pakt dit op). Status blijft zoals hij is.
+  // Zelf toegevoegde taak verwijderen (per ongeluk aangemaakt)
+  const removeTask = useCallback(async (task: Task) => {
+    try {
+      await getJson(`/api/advice?key=${encodeURIComponent(task.key)}`, { method: "DELETE" })
+      setRecords(rs => rs.filter(r => r.advice_key !== task.key))
+      setExperiments(es => es.filter(e => e.advice_key !== task.key))
+      toast("Taak verwijderd")
+      return true
+    } catch (e: any) {
+      toast(`Verwijderen mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return false
+    }
+  }, [toast])
+
   const setOwner = useCallback(async (task: Task, owner: string | null) => {
     try {
       const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
@@ -463,7 +478,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
+    setStatus, setOwner, setGoal, removeTask, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),

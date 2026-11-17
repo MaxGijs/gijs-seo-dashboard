@@ -1004,3 +1004,7 @@ img, svg { display: block; max-width: 100%; }
 .att-ready p { margin: 0; font-size: var(--fs-sm); }
 .att-progress { height: 6px; background: var(--grey-100); border-radius: 3px; overflow: hidden; }
 .att-progress span { display: block; height: 100%; background: var(--accent-600); transition: width .2s; }
+.btn-danger-solid { background: var(--error); color: #fff; }
+.btn-danger-solid:hover:not(:disabled) { filter: brightness(.92); }
+.link-btn.link-danger { color: var(--error); }
+.inline-form-danger { border-left: 3px solid var(--error); padding-left: 12px; }

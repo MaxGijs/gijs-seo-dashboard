@@ -2,7 +2,7 @@
 
 import Attachments from "@/components/Attachments"
 import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, X } from "lucide-react"
+import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Trash2, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -37,7 +37,8 @@ function Tags({ value, onChange }: { value: string[]; onChange: (v: string[]) =>
   )
 }
 
-export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: ContentIdea; all: ContentIdea[]; onClose: () => void; onUpdate: (i: ContentIdea) => void }) {
+export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }: { idea: ContentIdea; all: ContentIdea[]; onClose: () => void; onUpdate: (i: ContentIdea) => void; onDeleted?: (id: string) => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const { toast } = useWorkspace()
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<null | "edit" | "reject" | "later" | "feedback">(null)
@@ -386,6 +387,25 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
               {step >= 5 && <button className="btn btn-ghost btn-sm" onClick={() => setMode("feedback")}><MessageSquareText aria-hidden />Feedback</button>}
             </div>
           )}
+          {!mode && idea.origin === "handmatig" && idea.status !== "gepubliceerd" && (confirmDelete ? (
+            <div className="inline-form inline-form-danger">
+              <p className="field-label">Deze kans definitief verwijderen?</p>
+              <p className="field-hint">De kans en eventuele bijlagen verdwijnen. Dit kun je niet ongedaan maken. Is hij alleen niet nodig? Wijs hem dan liever af, dan leert het systeem ervan.</p>
+              <div className="inline-form-actions">
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirmDelete(false)}>Annuleren</button>
+                <button className="btn btn-danger-solid btn-sm" disabled={busy} onClick={async () => {
+                  setBusy(true)
+                  try {
+                    const r = await fetch(`/api/content/${idea.id}`, { method: "DELETE" }); const j = await r.json().catch(() => ({}))
+                    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+                    toast("Kans verwijderd"); onDeleted?.(idea.id); onClose()
+                  } catch (e: any) { toast(`Verwijderen mislukt: ${e.message}`, "error") } finally { setBusy(false) }
+                }}><Trash2 aria-hidden />Verwijderen</button>
+              </div>
+            </div>
+          ) : (
+            <div className="panel-links"><button className="link-btn link-danger" onClick={() => setConfirmDelete(true)}><Trash2 aria-hidden />Kans verwijderen</button></div>
+          ))}
         </div>
       </aside>
     </>

@@ -335,7 +335,7 @@ export default function TasksView() {
       )}
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
       {openIdea && content.ideas?.find(i => i.id === openIdea) && (
-        <ContentPanel idea={content.ideas.find(i => i.id === openIdea)!} all={content.ideas} onClose={() => setOpenIdea(null)} onUpdate={content.update} />
+        <ContentPanel idea={content.ideas.find(i => i.id === openIdea)!} all={content.ideas} onClose={() => setOpenIdea(null)} onUpdate={content.update} onDeleted={content.remove} />
       )}
     </>
   )

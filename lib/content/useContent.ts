@@ -18,7 +18,8 @@ export function useContentIdeas() {
   }, [])
   useEffect(() => { load() }, [load])
   const update = useCallback((idea: ContentIdea) => setIdeas(list => (list || []).map(i => (i.id === idea.id ? idea : i))), [])
-  return { ideas, error, reload: load, update }
+  const remove = useCallback((id: string) => setIdeas(list => (list || []).filter(i => i.id !== id)), [])
+  return { ideas, error, reload: load, update, remove }
 }
 
 // Waar een contentkans op het takenbord staat

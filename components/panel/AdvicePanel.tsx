@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
   FlaskConical, MessageSquareText, Play, RotateCcw, ShieldCheck,
   ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
-  Users, Calculator, Database, Target,
+  Users, Calculator, Database, Target, Trash2,
 } from "lucide-react"
 import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
 import { INTENT_META } from "@/lib/intent"
@@ -36,10 +36,10 @@ const FINDING_TAG: Record<FindingTone, { label: string; tone: "info" | "warning"
   spoed: { label: "Spoed", tone: "error" },
 }
 
-type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback" | "close"
+type Mode = null | "reject" | "snooze" | "execute" | "note" | "copy-fallback" | "close" | "delete"
 
 function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => void; intent: "execute" | "close" | null }) {
-  const { getDetail, ctrModel, pages, signals, setStatus, setOwner, setGoal, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
+  const { getDetail, ctrModel, pages, signals, setStatus, setOwner, setGoal, removeTask, toast, dataUntil, listWindow, experiments, ga4Pages, overview } = useWorkspace()
   const [detail, setDetail] = useState<AdviceDetail | null>(null)
   const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading")
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -502,6 +502,17 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             </div>
           )}
 
+          {mode === "delete" && (
+            <div className="inline-form inline-form-danger">
+              <p className="field-label">Deze taak definitief verwijderen?</p>
+              <p className="field-hint">De taak{task.experiments.length ? ", de meting" : ""} en eventuele bijlagen verdwijnen. Dit kun je niet ongedaan maken. Bedoel je dat de taak niet nodig is? Kies dan liever Afwijzen, dan leert het systeem ervan.</p>
+              <div className="inline-form-actions">
+                <button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Annuleren</button>
+                <button className="btn btn-danger-solid btn-sm" disabled={busy} onClick={async () => { setBusy(true); const ok = await removeTask(task); setBusy(false); if (ok) onClose() }}><Trash2 aria-hidden />Verwijderen</button>
+              </div>
+            </div>
+          )}
+
           {mode === "close" && (
             <div className="inline-form">
               <p className="field-label">Hoe sluit je deze taak af?</p>
@@ -567,6 +578,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 )}
                 <button className="link-btn" onClick={() => { setText(task.note || ""); setMode("note") }}><PencilLine aria-hidden />{task.note ? "Notitie bewerken" : "Notitie toevoegen"}</button>
                 <button className="link-btn" onClick={copyToClaude}><Copy aria-hidden />Tweede mening van Claude</button>
+                {raw.kind === "eigen" && <button className="link-btn link-danger" onClick={() => setMode("delete")}><Trash2 aria-hidden />Taak verwijderen</button>}
                 {task.updatedAt && <span className="meta-line" style={{ marginLeft: "auto" }}>Gewijzigd {dateShort(task.updatedAt)}</span>}
               </div>
             </>

@@ -331,7 +331,7 @@ export default function ContentView() {
         </>
       )}
 
-      {open && <ContentPanel idea={open} all={data?.ideas || []} onClose={() => setOpenId(null)} onUpdate={update} />}
+      {open && <ContentPanel idea={open} all={data?.ideas || []} onClose={() => setOpenId(null)} onUpdate={update} onDeleted={id => setData(d => (d ? { ...d, ideas: d.ideas.filter(i => i.id !== id) } : d))} />}
       {adding && data && <AddIdeaDialog services={data.services} onClose={() => setAdding(false)} onAdded={idea => { setData(d => (d ? { ...d, ideas: [idea, ...d.ideas] } : d)); setTab("beoordelen"); setOpenId(idea.id) }} />}
     </>
   )
