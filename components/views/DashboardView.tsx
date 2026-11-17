@@ -200,7 +200,7 @@ function FilterBar({ q, onChange }: { q: DashboardQuery; onChange: (p: Partial<D
         <label className="dash-select">
           <span className="sr-only">Vergelijken met</span>
           <select className="select" value={q.compare} onChange={e => onChange({ compare: e.target.value as Compare })}>
-            {(["prev", "year", "none"] as const).map(c => <option key={c} value={c}>{c === "none" ? COMPARE_LABEL[c] : `Vergelijk: ${COMPARE_LABEL[c].toLowerCase()}`}</option>)}
+            {(["prev", "year", "none"] as const).map(c => <option key={c} value={c}>{c === "none" ? COMPARE_LABEL[c] : c === "year" ? "Vergelijk met dezelfde dagen vorig jaar" : `Vergelijk met ${q.period === "1" ? "de dag ervoor" : q.period === "custom" ? "de even lange periode ervoor" : `de ${q.period} dagen ervoor`}`}</option>)}
           </select>
         </label>
         <button className={`chip${more || active.length ? " is-active" : ""}`} onClick={() => setMore(m => !m)} aria-expanded={more}>
