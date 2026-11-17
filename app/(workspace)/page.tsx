@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import TodayView from "@/components/views/TodayView"
+import DashboardView from "@/components/views/DashboardView"
 
-export const metadata: Metadata = { title: "Vandaag · Gijs Intelligence" }
+export const metadata: Metadata = { title: "Dashboard · Gijs Intelligence" }
 
 export default function Page() {
-  return <TodayView />
+  return <DashboardView />
 }

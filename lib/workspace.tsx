@@ -112,6 +112,7 @@ interface WorkspaceValue {
   toasts: Toast[]
   dismissToast: (id: number) => void
   reload: () => void
+  reloadTick: number
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null)
@@ -413,6 +414,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),
+    reloadTick,
   }
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>

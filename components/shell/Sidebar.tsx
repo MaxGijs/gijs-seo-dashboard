@@ -3,13 +3,13 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { CalendarCheck, Database, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
+import { Database, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
 
 export const NAV = [
-  { href: "/", label: "Vandaag", icon: CalendarCheck },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/taken", label: "Mijn taken", icon: KanbanSquare },
   { href: "/analyses", label: "SEO-analyses", icon: LineChart },
   { href: "/experimenten", label: "Experimenten", icon: FlaskConical },
@@ -40,7 +40,7 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
 
   return (
     <aside className="sidebar" aria-label="Hoofdnavigatie">
-      <Link href="/" className="sidebar-brand" aria-label="Gijs Intelligence, naar Vandaag">
+      <Link href="/" className="sidebar-brand" aria-label="Gijs Intelligence, naar het Dashboard">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-gijs.png" alt="Gijs" width={53} height={30} />
         <span className="sidebar-brand-text"><strong>Intelligence</strong><span>SEO en content</span></span>

@@ -18,7 +18,8 @@ function nextMeasurement(e: Experiment) {
   return null
 }
 
-export default function TodayView() {
+// embedded = als blok "Vandaag" onderaan het Dashboard (zonder eigen paginakop)
+export default function TodayView({ embedded = false }: { embedded?: boolean }) {
   const { user, loading, overview, prevOverview, tasks, experiments, newSinceLastVisit, lastVisit, openTask } = useWorkspace()
   const { toReview, snoozed, active, evaluating, resolved } = useTaskGroups()
   const first = user.name?.split(" ")[0] || ""
@@ -46,23 +47,8 @@ export default function TodayView() {
     ? (highCount ? "Dit vraagt vandaag je aandacht." : "Er liggen nieuwe signalen klaar.")
     : active.length ? "Werk verder aan je lopende taken." : "Alles is beoordeeld."
 
-  return (
+  const body = () => (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">{greeting()}{first ? `, ${first}` : ""}. <span className="soft">{headline}</span></h1>
-          <div className="context-line">
-            <span>{dateLong(today())}</span>
-            {!loading && overview.length > 0 && (
-              <span>Laatste 28 dagen: <b>{num(clicks)}</b> clicks{clickDelta !== null && <> ({signedPct(clickDelta)})</>} en <b>{num(impressions)}</b> vertoningen</span>
-            )}
-            {!loading && lastVisit && lastVisit !== today() && (
-              <span>Sinds {dateShort(lastVisit)}: <b>{newCount}</b> {newCount === 1 ? "nieuw signaal" : "nieuwe signalen"}</span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Drie tellers: wat ligt er op je bord */}
       <div className="stat-grid">
         <Link href="/taken" className="stat stat--dark interactive">
@@ -180,6 +166,39 @@ export default function TodayView() {
           )}
         </div>
       )}
+    </>
+  )
+
+  if (embedded) return (
+    <section className="today-block" aria-labelledby="vandaag-title">
+      <div className="section-head">
+        <div>
+          <h2 className="section-title" id="vandaag-title">Vandaag</h2>
+          <p className="section-sub">{dateLong(today())}{headline ? ` · ${headline}` : ""}{!loading && lastVisit && lastVisit !== today() ? ` · sinds ${dateShort(lastVisit)} ${newCount} ${newCount === 1 ? "nieuw signaal" : "nieuwe signalen"}` : ""}</p>
+        </div>
+      </div>
+      {body()}
+    </section>
+  )
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">{greeting()}{first ? `, ${first}` : ""}. <span className="soft">{headline}</span></h1>
+          <div className="context-line">
+            <span>{dateLong(today())}</span>
+            {!loading && overview.length > 0 && (
+              <span>Laatste 28 dagen: <b>{num(clicks)}</b> clicks{clickDelta !== null && <> ({signedPct(clickDelta)})</>} en <b>{num(impressions)}</b> vertoningen</span>
+            )}
+            {!loading && lastVisit && lastVisit !== today() && (
+              <span>Sinds {dateShort(lastVisit)}: <b>{newCount}</b> {newCount === 1 ? "nieuw signaal" : "nieuwe signalen"}</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {body()}
     </>
   )
 }
