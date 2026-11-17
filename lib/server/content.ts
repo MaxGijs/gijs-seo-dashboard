@@ -32,14 +32,13 @@ export const SOURCES: Source[] = [
     id: `ro-${term.toLowerCase()}`, name: `Rijksoverheid · zoekterm "${term}"`, publisher: "Rijksoverheid", kind: "rss" as const, url: rijksoverheid({ term }), reliability: "overheid" as const,
   })),
   { id: "milieucentraal", name: "Milieu Centraal · Nieuwsberichten", publisher: "Milieu Centraal", kind: "milieucentraal", url: "https://www.milieucentraal.nl/nieuwsberichten/", reliability: "voorlichting" },
-  // Nieuwsmedia: landelijk en in de werkgebieden. Alleen berichten over woningen én een dienst van Gijs worden een kans.
+  // Nieuwsmedia: landelijk. Alleen berichten over woningen én een dienst van Gijs worden een kans.
   { id: "nos-binnenland", name: "NOS · Binnenland", publisher: "NOS", kind: "rss", url: "https://feeds.nos.nl/nosnieuwsbinnenland", reliability: "nieuws" },
   { id: "nos-economie", name: "NOS · Economie", publisher: "NOS", kind: "rss", url: "https://feeds.nos.nl/nosnieuwseconomie", reliability: "nieuws" },
-  { id: "oost", name: "Oost (RTV Oost)", publisher: "Oost", kind: "rss", url: "https://www.rtvoost.nl/rss/index.xml", reliability: "nieuws", region: "overijssel" },
-  { id: "tubantia", name: "Tubantia", publisher: "Tubantia", kind: "rss", url: "https://www.tubantia.nl/home/rss.xml", reliability: "nieuws", region: "overijssel" },
-  { id: "stentor", name: "De Stentor", publisher: "De Stentor", kind: "rss", url: "https://www.destentor.nl/home/rss.xml", reliability: "nieuws" },
-  { id: "gld", name: "Omroep Gelderland", publisher: "Omroep Gelderland", kind: "rss", url: "https://www.gld.nl/rss/index.xml", reliability: "nieuws", region: "gelderland" },
-  { id: "rtvutrecht", name: "RTV Utrecht", publisher: "RTV Utrecht", kind: "rss", url: "https://www.rtvutrecht.nl/rss/index.xml", reliability: "nieuws", region: "utrecht" },
+  // Regionale omroepen en DPG-titels (Oost, Tubantia, De Stentor, Omroep Gelderland, RTV Utrecht) zijn hier bewust
+  // weggelaten: hun RSS-feeds weigeren geautomatiseerde verzoeken (robots.txt-blokkade of actieve weigering),
+  // dus ze zouden hier alleen als "niet bereikbaar" in de bronnenlijst staan. Regionaal nieuws loopt daarom via
+  // de wekelijkse Claude-taak van maandag, die deze titels wél als browsende agent kan bezoeken.
 ]
 
 const MAX_AGE_DAYS = 120
