@@ -164,7 +164,8 @@ function WhatWorks({ ideas }: { ideas: ContentIdea[] }) {
 }
 
 const SOURCE_NAMES: Record<string, string> = {
-  milieucentraal: "Milieu Centraal", "nos-binnenland": "NOS · Binnenland", "nos-economie": "NOS · Economie",
+  milieucentraal: "Milieu Centraal", "nos-binnenland": "NOS · Binnenland", "nos-economie": "NOS · Economie", oost: "Oost (RTV Oost)",
+  tubantia: "Tubantia", stentor: "De Stentor", gld: "Omroep Gelderland", rtvutrecht: "RTV Utrecht",
 }
 function sourceName(id: string) {
   if (SOURCE_NAMES[id]) return SOURCE_NAMES[id]
@@ -180,7 +181,7 @@ function Sources({ data }: { data: ContentData }) {
       <div className="card-head">
         <div>
           <h2 className="card-title" id="src-title">Bronnen</h2>
-          <p className="card-sub">Elke nacht gelezen: overheid, Milieu Centraal en landelijk nieuws. Alleen berichten over woningen en een dienst van Gijs worden een kans. Op maandag zoekt Claude daarnaast het hele web af, inclusief regionaal nieuws (deze feeds weigeren zelf geautomatiseerde verzoeken).</p>
+          <p className="card-sub">Elke nacht gelezen: overheid, Milieu Centraal en landelijk en regionaal nieuws. Alleen berichten over woningen en een dienst van Gijs worden een kans. Op maandag zoekt Claude daarnaast het hele web af.</p>
         </div>
       </div>
       <div className="card-body">
