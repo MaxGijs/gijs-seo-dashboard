@@ -19,6 +19,7 @@ import OwnerSelect from "@/components/OwnerSelect"
 import LinkSuggestions from "./LinkSuggestions"
 import RouteHistory from "./RouteHistory"
 import ConversionFacts from "./ConversionFacts"
+import Attachments from "@/components/Attachments"
 
 const SITE = "https://www.groeninjestraat.nl"
 
@@ -423,6 +424,8 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               </div>
             )}
           </section>
+
+          <Attachments kind="taak" refId={task.key} />
 
           {task.note && mode !== "note" && (
             <section className="psec" aria-labelledby="sec-note">

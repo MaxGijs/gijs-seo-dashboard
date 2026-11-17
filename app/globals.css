@@ -981,3 +981,26 @@ img, svg { display: block; max-width: 100%; }
 .legend-table td:first-child { white-space: nowrap; color: var(--green-800); }
 .legend-table th { position: static; }
 @media (max-width: 640px) { .legend-table td:first-child { white-space: normal; } }
+
+/* Bijlagen */
+.att-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.att-list li { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--white); }
+.att-list li.is-latest { border-color: var(--accent-200, #bfe6d2); }
+.att-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 10px; }
+.att-icon { width: 18px; height: 18px; color: #c2412e; }
+.att-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.att-main b { font-size: var(--fs-sm); color: var(--green-800); }
+.att-main span { font-size: 11.5px; color: var(--text-subtle); }
+.att-main .att-note { color: var(--text-muted); font-style: italic; }
+.att-actions { display: flex; align-items: center; gap: 2px; }
+.att-preview { display: block; width: 100%; height: 560px; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0 0 var(--radius-md) var(--radius-md); }
+.att-preview-img { display: block; max-width: 100%; border-top: 1px solid var(--border-subtle); }
+.att-drop { border: 1.5px dashed var(--grey-300); border-radius: var(--radius-md); padding: 12px; transition: background .12s, border-color .12s; }
+.att-drop.is-drag { border-color: var(--accent-600); background: var(--accent-050); }
+.att-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--accent-700); }
+.att-pick svg { width: 15px; height: 15px; }
+.att-pick .subtle { font-weight: 400; font-size: var(--fs-xs); }
+.att-ready { display: grid; gap: 8px; }
+.att-ready p { margin: 0; font-size: var(--fs-sm); }
+.att-progress { height: 6px; background: var(--grey-100); border-radius: 3px; overflow: hidden; }
+.att-progress span { display: block; height: 100%; background: var(--accent-600); transition: width .2s; }

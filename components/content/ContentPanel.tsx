@@ -1,5 +1,6 @@
 "use client"
 
+import Attachments from "@/components/Attachments"
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
@@ -258,6 +259,8 @@ export default function ContentPanel({ idea, all, onClose, onUpdate }: { idea: C
               )}
             </section>
           )}
+
+          <Attachments kind="content" refId={idea.id} />
 
           {step >= 3 && (
             <section className="psec" aria-labelledby="cp-review">
