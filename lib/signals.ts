@@ -4,6 +4,7 @@ import { num, pos, pct } from "./format"
 import { actionFor, classifyPage, classifyQuery, estimateFor, INTENT_META, placeIn, regionSegments } from "./intent"
 import { assessPage, type PageRow } from "./pages"
 import { featuresOf, lessonFor, type Lesson } from "./learning"
+import { nextRouteFor, ROUTE_LABEL, routeAction, triesFor, type RouteTry } from "./routes"
 
 export function toPath(url: string) {
   const p = url.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "")
@@ -62,6 +63,7 @@ export interface SignalInput {
   feedback?: { key: string; kind: SignalKind; intent?: string }[]    // eerder afgewezen of 'onvoldoende bewijs'
   lessons?: Pick<Lesson, "key" | "title" | "effect" | "status" | "confidence">[]  // wat we geleerd hebben (Wat hebben we geleerd?)
   checks?: DataCheck[]     // metingen of koppelingen die niet goed werken (controletaken)
+  tries?: RouteTry[]       // eerder geprobeerde routes per pagina/zoekwoord (uit experimenten)
 }
 
 // Inspanning en wijzigingsrisico per soort signaal (in het zijpaneel verfijnd per aanpassing)
@@ -288,6 +290,15 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     d.estimate = estimateFor(d, model)
     if (d.estimate) d.gain = d.estimate.gain
     d.action = actionFor(d, d.intent, d.place)
+    // Meerdere wegen naar Borne: is deze route hier al geprobeerd zonder effect (of loopt hij nog)? Dan de volgende.
+    if (input.tries?.length && (page || d.query)) {
+      const tries = triesFor(input.tries.filter(t => t.key !== d.key), { page, query: d.query })
+      const next = nextRouteFor(d.action, tries)
+      if (next) {
+        d.routeNote = `${next.reason}${next.route ? ` Daarom nu: ${ROUTE_LABEL[next.route].toLowerCase()}.` : ""}`
+        d.action = routeAction(next.route, page || d.page || "de pagina", d.query || null)
+      }
+    }
   }
 
   // Technische blokkades uit de pagina-audit: gegroepeerd, en altijd boven inhoudelijke kansen

@@ -17,6 +17,7 @@ import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
 import LinkSuggestions from "./LinkSuggestions"
+import RouteHistory from "./RouteHistory"
 
 const SITE = "https://www.groeninjestraat.nl"
 
@@ -362,6 +363,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             )}
           </section>
 
+          {raw.kind !== "techniek" && <RouteHistory taskKey={task.key} page={target} query={raw.query} routeNote={raw.routeNote} />}
           {target && raw.kind !== "techniek" && raw.kind !== "dubbel" && <LinkSuggestions target={target} query={raw.query} />}
 
           {/* 4. Resultaat en meting */}

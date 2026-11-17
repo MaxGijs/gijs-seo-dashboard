@@ -900,3 +900,8 @@ img, svg { display: block; max-width: 100%; }
 .src-web { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-sm); margin-bottom: 10px; }
 @media (max-width: 1024px) { .content-side-2 { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) { .card-head { flex-wrap: wrap; } }
+.route-note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--radius-md); background: var(--warning-bg); color: var(--grey-800); font-size: var(--fs-sm); margin-bottom: 10px; }
+.route-note svg { width: 16px; height: 16px; color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+.route-list { display: flex; flex-direction: column; gap: 10px; }
+.route-list li { border-left: 3px solid var(--border); padding-left: 10px; }
+.route-top { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }

@@ -634,6 +634,13 @@ export function buildDiagnosis(signal: Signal, detail: AdviceDetail | null, ctx:
     verdict = { kind: "inplannen", label: "Inplannen", text: "Concrete aanpassing met een redelijke kans op winst. Plan het in als taak." }
   }
 
+  // Andere route omdat de gebruikelijke hier al is geprobeerd: die stap eerst, met de reden
+  if (signal.routeNote && signal.action && signal.kind !== "techniek") {
+    const isLinks = /interne links/i.test(signal.action)
+    if (!isLinks) for (let i = steps.length - 1; i >= 0; i--) if (/interne link/i.test(steps[i].title)) steps.splice(i, 1)
+    steps.unshift({ title: signal.action.charAt(0).toUpperCase() + signal.action.slice(1), detail: signal.routeNote })
+  }
+
   const importance = {
     gainText: signal.kind === "techniek" ? "Randvoorwaarde: geen directe clicks, wel nodig voordat andere verbeteringen effect hebben" : capitalize(gainText),
     relativeText: signal.priorityRank

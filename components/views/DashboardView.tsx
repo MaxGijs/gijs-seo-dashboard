@@ -736,12 +736,12 @@ function MiniSeries({ data, k }: { data: DashboardData; k: "clicks" | "impressio
 function LearnedBlock() {
   const { lessons } = useWorkspace()
   const active = lessons.filter(l => l.status === "actief")
-  const applied = active.filter(l => l.confidence !== "laag" && l.effect && l.effect.type !== "info")
+  const applied = active.filter(l => l.effect && l.effect.type !== "info")
   return (
     <section className="card" aria-labelledby="learn-title">
       <div className="card-head"><div><h2 className="card-title" id="learn-title"><BookOpenCheck aria-hidden />Wat hebben we geleerd?</h2><p className="card-sub">{applied.length ? `${applied.length} ${applied.length === 1 ? "les wordt" : "lessen worden"} automatisch toegepast` : "Uit afgeronde metingen en beslissingen"}</p></div><Link href="/geleerd" className="section-link">Alles<ArrowRight aria-hidden /></Link></div>
       <div className="card-body">
-        {active.length === 0 ? <p className="muted small">Nog niets. Een les ontstaat en wordt toegepast vanaf 6 vergelijkbare afgeronde metingen, of vanaf 3 afwijzingen van dezelfde soort advies.</p> : (
+        {active.length === 0 ? <p className="muted small">Nog niets. Elk afgerond resultaat en elke afwijzing telt direct mee; een eindoordeel volgt 28 dagen (techniek) tot 56 dagen (posities) na een uitgevoerde taak.</p> : (
           <ul className="dash-drivers">{active.slice(0, 3).map(l => <li key={l.key} className="tone-up"><BookOpenCheck aria-hidden /><span><b>{l.title}.</b> {l.effect?.text}</span></li>)}</ul>
         )}
       </div>

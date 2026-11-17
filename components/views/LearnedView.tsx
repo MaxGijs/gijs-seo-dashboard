@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { BookOpenCheck, CheckCircle2, CircleSlash, History, RotateCcw, Sparkles, Undo2 } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import { LESSON_MIN_MEASUREMENTS, LESSON_MIN_REJECTIONS, type Lesson } from "@/lib/learning"
+import type { Lesson } from "@/lib/learning"
 import { dateShort } from "@/lib/format"
 import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
 
@@ -40,7 +40,7 @@ export default function LearnedView() {
   }
 
   const active = (data?.lessons || []).filter(l => l.status === "actief")
-  const applied = active.filter(l => l.confidence !== "laag" && l.effect && l.effect.type !== "info")
+  const applied = active.filter(l => l.effect && l.effect.type !== "info")
   const watching = active.filter(l => !applied.includes(l))
   const inactive = (data?.lessons || []).filter(l => l.status !== "actief")
   const s = data?.stats
@@ -138,7 +138,7 @@ function LessonCard({ l, busy, onRevert, onRestore }: { l: Lesson; busy: boolean
   )
 }
 
-// Eén regel, op elke plek hetzelfde (komt uit lib/learning.ts)
+// Eén regel, op elke plek hetzelfde (zie lib/learning.ts)
 function Rule() {
-  return <>De regel: een les uit metingen ontstaat én wordt automatisch toegepast vanaf {LESSON_MIN_MEASUREMENTS} vergelijkbare afgeronde metingen. Een afgewezen advies telt direct mee voor vergelijkbare adviezen (×0,85 per afwijzing, nooit lager dan ×0,5); vanaf {LESSON_MIN_REJECTIONS} afwijzingen van dezelfde soort staat dat hier als les.</>
+  return <>De regel: elk afgerond resultaat telt direct mee. Eén resultaat verschuift de prioriteit een klein beetje (bijvoorbeeld ×1,07); hoe vaker uitkomsten elkaar bevestigen, hoe groter het effect (nooit meer dan ×0,7 tot ×1,3). Een afgewezen advies telt ook direct mee (×0,85 per afwijzing, nooit lager dan ×0,5). En per pagina onthoudt het systeem welke routes al geprobeerd zijn.</>
 }

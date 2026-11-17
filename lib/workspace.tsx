@@ -8,6 +8,7 @@ import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
 import { today } from "./format"
 import type { PageRow } from "./pages"
 import type { Lesson } from "./learning"
+import { toTries } from "./routes"
 
 // ── Data-ophalen ─────────────────────────────────────────────────────────────
 
@@ -241,9 +242,9 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
         .map(r => ({ key: r.advice_key, kind: r.snapshot!.kind, intent: r.snapshot!.intent }))
         // Teruggedraaide afwijzingslessen: die afwijzingen tellen niet meer mee voor de prioriteit
         .filter(f => !lessons.some(l => l.status === "teruggedraaid" && l.effect?.type === "afwijzing" && l.effect.match?.kind === f.kind && (l.effect.match?.intent ?? undefined) === (l.effect.match?.intent ? f.intent : undefined)))
-      return buildSignals({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages: ga4Pages || undefined, feedback, lessons, checks }, ctrModel)
+      return buildSignals({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages: ga4Pages || undefined, feedback, lessons, checks, tries: toTries(experiments) }, ctrModel)
     },
-    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks]
+    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks])

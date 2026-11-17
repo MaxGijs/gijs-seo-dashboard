@@ -108,6 +108,7 @@ export interface Signal {
   risk?: Level                // risico dat de wijziging iets anders verslechtert
   conversions?: { page: string; sessions: number; keyEvents: number } | null  // GA4, laatste 28 dagen
   lesson?: { key: string; title: string; factor: number } | null  // prioriteit aangepast door een les
+  routeNote?: string          // waarom een andere route dan normaal wordt geadviseerd
 }
 
 export type Level = "laag" | "middel" | "hoog"
