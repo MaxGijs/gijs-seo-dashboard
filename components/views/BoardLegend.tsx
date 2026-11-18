@@ -48,7 +48,7 @@ export default function BoardLegend({ onClose }: { onClose: () => void }) {
               <tbody>
                 <tr><td><b>Kans, daling, dubbele pagina&apos;s</b></td><td>SEO-adviezen uit Search Console</td><td>Positie en klikken in Google</td></tr>
                 <tr><td><b>Technisch</b></td><td>Fouten, indexering en controletaken (zoals de meting van aanvragen)</td><td>Of het probleem weg is</td></tr>
-                <tr><td><b>Content</b></td><td>Contentkansen uit nieuws en zoekdata</td><td>Bezoek en posities na publicatie</td></tr>
+                <tr><td><b>Content</b></td><td>Contentkansen uit nieuws en zoekdata. Concept als PDF uploaden en inleveren: de kans gaat naar Evalueren voor beoordeling; na publicatie wordt hij daar gemeten.</td><td>Bezoek en posities na publicatie</td></tr>
                 <tr><td><b>Eigen taak</b></td><td>Zelf toegevoegd, met een doel</td><td>Doel &quot;meer aanvragen&quot;: energiescanaanvragen in GA4. Doel &quot;beter gevonden worden&quot;: Google. Doel &quot;overig&quot;: niet automatisch</td></tr>
               </tbody>
             </table>

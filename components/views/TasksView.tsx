@@ -142,9 +142,16 @@ export default function TasksView() {
     }
     if (from === "beoordelen" && to === "gepland") return patch("geaccepteerd", "Geaccepteerd. Open de kaart om de briefing te maken.")
     if (from === "gepland" && to === "beoordelen") return patch("nieuw", "Terug naar te beoordelen")
+    if (to === "evalueren" && (from === "gepland" || from === "uitvoering")) {
+      // Inleveren: alleen als het concept als bijlage is geüpload
+      const res = await fetch(`/api/content/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "submit" }) })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) { setOpenIdea(i.id); toast(json.error || "Inleveren mislukt", "info"); return }
+      content.update(json.idea); toast("Ingeleverd ter beoordeling"); return
+    }
     if (to === "afgerond" && from !== "evalueren") { setOpenIdea(i.id); toast("Geef aan waarom je deze kans afwijst (knop Afwijzen of Stoppen).", "info"); return }
     setOpenIdea(i.id)
-    toast(to === "uitvoering" ? "Content gaat naar In uitvoering zodra het concept binnen is. Maak eerst de briefing." : to === "evalueren" ? "De meting start zodra je de publicatie vastlegt (URL en datum)." : "Deze stap volgt uit de contentworkflow in het paneel.", "info")
+    toast(to === "uitvoering" ? "Content gaat naar In uitvoering zodra het concept binnen is. Maak eerst de briefing." : to === "evalueren" ? "Na goedkeuring leg je de publicatie vast (URL en datum); daarna start de meting." : "Deze stap volgt uit de contentworkflow in het paneel.", "info")
   }
 
   const drop = async (t: Task, to: ColumnId) => {

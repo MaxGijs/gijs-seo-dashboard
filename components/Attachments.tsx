@@ -14,7 +14,7 @@ const when = (s: string) => new Date(s).toLocaleString("nl-NL", { day: "numeric"
 
 // Bijlagen bij een contentkans of taak, zoals inleveren in Brightspace: elke upload is een nieuwe
 // versie, de nieuwste staat bovenaan en is direct te bekijken.
-export default function Attachments({ kind, refId }: { kind: "content" | "taak"; refId: string }) {
+export default function Attachments({ kind, refId, onCount }: { kind: "content" | "taak"; refId: string; onCount?: (n: number) => void }) {
   const { toast, users, me } = useWorkspace()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -30,9 +30,9 @@ export default function Attachments({ kind, refId }: { kind: "content" | "taak";
     try {
       const r = await fetch(`/api/attachments?kind=${kind}&ref=${encodeURIComponent(refId)}`, { cache: "no-store" }); const j = await r.json()
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
-      setRows(j.rows); setErr(null)
+      setRows(j.rows); setErr(null); onCount?.(j.rows.length)
     } catch (e: any) { setErr(e.message) }
-  }, [kind, refId])
+  }, [kind, refId]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [load])
 
   const pick = (f: File | null | undefined) => {

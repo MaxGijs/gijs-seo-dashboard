@@ -42,6 +42,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { toast, users, me } = useWorkspace()
   const [editNote, setEditNote] = useState(false)
+  const [attCount, setAttCount] = useState(0)
   const [noteText, setNoteText] = useState(idea.note || "")
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<null | "edit" | "reject" | "later" | "feedback">(null)
@@ -294,7 +295,16 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
             )}
           </section>
 
-          <Attachments kind="content" refId={idea.id} />
+          <Attachments kind="content" refId={idea.id} onCount={setAttCount} />
+          {["geaccepteerd", "briefing", "concept"].includes(idea.status) && (
+            <div className={`submit-box${attCount ? " is-ready" : ""}`}>
+              <div>
+                <b>{attCount ? "Klaar om in te leveren?" : "Concept inleveren"}</b>
+                <p className="subtle small">{attCount ? "De kans gaat naar Evalueren, waar een collega het concept beoordeelt en de controles afvinkt." : "Upload eerst het concept als PDF bij Bijlagen. Daarna lever je het hier in ter beoordeling."}</p>
+              </div>
+              <button className="btn btn-primary btn-sm" disabled={busy || !attCount} onClick={() => act({ action: "submit" }, "Ingeleverd ter beoordeling")}><Send aria-hidden />Inleveren</button>
+            </div>
+          )}
 
           {step >= 3 && (
             <section className="psec" aria-labelledby="cp-review">

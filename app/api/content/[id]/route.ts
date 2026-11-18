@@ -68,6 +68,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (fb.length) patch.feedback = [...(cur.feedback || []), ...fb]
       break
     }
+    case "submit": {
+      // Ingeleverd (PDF of Word bij Bijlagen): naar beoordeling door een collega
+      if (!["geaccepteerd", "briefing", "concept"].includes(cur.status)) return bad("Deze kans staat niet in een stap waarin je iets kunt inleveren.")
+      const { count } = await sb.from("seo_attachments").select("id", { count: "exact", head: true }).eq("ref_kind", "content").eq("ref_id", id).eq("confirmed", true).is("deleted_at", null)
+      if (!count) return bad("Upload eerst het concept (PDF) bij Bijlagen; daarna kun je het inleveren.")
+      patch.status = "review"
+      break
+    }
     case "concept": {
       if (body.original !== undefined) {
         if (cur.concept_original) return bad("Het oorspronkelijke concept is al vastgelegd.")

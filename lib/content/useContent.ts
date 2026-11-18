@@ -27,7 +27,9 @@ export function contentColumn(i: Pick<ContentIdea, "status" | "evals">): ColumnI
   const s: IdeaStatus = i.status
   if (s === "nieuw" || s === "later") return "beoordelen"
   if (s === "geaccepteerd" || s === "briefing") return "gepland"
-  if (s === "concept" || s === "review" || s === "goedgekeurd") return "uitvoering"
+  if (s === "concept") return "uitvoering"
+  // Ingeleverd en in beoordeling, goedgekeurd (wacht op publicatie) en gepubliceerd (wordt gemeten)
+  if (s === "review" || s === "goedgekeurd") return "evalueren"
   if (s === "gepubliceerd") return i.evals?.d90 ? "afgerond" : "evalueren"
   if (s === "afgewezen") return "afgerond"
   return null // verlopen: niet op het bord
@@ -39,7 +41,7 @@ export const CONTENT_STEP: Partial<Record<IdeaStatus, string>> = {
   geaccepteerd: "Briefing maken",
   briefing: "Concept laten schrijven",
   concept: "Redigeren en controleren",
-  review: "Controles afronden",
+  review: "Ingeleverd: beoordelen",
   goedgekeurd: "Publiceren en vastleggen",
   gepubliceerd: "Wordt gemeten",
   afgewezen: "Afgewezen",
