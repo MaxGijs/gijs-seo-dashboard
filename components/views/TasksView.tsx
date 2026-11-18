@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp } from "lucide-react"
+import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
 import { sortByPriority, useWorkspace } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
@@ -33,6 +33,7 @@ const PRIO_RANK: Record<Priority, number> = { hoog: 0, middel: 1, laag: 2 }
 
 function contentMeta(i: ContentIdea, col: ColumnId) {
   if (col === "beoordelen") return { icon: <TrendingUp aria-hidden />, text: `Score ${effectiveScore(i)}` }
+  if (col === "evalueren" && i.status !== "gepubliceerd") return { icon: <ClipboardCheck aria-hidden />, text: i.status === "goedgekeurd" ? "Goedgekeurd: publiceren" : "Ingeleverd: beoordelen" }
   if (col === "evalueren") {
     const next = !i.evals?.d7 ? 7 : !i.evals?.d30 ? 30 : 90
     return { icon: <CalendarClock aria-hidden />, text: i.published_at ? `${next}-dagenmeting ${dateShort(addDays(i.published_at, next))}` : "Wordt gemeten" }
