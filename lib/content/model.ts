@@ -26,7 +26,13 @@ export interface ScorePart { label: string; points: number; max: number; why: st
 export const CONTENT_MODEL_VERSION = 2
 export interface KeywordRef { query: string; impressions: number; clicks: number; position: number | null }
 export interface Feedback { tag: string; note?: string; at: string; by?: string }
-export interface Eval { impressions: number; clicks: number; ctr: number; position: number | null; measured_at: string; window: string }
+export interface Ga4Eval { views: number; users: number; engagementSec: number | null; landingSessions: number; requests: number | null; contacts?: number | null; scrolled?: number | null; ctaClicks?: number | null; measurement: string }
+export interface Eval {
+  impressions: number; clicks: number; ctr: number; position: number | null; measured_at: string; window: string
+  ga4?: Ga4Eval | null          // bekeken, tijd op de pagina en aanvragen (GA4)
+  ga4Before?: Ga4Eval | null    // dezelfde periode vóór publicatie (zinvol bij een bijgewerkte pagina)
+  ga4Error?: string
+}
 
 export interface ContentIdea {
   id: string

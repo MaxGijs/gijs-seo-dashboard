@@ -2,7 +2,8 @@
 // Vandaag en Mijn taken. Elke nacht (en bij openen) opnieuw bepaald; opgelost = taak verdwijnt.
 
 import { getSupabase, supabaseConfigured } from "./guard"
-import { ga4Client, readMeasurement } from "./dashboard"
+import { ga4Client, ga4Report, readMeasurement } from "./dashboard"
+import { CTA_EVENT } from "./conversion"
 import { sourceOverview } from "./content"
 import type { DataCheck } from "@/lib/types"
 
@@ -75,6 +76,29 @@ export async function readChecks(fresh = false): Promise<DataCheck[]> {
       steps: [{ title: "Bekijk de foutmelding op Datastatus", detail: "Vaak lost dit zichzelf op bij de volgende run. Komt dezelfde fout twee nachten terug, laat het dan uitzoeken." }],
     })
   }
+  // 3b. Meten per artikel: lezen tot onderaan en klikken op de energiescanknop (via Google Tag Manager)
+  try {
+    const g = ga4Client()
+    const rows = await ga4Report(g, { dateRanges: [{ startDate: "90daysAgo", endDate: "yesterday" }], dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", CTA_EVENT] } } }, limit: 10 })
+    const seen = new Set(rows.filter(r => r.mets[0] > 0).map(r => r.dims[0]))
+    const missing = [!seen.has(CTA_EVENT) && "klikken op de knop naar de energiescan", !seen.has("scroll") && "lezen tot onderaan"].filter(Boolean) as string[]
+    if (missing.length) out.push({
+      id: "gtm-artikelmeting", area: "Meting", severity: "warning",
+      what: `Meten per artikel aanvullen via Google Tag Manager: ${missing.join(" en ")} ${missing.length === 1 ? "wordt" : "worden"} nog niet gemeten.`,
+      effect: "Per artikel zie je nu wel hoe vaak het bekeken wordt, hoe lang en hoeveel aanvragen het oplevert, maar niet of mensen het uitlezen en op de knop naar de energiescan klikken. Daarmee zie je eerder of een artikel werkt, ook als er (nog) geen aanvraag volgt.",
+      steps: [
+        ...(!seen.has(CTA_EVENT) ? [
+          { title: "Maak in GTM een trigger voor klikken naar de energiescan", detail: "Triggers → Nieuw → Klik – Alleen links. Laat de trigger afgaan bij: Click URL bevat /energiescan (of het adres van het aanvraagformulier). Zet eerst onder Variabelen de ingebouwde klikvariabelen aan (Click URL, Click Text)." },
+          { title: `Stuur het event "${CTA_EVENT}" naar GA4`, detail: `Tags → Nieuw → Google Analytics: GA4-gebeurtenis, naam ${CTA_EVENT}, met parameters link_url = {{Click URL}} en link_text = {{Click Text}}. Koppel de trigger van de vorige stap. Het dashboard herkent precies deze naam.` },
+        ] : []),
+        ...(!seen.has("scroll") ? [
+          { title: "Zet scrollen aan", detail: "Het eenvoudigst in GA4: Beheer → Datastreams → de website → Uitgebreide metingen → Scrollen aan (event scroll bij 90%). Of in GTM: trigger Scrolldiepte 90% met een GA4-gebeurtenis scroll." },
+        ] : []),
+        { title: "Test en publiceer", detail: "Klik in GTM op Voorbeeld, open een artikel, scroll naar onderen en klik op de energiescanknop. Zie je de events in GA4 → Rapporten → Realtime, publiceer dan de container. Deze controletaak verdwijnt vanzelf zodra de events binnenkomen." },
+      ],
+    })
+  } catch { /* GA4 niet bereikbaar: andere controle meldt dat al */ }
+
   // 4. Meldingen die om een controle vragen (sitebrede daling, indexering, laadsnelheid).
   // Dalingen per pagina of zoekwoord staan al als taak op het bord; die komen hier niet dubbel.
   try {

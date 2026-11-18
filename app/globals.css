@@ -1103,3 +1103,11 @@ img, svg { display: block; max-width: 100%; }
   .src-table th:nth-child(2), .src-table td:nth-child(2), .src-table th:nth-child(4), .src-table td:nth-child(4) { display: none; }
   .ptable { word-break: break-word; }
 }
+.results-table .rt-group th { background: var(--grey-050, #f6f8f7); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-subtle); font-weight: 700; }
+.results-table tbody th[scope=row] { font-weight: 600; white-space: normal; }
+.verdict-box { border-radius: var(--radius-md); padding: 12px 14px; margin: 10px 0 4px; background: var(--grey-050, #f6f8f7); border-left: 4px solid var(--grey-300); }
+.verdict-box.tone-success { background: #eef8f2; border-left-color: #2f9e6a; }
+.verdict-box.tone-warning { background: #fdf8e6; border-left-color: #d9a520; }
+.verdict-box.tone-error { background: #fbeeec; border-left-color: #c2412e; }
+.verdict-label { margin: 0 0 6px; font-size: var(--fs-sm); }
+.verdict-box ul { margin: 0; padding-left: 18px; font-size: var(--fs-xs); color: var(--text-muted); display: grid; gap: 3px; }

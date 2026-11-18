@@ -3,6 +3,7 @@
 // Leest betrouwbare nieuwsbronnen, eigen zoekdata en een seizoenskalender en maakt daar
 // onderbouwde contentvoorstellen van. Leest alleen; publiceert nooit.
 
+import { addDaysIso, articleGa4 } from "./conversion"
 import { getSupabase } from "./guard"
 import { type Item, parseMilieuCentraal, parseRss } from "@/lib/content/parse"
 import { gscQuery, serviceSearchConsole, toPath } from "./gsc"
@@ -337,10 +338,18 @@ export async function evaluatePublished() {
     const start = new Date(idea.published_at + "T00:00:00Z")
     let changed = false
     for (const [key, days] of WINDOWS) {
-      if (evals[key]) continue
       const end = new Date(start.getTime() + (days - 1) * dayMs)
       if (end > lastComplete) continue
       const path = toPath(idea.published_url)
+      const s0 = start.toISOString().slice(0, 10), e0 = end.toISOString().slice(0, 10)
+      // GA4 (bekeken, tijd op de pagina, aanvragen); ook achteraf aanvullen voor oudere metingen
+      if (evals[key] && evals[key].ga4 === undefined) {
+        try {
+          evals[key] = { ...evals[key], ga4: await articleGa4(path, s0, e0), ...(key === "d30" ? { ga4Before: await articleGa4(path, addDaysIso(s0, -days), addDaysIso(s0, -1)) } : {}) }
+        } catch (e: any) { evals[key] = { ...evals[key], ga4: null, ga4Error: String(e?.message || e).slice(0, 200) } }
+        changed = true
+      }
+      if (evals[key]) continue
       const rows = await gscQuery(sc, {
         startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10),
         dimensions: ["page"], dimensionFilterGroups: [{ filters: [{ dimension: "page", operator: "contains", expression: path }] }], rowLimit: 50,
@@ -348,7 +357,12 @@ export async function evaluatePublished() {
       const own = rows.filter(r => toPath(r.keys[0]).replace(/\/$/, "") === path.replace(/\/$/, ""))
       const imp = own.reduce((s, r) => s + r.impressions, 0), clicks = own.reduce((s, r) => s + r.clicks, 0)
       const pos = imp ? own.reduce((s, r) => s + r.position * r.impressions, 0) / imp : null
-      evals[key] = { impressions: imp, clicks, ctr: imp ? clicks / imp : 0, position: pos !== null ? Math.round(pos * 10) / 10 : null, measured_at: new Date().toISOString(), window: `${start.toISOString().slice(0, 10)} – ${end.toISOString().slice(0, 10)}` }
+      let ga4: any = null, ga4Before: any = undefined, ga4Error: string | undefined
+      try {
+        ga4 = await articleGa4(path, s0, e0)
+        if (key === "d30") ga4Before = await articleGa4(path, addDaysIso(s0, -days), addDaysIso(s0, -1))
+      } catch (e: any) { ga4Error = String(e?.message || e).slice(0, 200) }
+      evals[key] = { impressions: imp, clicks, ctr: imp ? clicks / imp : 0, position: pos !== null ? Math.round(pos * 10) / 10 : null, measured_at: new Date().toISOString(), window: `${s0} – ${e0}`, ga4, ...(ga4Before !== undefined ? { ga4Before } : {}), ...(ga4Error ? { ga4Error } : {}) }
       changed = true; measured++
     }
     if (changed) await sb.from("content_ideas").update({ evals }).eq("id", idea.id)

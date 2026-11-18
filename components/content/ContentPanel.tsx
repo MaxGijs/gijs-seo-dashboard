@@ -2,8 +2,9 @@
 
 import Attachments from "@/components/Attachments"
 import { CONTENT_STEP } from "@/lib/content/useContent"
+import { articleVerdict } from "@/lib/content/verdict"
 import { ownerName } from "@/components/OwnerSelect"
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
@@ -380,19 +381,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
               ) : (
                 <>
                   <p style={{ fontSize: "var(--fs-sm)" }}>Gepubliceerd op {dateNl(idea.published_at)}: <a href={idea.published_url!} target="_blank" rel="noopener noreferrer">{idea.published_url!.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/, "")}</a></p>
-                  <div className="exp-measures" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", marginTop: 10 }}>
-                    {(["d7", "d30", "d90"] as const).map(k => {
-                      const e = idea.evals?.[k]
-                      return (
-                        <div key={k} className={`measure${e ? "" : " is-pending"}`}>
-                          <div className="measure-label">Na {k.slice(1)} dagen</div>
-                          {e ? <><div className="measure-value">{num(e.clicks)} klikken</div><div className="measure-sub">{num(e.impressions)} vertoningen · {pct(e.ctr)} · pos. {e.position ? pos(e.position) : "—"}</div></>
-                            : <div className="measure-sub">nog niet gemeten</div>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <p className="field-hint"><BarChart3 aria-hidden style={{ width: 12, height: 12, verticalAlign: -1 }} /> Search Console-cijfers van deze URL. Aanvragen en energiescans per artikel volgen zodra die gekoppeld zijn.</p>
+                  <ArticleResults idea={idea} all={all} />
                   <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>
                 </>
               )}
@@ -534,6 +523,46 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
         <div className="panel-body">{bodyEl}</div>
         <div className="panel-foot">{footEl}</div>
       </aside>
+    </>
+  )
+}
+
+// Resultaten per artikel: bekeken, tijd op de pagina, aanvragen (GA4) en Google (Search Console)
+const dur = (sec: number | null | undefined) => sec === null || sec === undefined ? "—" : sec < 60 ? `${sec} s` : `${Math.floor(sec / 60)} min ${String(sec % 60).padStart(2, "0")} s`
+function ArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
+  const v = articleVerdict(idea, all)
+  const keys = ["d7", "d30", "d90"] as const
+  const ev = idea.evals || {}
+  const before = ev.d30?.ga4Before
+  const showBefore = !!before && (idea.advice === "bijwerken" || before.views > 0)
+  const g = (k: (typeof keys)[number]) => ev[k]?.ga4
+  const cell = (k: (typeof keys)[number], f: (x: NonNullable<ContentIdea["evals"]["d7"]>) => React.ReactNode) => { const x = ev[k]; return <td className="num">{x ? f(x) : <span className="subtle">nog niet</span>}</td> }
+  const anyMeasurementIssue = keys.some(k => g(k) && g(k)!.measurement !== "ok")
+  const pctOf = (a: number | null | undefined, b: number) => (a === null || a === undefined || !b ? "—" : `${Math.round((a / b) * 100)}%`)
+  return (
+    <>
+      <div className={`verdict-box tone-${v.tone}`}>
+        <p className="verdict-label">Werkt dit artikel? <b>{v.label}</b>{v.window ? <span className="subtle"> · {v.window}</span> : null}</p>
+        <ul>{v.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+      </div>
+      <table className="ptable results-table">
+        <thead><tr><th>Meting</th>{showBefore && <th className="num">30 d ervóór</th>}{keys.map(k => <th key={k} className="num">Na {k.slice(1)} d</th>)}</tr></thead>
+        <tbody>
+          <tr className="rt-group"><th colSpan={showBefore ? 5 : 4}>Bezoekers (GA4)</th></tr>
+          <tr><th scope="row">Bekeken</th>{showBefore && <td className="num">{num(before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? <b>{num(x.ga4.views)}</b> : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Gem. tijd actief op de pagina</th>{showBefore && <td className="num">{dur(before!.engagementSec)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? dur(x.ga4.engagementSec) : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Binnengekomen via dit artikel</th>{showBefore && <td className="num">{num(before!.landingSessions)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? num(x.ga4.landingSessions) : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Leest tot onderaan</th>{showBefore && <td className="num">{pctOf(before!.scrolled, before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? pctOf(x.ga4.scrolled, x.ga4.views) : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Klikt op de knop naar de energiescan</th>{showBefore && <td className="num">{before!.ctaClicks ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? (x.ga4.ctaClicks ?? "—") : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Energiescanaanvragen</th>{showBefore && <td className="num">{before!.requests ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? (x.ga4.requests === null ? "—" : <b>{num(x.ga4.requests)}</b>) : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Contactaanvragen</th>{showBefore && <td className="num">{before!.contacts ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? (x.ga4.contacts ?? "—") : "—")}</Fragment>)}</tr>
+          <tr className="rt-group"><th colSpan={showBefore ? 5 : 4}>Google (Search Console)</th></tr>
+          <tr><th scope="row">Klikken</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, x => num(x.clicks))}</Fragment>)}</tr>
+          <tr><th scope="row">Vertoningen</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, x => num(x.impressions))}</Fragment>)}</tr>
+          <tr><th scope="row">Gem. positie</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, x => (x.position ? pos(x.position) : "—"))}</Fragment>)}</tr>
+        </tbody>
+      </table>
+      <p className="field-hint"><BarChart3 aria-hidden style={{ width: 12, height: 12, verticalAlign: -1 }} /> Telt vanaf de publicatiedatum. Aanvragen = bezoeken die via dit artikel binnenkwamen en daarna een energiescan of contact aanvroegen. "—" bij lezen tot onderaan of klikken op de knop: dat wordt nog niet gemeten; zie de controletaak "Meten per artikel aanvullen via Google Tag Manager".{anyMeasurementIssue ? " Let op: de meting van aanvragen in GA4 klopt nog niet helemaal (zie de controletaak), dus dit aantal is voorlopig." : ""}{keys.some(k => ev[k]?.ga4Error) ? ` GA4 kon niet worden gelezen: ${keys.map(k => ev[k]?.ga4Error).find(Boolean)}` : ""}</p>
     </>
   )
 }

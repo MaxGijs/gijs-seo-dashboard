@@ -94,7 +94,7 @@ export function ga4Client() {
 }
 
 type Ga4 = ReturnType<typeof ga4Client>
-async function ga4Report(g: Ga4, body: Record<string, unknown>) {
+export async function ga4Report(g: Ga4, body: Record<string, unknown>) {
   const [res] = await g.client.runReport({ property: g.property, ...body } as any)
   return (res.rows || []).map(r => ({
     dims: (r.dimensionValues || []).map(v => v.value || ""),

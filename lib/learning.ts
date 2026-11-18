@@ -129,6 +129,7 @@ const factorNl = (f: number) => f.toFixed(2).replace(/0$/, "").replace(".", ",")
 export interface ExperimentFact { outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | null; features: Features; label: string }
 export interface DecisionFact { kind: string; intent?: string; status: string; note?: string | null }
 export interface ContentFact { service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null
+  views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 30 dagen
   // Kenmerken van de eigen tekst (uit de ingeleverde PDF/Word)
   text?: { words: number; lengthBucket: "kort" | "middel" | "lang"; readable: boolean; kwIntro: boolean | null; kwCoverage: number | null; cta: boolean } | null }
 
@@ -245,29 +246,39 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       effect: { type: "info", text: "Alleen ter informatie: het systeem past dit nog niet zelf toe." },
     })
   }
-  // Schrijfstijl: welke kenmerken van eigen teksten gaan samen met meer bezoek na 30 dagen?
-  const withText = measured.filter(c => c.text)
-  const avgT = withText.length ? withText.reduce((s, c) => s + (c.clicks30 || 0), 0) / withText.length : 0
+  // Schrijfstijl: welke kenmerken van eigen teksten gaan samen met meer bezoek, langer lezen of meer aanvragen?
+  const METRICS: { key: string; label: string; unit: string; get: (c: ContentFact) => number | null; min: number }[] = [
+    { key: "bezoek", label: "trekken meer bezoekers", unit: "keer bekeken", get: c => c.views30 ?? c.clicks30 ?? null, min: 4 },
+    { key: "aanvragen", label: "leveren meer aanvragen op", unit: "aanvragen", get: c => c.leads30 ?? null, min: 4 },
+    { key: "leestijd", label: "worden langer gelezen", unit: "seconden actief", get: c => c.engagement30 ?? null, min: 4 },
+  ]
   const TRAITS: { key: string; label: (v: string) => string; value: (c: ContentFact) => string | null }[] = [
     { key: "lengte", label: v => `Artikelen van ${v === "kort" ? "minder dan 600" : v === "middel" ? "600 tot 1.200" : "meer dan 1.200"} woorden`, value: c => c.text!.lengthBucket },
     { key: "intro", label: v => v === "ja" ? "Artikelen met het hoofdzoekwoord in de inleiding" : "Artikelen zonder het hoofdzoekwoord in de inleiding", value: c => c.text!.kwIntro === null ? null : c.text!.kwIntro ? "ja" : "nee" },
     { key: "b1", label: v => v === "ja" ? "Artikelen op B1-niveau (korte zinnen)" : "Artikelen met lange zinnen", value: c => c.text!.readable ? "ja" : "nee" },
   ]
-  if (withText.length >= 4 && avgT > 0) for (const t of TRAITS) {
-    const groups = new Map<string, ContentFact[]>()
-    for (const c of withText) { const v = t.value(c); if (v) groups.set(v, [...(groups.get(v) || []), c]) }
-    for (const [v, list] of groups) {
-      if (list.length < 2 || list.length === withText.length) continue
-      const avg = list.reduce((s, c) => s + (c.clicks30 || 0), 0) / list.length
-      if (Math.abs(avg / avgT - 1) < 0.3) continue
-      out.push({
-        key: `content|stijl|${t.key}=${v}`, source: "content",
-        title: `${t.label(v)} ${avg > avgT ? "trekken meer bezoekers" : "trekken minder bezoekers"}`,
-        conclusion: `Gemiddeld ${Math.round(avg)} klikken na 30 dagen, tegen ${Math.round(avgT)} voor alle gemeten eigen teksten (${list.length} van ${withText.length}).`,
-        evidence: { n: list.length },
-        confidence: list.length >= 5 ? "middel" : "laag",
-        effect: { type: "info", text: "Wordt meegegeven in de briefing via de stijlvoorbeelden van de best presterende artikelen." },
-      })
+  for (const m of METRICS) {
+    const withText = input.content.filter(c => c.status === "gepubliceerd" && c.text && m.get(c) !== null)
+    if (withText.length < m.min) continue
+    const avgT = withText.reduce((s, c) => s + (m.get(c) || 0), 0) / withText.length
+    if (!avgT) continue
+    for (const t of TRAITS) {
+      const groups = new Map<string, ContentFact[]>()
+      for (const c of withText) { const v = t.value(c); if (v) groups.set(v, [...(groups.get(v) || []), c]) }
+      for (const [v, list] of groups) {
+        if (list.length < 2 || list.length === withText.length) continue
+        const avg = list.reduce((s, c) => s + (m.get(c) || 0), 0) / list.length
+        if (Math.abs(avg / avgT - 1) < 0.3) continue
+        const better = avg > avgT
+        out.push({
+          key: `content|stijl|${m.key}|${t.key}=${v}`, source: "content",
+          title: `${t.label(v)} ${better ? m.label : m.label.replace("meer", "minder").replace("langer", "korter")}`,
+          conclusion: `Gemiddeld ${Math.round(avg)} ${m.unit} in de eerste 30 dagen, tegen ${Math.round(avgT)} voor alle gemeten eigen teksten (${list.length} van ${withText.length}).`,
+          evidence: { n: list.length },
+          confidence: list.length >= 5 ? "middel" : "laag",
+          effect: { type: "info", text: "Wordt meegegeven in de briefing via de stijlvoorbeelden van de best presterende artikelen." },
+        })
+      }
     }
   }
   return out

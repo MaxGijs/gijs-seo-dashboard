@@ -23,7 +23,7 @@ export async function recomputeLessons(by = "systeem") {
     }
   })
   const decisions: DecisionFact[] = (statuses || []).filter(s => s.snapshot?.kind).map(s => ({ kind: s.snapshot.kind, intent: s.snapshot.intent, status: s.status, note: s.note }))
-  const content: ContentFact[] = (ideas || []).map(i => ({ service: i.service, origin: i.origin, status: i.status, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
+  const content: ContentFact[] = (ideas || []).map(i => ({ service: i.service, origin: i.origin, status: i.status, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, views30: i.evals?.d30?.ga4?.views ?? null, leads30: i.evals?.d30?.ga4 ? (i.evals.d30.ga4.measurement === "ok" ? i.evals.d30.ga4.requests ?? 0 : 0) + (i.evals.d30.ga4.contacts ?? 0) : null, engagement30: i.evals?.d30?.ga4?.engagementSec ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
 
   const drafts = computeLessons({ experiments, decisions, content })
   const old = new Map<string, any>((existing || []).map(l => [l.key, l]))
