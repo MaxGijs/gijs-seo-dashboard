@@ -1,8 +1,9 @@
 "use client"
 
 import Attachments from "@/components/Attachments"
+import { ownerName } from "@/components/OwnerSelect"
 import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Trash2, X } from "lucide-react"
+import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, StickyNote, Trash2, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -39,7 +40,9 @@ function Tags({ value, onChange }: { value: string[]; onChange: (v: string[]) =>
 
 export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }: { idea: ContentIdea; all: ContentIdea[]; onClose: () => void; onUpdate: (i: ContentIdea) => void; onDeleted?: (id: string) => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const { toast } = useWorkspace()
+  const { toast, users, me } = useWorkspace()
+  const [editNote, setEditNote] = useState(false)
+  const [noteText, setNoteText] = useState(idea.note || "")
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<null | "edit" | "reject" | "later" | "feedback">(null)
   const [tags, setTags] = useState<string[]>([])
@@ -270,6 +273,26 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
               )}
             </section>
           )}
+
+          <section className="psec" aria-labelledby="cp-note">
+            <h3 className="psec-title" id="cp-note"><StickyNote aria-hidden />Notitie</h3>
+            {editNote ? (
+              <div className="inline-form">
+                <textarea className="textarea" rows={4} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Bijvoorbeeld: afgestemd met Thom, wacht op cijfers van de gemeente" maxLength={2000} autoFocus aria-label="Notitie" />
+                <div className="inline-form-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setEditNote(false); setNoteText(idea.note || "") }}>Annuleren</button>
+                  <button className="btn btn-primary btn-sm" disabled={busy} onClick={async () => { await act({ action: "note", note: noteText }, noteText.trim() ? "Notitie opgeslagen" : "Notitie verwijderd"); setEditNote(false) }}>Opslaan</button>
+                </div>
+              </div>
+            ) : idea.note ? (
+              <div className="note-box">
+                <p>{idea.note}</p>
+                <p className="subtle small">{idea.note_by ? ownerName(idea.note_by, users, me) : ""}{idea.note_at ? ` · ${new Date(idea.note_at).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""} · <button className="link-btn" onClick={() => { setNoteText(idea.note || ""); setEditNote(true) }}>Bewerken</button></p>
+              </div>
+            ) : (
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditNote(true)}><StickyNote aria-hidden />Notitie toevoegen</button>
+            )}
+          </section>
 
           <Attachments kind="content" refId={idea.id} />
 

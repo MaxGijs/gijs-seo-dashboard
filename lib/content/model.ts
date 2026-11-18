@@ -71,6 +71,9 @@ export interface ContentIdea {
   review: Record<string, { by: string; at: string; ok: boolean; note?: string }>
   feedback: Feedback[]
   decision_note: string | null
+  note?: string | null          // vrije notitie van een medewerker
+  note_by?: string | null
+  note_at?: string | null
   published_url: string | null
   published_at: string | null
   evals: Partial<Record<"d7" | "d30" | "d90", Eval>>

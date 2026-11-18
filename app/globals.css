@@ -1043,3 +1043,6 @@ img, svg { display: block; max-width: 100%; }
 .kw-scroll .ptable { margin-top: 6px; }
 .why-table tbody th svg { display: inline-block; }
 .why-table tbody th { width: 30%; }
+.note-box { background: #fdf8e6; border-radius: var(--radius-md); padding: 10px 12px; }
+.note-box p { margin: 0; font-size: var(--fs-sm); white-space: pre-wrap; color: #4f400d; }
+.note-box p.subtle { margin-top: 6px; white-space: normal; color: var(--text-subtle); }

@@ -25,6 +25,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   switch (body.action) {
+    case "note": {
+      const n = String(body.note ?? "").trim().slice(0, 2000)
+      patch.note = n || null
+      patch.note_by = n ? who : null
+      patch.note_at = n ? now : null
+      break
+    }
     case "owner": {
       patch.owner = typeof body.owner === "string" && /^[^\s@]+@[^\s@]+$/.test(body.owner) ? body.owner.toLowerCase() : null
       break

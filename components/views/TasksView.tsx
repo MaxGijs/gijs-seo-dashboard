@@ -261,7 +261,7 @@ export default function TasksView() {
                         </span>
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
-                        {i.decision_note && <span className="tcard-note" title={i.decision_note}><StickyNote aria-hidden /><span>{i.decision_note}</span></span>}
+                        {(i.note || i.decision_note) && <span className="tcard-note" title={(i.note || i.decision_note)!}><StickyNote aria-hidden /><span>{i.note || i.decision_note}</span></span>}
                         <span className="tcard-foot"><span>{meta.icon}{meta.text}</span>{i.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(i.owner, users, me)}</span> : null}{i.status === "later" ? <span>Later</span> : null}</span>
                       </button>
                     )

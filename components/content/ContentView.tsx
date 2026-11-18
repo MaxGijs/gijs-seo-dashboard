@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, TrendingUp } from "lucide-react"
+import { CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
 import { num, pct } from "@/lib/format"
@@ -72,6 +72,7 @@ function IdeaCard({ idea, onOpen }: { idea: ContentIdea; onOpen: () => void }) {
         </span>
         <span className="idea-title">{idea.title}</span>
         <span className="idea-why">{idea.why_now}</span>
+        {idea.note && <span className="tcard-note" title={idea.note}><StickyNote aria-hidden /><span>{idea.note}</span></span>}
         <span className="idea-meta">
           <span>{idea.advice === "bijwerken" ? "Bestaande pagina bijwerken" : idea.format}</span>
           {idea.angle && <span>Invalshoek: {ANGLE_META[idea.angle].label.toLowerCase()}</span>}
