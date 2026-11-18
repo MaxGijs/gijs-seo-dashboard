@@ -22,11 +22,14 @@ export default function ConversionFacts({ page }: { page: string | null }) {
   if (!d) return <div className="kpis-inline"><Skeleton height={40} width={90} /><Skeleton height={40} width={90} /><Skeleton height={40} width={90} /></div>
   return (
     <>
-      <div className="kpis-inline">
-        <div className="kpi-inline"><span className="kpi-inline-label">Sessies</span><span className="kpi-inline-value">{num(d.cur.sessions)}</span><span className="kpi-inline-sub">vorige 28 d: {num(d.prev.sessions)}</span></div>
-        <div className="kpi-inline"><span className="kpi-inline-label">Energiescanaanvragen</span><span className="kpi-inline-value">{d.cur.requests === null ? "—" : num(d.cur.requests)}</span><span className="kpi-inline-sub">vorige 28 d: {d.prev.requests === null ? "—" : num(d.prev.requests)}</span></div>
-        <div className="kpi-inline"><span className="kpi-inline-label">Conversie</span><span className="kpi-inline-value">{d.cur.rate === null ? "—" : pct(d.cur.rate, 2)}</span><span className="kpi-inline-sub">vorige 28 d: {d.prev.rate === null ? "—" : pct(d.prev.rate, 2)}</span></div>
-      </div>
+      <table className="ptable kpi-table">
+        <thead><tr><th>Meting</th><th className="num">Laatste 28 d</th><th className="num">28 d ervoor</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Sessies</th><td className="num kpi-val">{num(d.cur.sessions)}</td><td className="num">{num(d.prev.sessions)}</td></tr>
+          <tr><th scope="row">Energiescanaanvragen</th><td className="num kpi-val">{d.cur.requests === null ? "—" : num(d.cur.requests)}</td><td className="num">{d.prev.requests === null ? "—" : num(d.prev.requests)}</td></tr>
+          <tr><th scope="row">Conversie</th><td className="num kpi-val">{d.cur.rate === null ? "—" : pct(d.cur.rate, 2)}</td><td className="num">{d.prev.rate === null ? "—" : pct(d.prev.rate, 2)}</td></tr>
+        </tbody>
+      </table>
       <p className="scope-line"><span>{d.page ? `Bezoekers die binnenkwamen via ${d.page}` : "Hele site"} · laatste 28 dagen · GA4{d.measurement.used.length ? ` · aanvragen = sessies met ${d.measurement.used.join(" of ")}` : ""}</span></p>
       {d.measurement.status !== "ok" && <Alert tone="warning" title="De meting van aanvragen klopt nog niet">{d.measurement.note} Tot die is opgelost geeft de meting van deze taak geen oordeel; zie de controletaak in Vandaag.</Alert>}
     </>

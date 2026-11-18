@@ -252,15 +252,17 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               </p>
               <p className="summary-task">{signal.action || diag.steps[0]?.title || diag.situation}</p>
               {diag.verdict.kind !== "inplannen" && <p className="summary-note">{diag.verdict.text}</p>}
-              <dl className="summary-meta">
-                <div><dt>Soort aanpassing</dt><dd>{diag.plan.label}</dd></div>
-                {isSeo ? <>
-                  <div><dt>Verwachte winst</dt><dd>{signal.kind === "techniek" ? "randvoorwaarde" : signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</dd></div>
-                  <div><dt>Bewijskracht</dt><dd>{capitalizeFirst(signal.evidence)}</dd></div>
-                </> : <div><dt>Gemeten op</dt><dd>{raw.goal === "conversie" ? "Energiescanaanvragen (GA4)" : "Niet automatisch"}</dd></div>}
-                <div><dt>Inspanning · risico</dt><dd>{capitalizeFirst(diag.effort)} · {diag.risk}</dd></div>
-                {signal.priorityRank ? <div><dt>Prioriteit</dt><dd>#{signal.priorityRank} van {signals.length}</dd></div> : null}
-              </dl>
+              <table className="ptable ptable-kv summary-table">
+                <tbody>
+                  <tr><th scope="row">Soort aanpassing</th><td>{diag.plan.label}</td></tr>
+                  {isSeo ? <>
+                    <tr><th scope="row">Verwachte winst</th><td>{signal.kind === "techniek" ? "randvoorwaarde" : signal.estimate ? gainLabel(signal.estimate) : "n.v.t."}</td></tr>
+                    <tr><th scope="row">Bewijskracht</th><td>{capitalizeFirst(signal.evidence)}</td></tr>
+                  </> : <tr><th scope="row">Gemeten op</th><td>{raw.goal === "conversie" ? "Energiescanaanvragen (GA4)" : "Niet automatisch"}</td></tr>}
+                  <tr><th scope="row">Inspanning · risico</th><td>{capitalizeFirst(diag.effort)} · {diag.risk}</td></tr>
+                  {signal.priorityRank ? <tr><th scope="row">Prioriteit</th><td>#{signal.priorityRank} van {signals.length}</td></tr> : null}
+                </tbody>
+              </table>
             </div>
           </section>
 
@@ -269,15 +271,18 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             <h3 className="psec-title" id="sec-probleem"><span className="psec-num">1</span>Wat speelt er</h3>
             <p className="lead">{diag.situation}</p>
             {raw.goal === "conversie" && <ConversionFacts page={target} />}
-            {isSeo && <div className="kpis-inline">
-              {diag.facts.map(f => (
-                <div className="kpi-inline" key={f.label}>
-                  <span className="kpi-inline-label">{f.label}</span>
-                  <span className="kpi-inline-value">{detailState === "loading" && f.value === "—" ? <Skeleton height={18} width={40} /> : f.value}</span>
-                  {f.sub && <span className="kpi-inline-sub">{f.sub}</span>}
-                </div>
-              ))}
-            </div>}
+            {isSeo && diag.facts.length > 0 && (
+              <table className="ptable kpi-table">
+                <thead><tr><th>Meting</th><th className="num">Waarde</th><th>Toelichting</th></tr></thead>
+                <tbody>{diag.facts.map(f => (
+                  <tr key={f.label}>
+                    <th scope="row">{f.label}</th>
+                    <td className="num kpi-val">{detailState === "loading" && f.value === "—" ? <Skeleton height={16} width={40} /> : f.value}</td>
+                    <td className="muted">{f.sub || ""}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
             {isSeo && <p className="scope-line"><Database aria-hidden /><span>{rec!.scopeText}</span></p>}
             {isSeo && rec!.changes.length > 0 && (
               <div className="scope-changes">
@@ -347,15 +352,11 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               </div>
             ) : findings.main.length ? (
               <>
-                <ul className="findings">
-                  {findings.main.map((f, i) => <FindingRow key={i} tone={f.tone} text={f.text} />)}
-                </ul>
+                <FindingsTable rows={findings.main} />
                 {findings.rest.length > 0 && (
                   <details className="evidence-details">
                     <summary>{findings.rest.length} {findings.rest.length === 1 ? "controle" : "controles"} die in orde {findings.rest.length === 1 ? "is" : "zijn"} of ter info</summary>
-                    <ul className="findings findings-quiet">
-                      {findings.rest.map((f, i) => <FindingRow key={i} tone={f.tone} text={f.text} />)}
-                    </ul>
+                    <div style={{ marginTop: 10 }}><FindingsTable rows={findings.rest} quiet /></div>
                   </details>
                 )}
               </>
@@ -372,14 +373,15 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             {detailState === "loading" ? (
               <div style={{ display: "grid", gap: 12 }}><Skeleton height={40} /><Skeleton height={40} /></div>
             ) : (
-              <ol className="steps">
-                {diag.steps.map((s, i) => (
-                  <li className="step" key={i}>
-                    <span className="step-num" aria-hidden>{i + 1}</span>
-                    <div><p className="step-title">{s.title}</p>{s.detail && <p className="step-detail">{s.detail}</p>}</div>
-                  </li>
-                ))}
-              </ol>
+              <table className="ptable steps-table">
+                <thead><tr><th className="col-n">#</th><th>Stap en hoe</th></tr></thead>
+                <tbody>{diag.steps.map((s, i) => (
+                  <tr key={i}>
+                    <td className="col-n"><span className="step-num" aria-hidden>{i + 1}</span></td>
+                    <td><p className="step-title">{s.title}</p>{s.detail && <p className="step-detail">{s.detail}</p>}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
             )}
           </section>
 
@@ -393,18 +395,23 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               <p className="impact-headline"><Target aria-hidden /><span><b>{raw.goal === "conversie" ? "Gemeten op energiescanaanvragen, niet op Google" : "Geen automatische meting"}</b></span></p>
             ) : <>
             <p className="impact-headline"><TrendingUp aria-hidden /><span><b>{diag.importance.gainText}</b> <span className="muted">(indicatief)</span></span></p>
-            <ul className="why-list">
-              <li className="why-item"><ShieldCheck aria-hidden /><span>{diag.importance.evidenceText}</span></li>
-              {signal.intent && <li className="why-item"><Users aria-hidden /><span>Zoekintentie <b>{INTENT_META[signal.intent].label.toLowerCase()}</b>: deze zoeker {INTENT_META[signal.intent].explain}.</span></li>}
-              {conv && <li className="why-item"><Target aria-hidden /><span>{conv}</span></li>}
-              <li className="why-item"><FlaskConical aria-hidden /><span>{learned}</span></li>
-            </ul>
+            <table className="ptable ptable-kv why-table">
+              <tbody>
+                <tr><th scope="row"><ShieldCheck aria-hidden />Bewijs</th><td>{diag.importance.evidenceText}</td></tr>
+                {signal.intent && <tr><th scope="row"><Users aria-hidden />Zoekintentie</th><td><b>{capitalizeFirst(INTENT_META[signal.intent].label.toLowerCase())}</b>: deze zoeker {INTENT_META[signal.intent].explain}.</td></tr>}
+                {conv && <tr><th scope="row"><Target aria-hidden />Aanvragen</th><td>{conv}</td></tr>}
+                <tr><th scope="row"><FlaskConical aria-hidden />Eerder geleerd</th><td>{learned}</td></tr>
+              </tbody>
+            </table>
             </>}
             <p className="field-hint" style={{ marginTop: 14 }}>Meetplan voor: <b>{diag.plan.label.toLowerCase()}</b>. De nulmeting legt {diag.plan.baselineText} vast.</p>
-            <div className="timeline" aria-label="Meetplan" style={{ gridTemplateColumns: `repeat(${diag.plan.timeline.length}, minmax(0, 1fr))` }}>
-              {diag.plan.timeline.map(t => <div className="timeline-step" key={t.l}><span className="timeline-dot" aria-hidden /><b>{t.l}</b><span>{t.s}</span></div>)}
-            </div>
-            <p className="field-hint" style={{ marginTop: 8 }}><b>Succes:</b> {diag.plan.success}</p>
+            <table className="ptable plan-table" aria-label="Meetplan">
+              <thead><tr><th>Moment</th><th>Wat er gebeurt</th></tr></thead>
+              <tbody>
+                {diag.plan.timeline.map(t => <tr key={t.l}><th scope="row">{t.l}</th><td>{capitalizeFirst(t.s)}</td></tr>)}
+                <tr className="plan-success"><th scope="row">Geslaagd als</th><td>{diag.plan.success}</td></tr>
+              </tbody>
+            </table>
             {isSeo && <details className="evidence-details">
               <summary>Hoe is deze schatting berekend?</summary>
               <div style={{ marginTop: 12 }}>
@@ -589,12 +596,14 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
   )
 }
 
-function FindingRow({ tone, text }: { tone: FindingTone; text: string }) {
+function FindingsTable({ rows, quiet }: { rows: { tone: FindingTone; text: string }[]; quiet?: boolean }) {
   return (
-    <li className="finding">
-      <span className="finding-tag"><Badge tone={FINDING_TAG[tone].tone}>{FINDING_TAG[tone].label}</Badge></span>
-      <span>{text}</span>
-    </li>
+    <table className={`ptable findings-table${quiet ? " is-quiet" : ""}`}>
+      <thead><tr><th>Soort</th><th>Bevinding</th></tr></thead>
+      <tbody>{rows.map((f, i) => (
+        <tr key={i}><td className="nowrap"><Badge tone={FINDING_TAG[f.tone].tone}>{FINDING_TAG[f.tone].label}</Badge></td><td>{f.text}</td></tr>
+      ))}</tbody>
+    </table>
   )
 }
 

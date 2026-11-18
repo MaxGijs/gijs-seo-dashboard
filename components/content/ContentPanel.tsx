@@ -131,35 +131,38 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
               <span className="summary-verdict"><Lightbulb aria-hidden />{idea.advice === "bijwerken" ? "Bestaande pagina bijwerken" : idea.advice === "niets" ? "Niets doen" : "Nieuw artikel schrijven"}</span>
               <p className="summary-task">{idea.why_now}</p>
               {idea.advice_note && <p className="summary-note">{idea.advice_note}</p>}
-              <dl className="summary-meta">
-                <div><dt>Score</dt><dd><span className={`score-inline score-${scoreTone(score)}`}>{score}</span>{idea.score_override !== null && <span className="subtle"> (berekend {idea.score})</span>}</dd></div>
-                <div><dt>Prioriteit</dt><dd>{idea.priority ? idea.priority[0].toUpperCase() + idea.priority.slice(1) : "—"}</dd></div>
-                <div><dt>Invalshoek</dt><dd>{idea.angle ? ANGLE_META[idea.angle].label : "—"}</dd></div>
-                <div><dt>Commercieel</dt><dd>{idea.commercial_value?.split(":")[0]}</dd></div>
-                <div><dt>Bereik en autoriteit</dt><dd>{idea.reach_value}</dd></div>
-              </dl>
+              <table className="ptable ptable-kv summary-table">
+                <tbody>
+                  <tr><th scope="row">Score</th><td><span className={`score-inline score-${scoreTone(score)}`}>{score}</span>{idea.score_override !== null && <span className="subtle"> (berekend {idea.score})</span>}</td></tr>
+                  <tr><th scope="row">Prioriteit</th><td>{idea.priority ? idea.priority[0].toUpperCase() + idea.priority.slice(1) : "—"}</td></tr>
+                  <tr><th scope="row">Invalshoek</th><td>{idea.angle ? ANGLE_META[idea.angle].label : "—"}</td></tr>
+                  <tr><th scope="row">Commercieel</th><td>{idea.commercial_value?.split(":")[0]}</td></tr>
+                  <tr><th scope="row">Bereik en autoriteit</th><td>{idea.reach_value}</td></tr>
+                </tbody>
+              </table>
             </div>
           </section>
 
           <section className="psec" aria-labelledby="cp-why">
             <h3 className="psec-title" id="cp-why"><span className="psec-num">1</span>Aanleiding en bronnen</h3>
             {idea.summary && idea.summary !== idea.why_now && <p className="lead" style={{ fontSize: "var(--fs-sm)" }}>{idea.summary}</p>}
-            <ul className="src-refs">
-              {sourcesByDate.map((s, i) => (
-                <li key={i}>
-                  <Newspaper aria-hidden />
-                  <div>
-                    <strong>{s.url ? <a href={s.url} target="_blank" rel="noopener noreferrer">{s.title} <ExternalLink aria-hidden /></a> : s.title}</strong>
-                    <span>{s.publisher} · {dateNl(s.date)}{s.firstSeen ? " (datum waarop gevonden)" : ""} · {RELIABILITY_META[s.reliability]?.label}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <table className="ptable src-table">
+              <thead><tr><th>Bron</th><th>Uitgever</th><th>Datum</th><th>Betrouwbaarheid</th></tr></thead>
+              <tbody>{sourcesByDate.map((s, i) => (
+                <tr key={i}>
+                  <td>{s.url ? <a href={s.url} target="_blank" rel="noopener noreferrer">{s.title} <ExternalLink aria-hidden /></a> : <b>{s.title}</b>}</td>
+                  <td>{s.publisher}</td>
+                  <td className="nowrap">{dateNl(s.date)}{s.firstSeen ? <span className="subtle small" style={{ display: "block" }}>gevonden op</span> : null}</td>
+                  <td>{RELIABILITY_META[s.reliability]?.label}</td>
+                </tr>
+              ))}</tbody>
+            </table>
           </section>
 
           <section className="psec" aria-labelledby="cp-score">
             <h3 className="psec-title" id="cp-score"><span className="psec-num">2</span>Waarom deze score</h3>
-            <table className="mini-table">
+            <table className="ptable score-parts">
+              <thead><tr><th>Onderdeel</th><th className="num">Punten</th><th>Waarom</th></tr></thead>
               <tbody>
                 {parts.map(p => (
                   <tr key={p.label}>
@@ -176,32 +179,36 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
 
           <section className="psec" aria-labelledby="cp-plan">
             <h3 className="psec-title" id="cp-plan"><span className="psec-num">3</span>Voorstel</h3>
-            <dl className="kv">
-              <dt>Doelgroep</dt><dd>{idea.audience}</dd>
-              <dt>Dienst</dt><dd>{serviceLabel(idea.service)}{idea.target_page && <> · <a href={SITE + idea.target_page} target="_blank" rel="noopener noreferrer">{idea.target_page}</a></>}</dd>
-              <dt>Zoekintentie</dt><dd>{idea.intent}</dd>
-              <dt>Doel</dt><dd>{idea.goal}</dd>
-              <dt>Call-to-action</dt><dd>{idea.cta}</dd>
-              <dt>Houdbaarheid</dt><dd>{idea.shelf_life === "actueel" ? "Actueel (veroudert snel; plan een update)" : "Evergreen"}</dd>
-              <dt>Commerciële waarde</dt><dd>{idea.commercial_value}</dd>
-            </dl>
+            <table className="ptable ptable-kv">
+              <tbody>
+                <tr><th scope="row">Doelgroep</th><td>{idea.audience}</td></tr>
+                <tr><th scope="row">Dienst</th><td>{serviceLabel(idea.service)}{idea.target_page && <> · <a href={SITE + idea.target_page} target="_blank" rel="noopener noreferrer">{idea.target_page}</a></>}</td></tr>
+                <tr><th scope="row">Zoekintentie</th><td>{idea.intent}</td></tr>
+                <tr><th scope="row">Doel</th><td>{idea.goal}</td></tr>
+                <tr><th scope="row">Call-to-action</th><td>{idea.cta}</td></tr>
+                <tr><th scope="row">Houdbaarheid</th><td>{idea.shelf_life === "actueel" ? "Actueel (veroudert snel; plan een update)" : "Evergreen"}</td></tr>
+                <tr><th scope="row">Commerciële waarde</th><td>{idea.commercial_value}</td></tr>
+              </tbody>
+            </table>
             {idea.title_options.length > 1 && (
               <>
                 <p className="field-label" style={{ marginTop: 14 }}>Titelopties per invalshoek</p>
-                <ul className="title-opts">
-                  {idea.title_options.map(o => (
-                    <li key={o.title} className={o.title === idea.title ? "is-chosen" : ""}>
-                      <Badge tone={o.title === idea.title ? "success" : "neutral"}>{ANGLE_META[o.angle].label}</Badge><span>{o.title}</span>
-                      {o.title !== idea.title && step <= 2 && step >= 0 && <button className="link-btn" disabled={busy} onClick={() => act({ action: "edit", fields: { title: o.title, angle: o.angle } }, "Titel en invalshoek aangepast")}>Kiezen</button>}
-                    </li>
-                  ))}
-                </ul>
+                <table className="ptable title-table">
+                  <thead><tr><th>Invalshoek</th><th>Titel</th><th /></tr></thead>
+                  <tbody>{idea.title_options.map(o => (
+                    <tr key={o.title} className={o.title === idea.title ? "is-chosen" : ""}>
+                      <td className="nowrap"><Badge tone={o.title === idea.title ? "success" : "neutral"}>{ANGLE_META[o.angle].label}</Badge></td>
+                      <td>{o.title === idea.title ? <b>{o.title}</b> : o.title}</td>
+                      <td className="nowrap">{o.title === idea.title ? <span className="subtle small">gekozen</span> : step <= 2 && step >= 0 ? <button className="link-btn" disabled={busy} onClick={() => act({ action: "edit", fields: { title: o.title, angle: o.angle } }, "Titel en invalshoek aangepast")}>Kiezen</button> : null}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </>
             )}
             <p className="field-label" style={{ marginTop: 14 }}>Zoekwoorden waarop de zoekvraag is gebaseerd <span className="subtle">(Search Console, 28 dagen)</span></p>
             {idea.keywords.length > 0 ? (
               <div className="kw-scroll">
-                <table className="mini-table">
+                <table className="ptable">
                   <thead><tr><th>Zoekwoord</th><th className="num">Vertoningen</th><th className="num">Klikken</th><th className="num">Positie</th></tr></thead>
                   <tbody>{idea.keywords.map(k => <tr key={k.query}><td>{k.query}</td><td className="num">{num(k.impressions)}</td><td className="num">{num(k.clicks)}</td><td className="num">{k.position ? pos(k.position) : "—"}</td></tr>)}</tbody>
                   <tfoot><tr><td><strong>Totaal ({idea.keywords.length})</strong></td><td className="num"><strong>{num(kwTotal)}</strong></td><td className="num"><strong>{num(idea.keywords.reduce((s, k) => s + k.clicks, 0))}</strong></td><td /></tr></tfoot>
@@ -214,7 +221,10 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
 
           <section className="psec" aria-labelledby="cp-risk">
             <h3 className="psec-title" id="cp-risk"><span className="psec-num">4</span>Risico&apos;s en onzekerheden</h3>
-            <ul className="plain-list">{idea.risks.map(r => <li key={r}><AlertTriangle aria-hidden /><span>{r}</span></li>)}</ul>
+            <table className="ptable risk-table">
+              <thead><tr><th className="col-n">#</th><th>Risico of onzekerheid</th></tr></thead>
+              <tbody>{idea.risks.map((r, i) => <tr key={r}><td className="col-n"><AlertTriangle aria-hidden /></td><td>{r}</td></tr>)}</tbody>
+            </table>
           </section>
 
           {/* ── Productie ─────────────────────────────────────────── */}

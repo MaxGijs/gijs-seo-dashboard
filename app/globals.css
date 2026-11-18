@@ -1008,3 +1008,38 @@ img, svg { display: block; max-width: 100%; }
 .btn-danger-solid:hover:not(:disabled) { filter: brightness(.92); }
 .link-btn.link-danger { color: var(--error); }
 .inline-form-danger { border-left: 3px solid var(--error); padding-left: 12px; }
+
+/* Tabellen in de panelen */
+.ptable { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; font-size: var(--fs-sm); background: var(--white); margin-top: 12px; }
+.ptable th, .ptable td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border-subtle); line-height: 1.45; }
+.ptable tbody tr:last-child > * { border-bottom: 0; }
+.ptable thead th { background: var(--grey-050, #f6f8f7); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-subtle); }
+.ptable tbody th { font-weight: 600; color: var(--green-800); white-space: nowrap; }
+.ptable .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ptable .muted { font-size: var(--fs-xs); }
+.ptable-kv tbody th { width: 36%; font-size: var(--fs-xs); color: var(--text-muted); font-weight: 600; }
+.ptable-kv tbody td { color: var(--green-800); }
+.summary-table { margin-top: 14px; background: rgba(255, 255, 255, .7); }
+.summary-table tbody td { font-weight: 600; }
+.kpi-table .kpi-val { font-weight: 700; font-size: var(--fs-md, 15px); color: var(--green-800); white-space: nowrap; }
+.why-table tbody th { white-space: nowrap; }
+.why-table tbody th svg { width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; color: var(--accent-700); }
+.why-table tbody td { color: var(--text); font-size: var(--fs-sm); }
+.steps-table .col-n { width: 44px; text-align: center; }
+.steps-table .step-title { margin: 0; }
+.steps-table .step-detail { margin: 4px 0 0; }
+.findings-table td:first-child { width: 1%; }
+.findings-table.is-quiet { opacity: .85; }
+.plan-table tbody th { width: 30%; }
+.plan-table .plan-success > * { background: var(--accent-050, #eef8f2); }
+@media (max-width: 560px) { .ptable-kv tbody th { white-space: normal; width: 40%; } .ptable th, .ptable td { padding: 8px 9px; } }
+.ptable a { color: var(--accent-700); font-weight: 600; }
+.ptable a svg { width: 12px; height: 12px; vertical-align: -1px; }
+.ptable tfoot td { border-top: 1px solid var(--border); background: var(--grey-050, #f6f8f7); }
+.title-table tr.is-chosen > * { background: var(--accent-050, #eef8f2); }
+.risk-table .col-n, .steps-table .col-n { width: 40px; text-align: center; }
+.risk-table svg { width: 15px; height: 15px; color: #b07a10; }
+.score-parts td:first-child { width: 32%; }
+.kw-scroll .ptable { margin-top: 6px; }
+.why-table tbody th svg { display: inline-block; }
+.why-table tbody th { width: 30%; }

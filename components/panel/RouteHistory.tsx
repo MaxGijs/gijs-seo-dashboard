@@ -19,15 +19,17 @@ export default function RouteHistory({ taskKey, page, query, routeNote }: { task
       <h3 className="psec-title" id="sec-routes"><History aria-hidden />Eerder geprobeerd{page ? ` voor ${page}` : ""}</h3>
       {routeNote && <p className="route-note"><RouteIcon aria-hidden /><span>{routeNote}</span></p>}
       {tries.length > 0 && (
-        <ul className="route-list">
-          {tries.map((t, i) => (
-            <li key={i}>
-              <div className="route-top"><b>{ROUTE_LABEL[t.route] || t.route}</b><span className="subtle small">{dateShort(t.date)}</span><span className={`small ${t.outcome ? OUTCOME[t.outcome].cls : "subtle"}`}>{t.outcome ? OUTCOME[t.outcome].label : "Meting loopt"}</span></div>
-              <p className="small">{t.description}{t.summary ? ` · ${t.summary}` : ""}</p>
-              {t.confounders.length > 0 && <p className="small subtle">Mogelijk ook van invloed: {t.confounders.join("; ")}.</p>}
-            </li>
-          ))}
-        </ul>
+        <table className="ptable">
+          <thead><tr><th>Datum</th><th>Route</th><th>Wat er is gedaan</th><th>Uitkomst</th></tr></thead>
+          <tbody>{tries.map((t, i) => (
+            <tr key={i}>
+              <td className="nowrap">{dateShort(t.date)}</td>
+              <th scope="row">{ROUTE_LABEL[t.route] || t.route}</th>
+              <td>{t.description}{t.summary ? <span className="subtle"> · {t.summary}</span> : null}{t.confounders.length > 0 && <span className="subtle small" style={{ display: "block", marginTop: 3 }}>Mogelijk ook van invloed: {t.confounders.join("; ")}.</span>}</td>
+              <td className={`nowrap ${t.outcome ? OUTCOME[t.outcome].cls : "subtle"}`}>{t.outcome ? OUTCOME[t.outcome].label : "Meting loopt"}</td>
+            </tr>
+          ))}</tbody>
+        </table>
       )}
     </section>
   )
