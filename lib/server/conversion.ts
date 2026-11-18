@@ -75,7 +75,7 @@ export async function articleGa4(path: string, start: string, end: string): Prom
     lead ? g.client.runReport({ property: g.property, dateRanges: range, metrics: [{ name: "sessions" }], dimensionFilter: { andGroup: { expressions: [landF, lead] } } } as any) : Promise.resolve([null]),
     contact ? g.client.runReport({ property: g.property, dateRanges: range, metrics: [{ name: "sessions" }], dimensionFilter: { andGroup: { expressions: [landF, contact] } } } as any) : Promise.resolve([null]),
     // Gedrag op de pagina zelf: tot onderaan gelezen en klikken op de energiescanknop
-    g.client.runReport({ property: g.property, dateRanges: range, dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { andGroup: { expressions: [pageF, { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", ...CTA_EVENTS] } } }] } } } as any),
+    g.client.runReport({ property: g.property, dateRanges: range, dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { andGroup: { expressions: [pageF, { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", "scroll_90", ...CTA_EVENTS] } } }] } } } as any),
   ])
   const evCount = (name: string) => { const r = (ev as any)?.rows?.find((x: any) => x.dimensionValues?.[0]?.value === name); return r ? Number(r.metricValues[0].value) : null }
   const m = (r: any, i: number) => Number(r?.rows?.[0]?.metricValues?.[i]?.value || 0)
@@ -86,7 +86,8 @@ export async function articleGa4(path: string, start: string, end: string): Prom
     landingSessions: m(b, 0),
     requests: lead ? m((c as any)[0], 0) : null,
     contacts: contact ? m((d as any)[0], 0) : null,
-    scrolled: evCount("scroll"),
+    // GTM stuurt scroll_90; anders het standaard-scrollevent van GA4 (uitgebreide metingen)
+    scrolled: evCount("scroll_90") ?? evCount("scroll"),
     ctaClicks: CTA_EVENTS.map(evCount).every(v => v === null) ? null : CTA_EVENTS.reduce((a, e) => a + (evCount(e) || 0), 0),
     measurement: measurement.status,
   }

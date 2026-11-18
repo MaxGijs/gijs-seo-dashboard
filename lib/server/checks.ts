@@ -79,10 +79,10 @@ export async function readChecks(fresh = false): Promise<DataCheck[]> {
   // 3b. Meten per artikel: lezen tot onderaan en klikken op de energiescanknop (via Google Tag Manager)
   try {
     const g = ga4Client()
-    const rows = await ga4Report(g, { dateRanges: [{ startDate: "90daysAgo", endDate: "yesterday" }], dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", ...CTA_EVENTS] } } }, limit: 10 })
+    const rows = await ga4Report(g, { dateRanges: [{ startDate: "90daysAgo", endDate: "yesterday" }], dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", "scroll_90", ...CTA_EVENTS] } } }, limit: 10 })
     const seen = new Set(rows.filter(r => r.mets[0] > 0).map(r => r.dims[0]))
     const ctaSeen = CTA_EVENTS.some(e => seen.has(e))
-    const missing = [!ctaSeen && "klikken op de knop naar de energiescan", !seen.has("scroll") && "lezen tot onderaan"].filter(Boolean) as string[]
+    const missing = [!ctaSeen && "klikken op de knop naar de energiescan", !seen.has("scroll") && !seen.has("scroll_90") && "lezen tot onderaan"].filter(Boolean) as string[]
     if (missing.length) out.push({
       id: "gtm-artikelmeting", area: "Meting", severity: "warning",
       what: `Meten per artikel aanvullen via Google Tag Manager: ${missing.join(" en ")} ${missing.length === 1 ? "wordt" : "worden"} nog niet gemeten.`,
@@ -92,7 +92,7 @@ export async function readChecks(fresh = false): Promise<DataCheck[]> {
           { title: "Maak in GTM een trigger voor klikken naar de energiescan", detail: "Triggers → Nieuw → Klik – Alleen links. Laat de trigger afgaan bij: Click URL bevat /energiescan (of het adres van het aanvraagformulier). Zet eerst onder Variabelen de ingebouwde klikvariabelen aan (Click URL, Click Text)." },
           { title: `Stuur het event "${CTA_EVENT}" naar GA4`, detail: `Tags → Nieuw → Google Analytics: GA4-gebeurtenis, naam ${CTA_EVENT}, met parameters link_url = {{Click URL}} en link_text = {{Click Text}}. Koppel de trigger van de vorige stap. Het dashboard herkent precies deze naam.` },
         ] : []),
-        ...(!seen.has("scroll") ? [
+        ...(!seen.has("scroll") && !seen.has("scroll_90") ? [
           { title: "Zet scrollen aan", detail: "Het eenvoudigst in GA4: Beheer → Datastreams → de website → Uitgebreide metingen → Scrollen aan (event scroll bij 90%). Of in GTM: trigger Scrolldiepte 90% met een GA4-gebeurtenis scroll." },
         ] : []),
         { title: "Test en publiceer", detail: "Klik in GTM op Voorbeeld, open een artikel, scroll naar onderen en klik op de energiescanknop. Zie je de events in GA4 → Rapporten → Realtime, publiceer dan de container. Deze controletaak verdwijnt vanzelf zodra de events binnenkomen." },
