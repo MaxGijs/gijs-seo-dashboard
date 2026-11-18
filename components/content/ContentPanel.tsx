@@ -559,7 +559,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
 
 // Resultaten per artikel: bekeken, tijd op de pagina, aanvragen (GA4) en Google (Search Console)
 const dur = (sec: number | null | undefined) => sec === null || sec === undefined ? "—" : sec < 60 ? `${sec} s` : `${Math.floor(sec / 60)} min ${String(sec % 60).padStart(2, "0")} s`
-function ArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
+export function ArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
   const v = articleVerdict(idea, all)
   const keys = ["d7", "d30", "d90"] as const
   const ev = idea.evals || {}

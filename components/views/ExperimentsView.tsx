@@ -2,8 +2,11 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { CalendarClock, FlaskConical } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { CalendarClock, FlaskConical, Newspaper } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
+import { useContentIdeas } from "@/lib/content/useContent"
+import { ArticleResults } from "@/components/content/ContentPanel"
 import type { Experiment } from "@/lib/types"
 import { addDays, dateLong, dateShort, num, pct, pos } from "@/lib/format"
 import { Badge, EmptyState, KindLabel, Skeleton } from "@/components/ui"
@@ -94,7 +97,43 @@ function Learned({ experiments }: { experiments: Experiment[] }) {
   )
 }
 
+// Contentkansen die gepubliceerd zijn (en dus gemeten worden)
+function ContentExperiments() {
+  const { ideas, error } = useContentIdeas()
+  const published = useMemo(() => (ideas || []).filter(i => i.status === "gepubliceerd" && i.published_at)
+    .sort((a, b) => (b.published_at! < a.published_at! ? -1 : b.published_at! > a.published_at! ? 1 : 0)), [ideas])
+
+  if (error) return <div className="card card-pad"><p className="muted">Contentkansen konden niet worden geladen: {error}</p></div>
+  if (!ideas) return <div className="exp-list">{[0, 1].map(i => <div key={i} className="card card-pad"><Skeleton height={20} width="35%" /><div style={{ height: 12 }} /><Skeleton height={56} /></div>)}</div>
+  if (published.length === 0) return (
+    <div className="card">
+      <EmptyState
+        icon={<Newspaper />}
+        title="Nog geen gepubliceerde content"
+        text="Zodra een artikel of contentkans als gepubliceerd wordt vastgelegd, verschijnt het hier en meet het dashboard automatisch na 7, 30 en 90 dagen hoe het presteert."
+        action={<Link href="/content" className="btn btn-secondary btn-sm">Naar Content</Link>}
+      />
+    </div>
+  )
+  return (
+    <div className="exp-list">
+      {published.map(idea => (
+        <div className="card card-pad" key={idea.id}>
+          <div className="meta-line" style={{ marginBottom: 6, justifyContent: "space-between" }}>
+            <Link href={`/content/${idea.id}?van=experimenten`} className="exp-title" style={{ textDecoration: "none" }}>{idea.title}</Link>
+            <span className="meta-line"><CalendarClock aria-hidden />Gepubliceerd op {dateLong(idea.published_at!)}</span>
+          </div>
+          <ArticleResults idea={idea} all={ideas} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ExperimentsView() {
+  const router = useRouter()
+  const params = useSearchParams()
+  const tab = params.get("tab") === "content" ? "content" : "seo"
   const { loading, experiments, tasks, openTask } = useWorkspace()
   const [filter, setFilter] = useState<Filter>("alle")
   const byKey = useMemo(() => new Map(tasks.map(t => [t.key, t])), [tasks])
@@ -118,11 +157,16 @@ export default function ExperimentsView() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Experimenten</h1>
-          <p className="page-sub">Wat je hebt aangepast en wat het opleverde. Het dashboard meet automatisch na 14, 28 en 56 dagen.</p>
+          <p className="page-sub">{tab === "content" ? "Gepubliceerde content en wat het oplevert. Het dashboard meet automatisch na 7, 30 en 90 dagen." : "Wat je hebt aangepast en wat het opleverde. Het dashboard meet automatisch na 14, 28 en 56 dagen."}</p>
         </div>
       </div>
 
-      {loading ? (
+      <div className="seg" role="tablist" aria-label="Soort experiment">
+        <button role="tab" aria-selected={tab === "seo"} className={tab === "seo" ? "is-active" : ""} onClick={() => router.replace("/experimenten")}>SEO-experimenten</button>
+        <button role="tab" aria-selected={tab === "content"} className={tab === "content" ? "is-active" : ""} onClick={() => router.replace("/experimenten?tab=content")}>Content</button>
+      </div>
+
+      {tab === "content" ? <ContentExperiments /> : loading ? (
         <div className="exp-list">{[0, 1].map(i => <div key={i} className="card card-pad"><Skeleton height={20} width="35%" /><div style={{ height: 12 }} /><Skeleton height={56} /></div>)}</div>
       ) : experiments.length === 0 ? (
         <div className="card">
