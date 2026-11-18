@@ -18,7 +18,7 @@ import {
   type Angle, type ContentIdea, ANGLE_META, effectiveScore, FEEDBACK_TAGS, FORMATS, IMPACT_META, ORIGIN_META, RELIABILITY_META,
   REVIEW_ROLES, requiredReviews, serviceLabel, STATUS_META, consistencyIssues, type Basis,
 } from "@/lib/content/model"
-import { buildBriefing, lessonsFrom } from "@/lib/content/briefing"
+import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
 import { ago, scoreTone } from "./ContentView"
 
 const SITE = "https://www.groeninjestraat.nl"
@@ -63,6 +63,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
   useEffect(() => { setFinal(idea.concept_final || ""); setBriefing(idea.briefing || "") }, [idea.id, idea.concept_final, idea.briefing])
 
   const lessons = useMemo(() => lessonsFrom(all), [all])
+  const style = useMemo(() => styleGuideFrom(all, idea.id), [all, idea.id])
   const score = effectiveScore(idea)
   const step = STATUS_META[idea.status].step
   const needed = requiredReviews(idea)
@@ -84,7 +85,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
   }
 
   const makeBriefing = async () => {
-    const text = buildBriefing(idea, lessons)
+    const text = buildBriefing(idea, lessons, style)
     setBriefing(text)
     const saved = await act({ action: "edit", fields: { briefing: text } })
     if (saved) await act({ action: "status", status: "briefing" }, "Briefing klaar")
@@ -237,7 +238,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
               <h3 className="psec-title" id="cp-brief"><FileText aria-hidden />Briefing voor Claude</h3>
               {!idea.briefing ? (
                 <>
-                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>De briefing bevat de aanleiding, bronnen met datum, doelgroep, dienst, zoekwoorden, structuur en de schrijfregels van Gijs{lessons.length ? `, plus ${lessons.length} ${lessons.length === 1 ? "les" : "lessen"} uit eerdere correcties` : ""}.</p>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>De briefing bevat de aanleiding, bronnen met datum, doelgroep, dienst, zoekwoorden, structuur en de schrijfregels van Gijs{lessons.length ? `, plus ${lessons.length} ${lessons.length === 1 ? "les" : "lessen"} uit eerdere correcties` : ""}{style ? `, en ${style.measured ? "de stijl van jullie best presterende artikelen" : "de stijl van jullie eigen teksten"} als voorbeeld` : ""}.</p>
                   <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} disabled={busy} onClick={makeBriefing}><FileText aria-hidden />Briefing maken</button>
                 </>
               ) : (
@@ -255,9 +256,14 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
           {step >= 2 && (
             <section className="psec" aria-labelledby="cp-concept">
               <h3 className="psec-title" id="cp-concept"><PenLine aria-hidden />Concept{idea.concept_change_pct !== null && idea.concept_original && <span className="subtle">redactie wijzigde {idea.concept_change_pct}% van de tekst</span>}</h3>
-              {!idea.concept_original ? (
+              {!idea.concept_original && idea.concept_final && idea.text_check?.readable ? (
                 <>
-                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Plak hier het concept dat Claude schreef. Het origineel blijft altijd bewaard, zodat zichtbaar wordt wat de redactie aanpast.</p>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Tekst gelezen uit <b>{idea.text_check.name}</b>. Upload je een nieuwe versie, lever hem dan opnieuw in of klik op "Tekst controleren".</p>
+                  <details className="evidence-details"><summary>Gelezen tekst bekijken</summary><div className="note-box" style={{ marginTop: 8, maxHeight: 320, overflow: "auto", whiteSpace: "pre-wrap" }}>{idea.concept_final}</div></details>
+                </>
+              ) : !idea.concept_original ? (
+                <>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Schrijf je het artikel zelf? Upload het als PDF bij Bijlagen en lever het in; het dashboard leest de tekst dan zelf. Of plak hier een concept van Claude; het origineel blijft bewaard, zodat zichtbaar wordt wat de redactie aanpast.</p>
                   <textarea className="textarea" rows={8} value={concept} onChange={e => setConcept(e.target.value)} placeholder="Plak het volledige concept…" aria-label="Concept plakken" />
                   <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} disabled={busy || concept.trim().length < 200} onClick={() => act({ action: "concept", original: concept }, "Concept vastgelegd")}>Concept vastleggen</button>
                 </>
@@ -300,10 +306,44 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
             <div className={`submit-box${attCount ? " is-ready" : ""}`}>
               <div>
                 <b>{attCount ? "Klaar om in te leveren?" : "Concept inleveren"}</b>
-                <p className="subtle small">{attCount ? "De kans gaat naar Evalueren, waar een collega het concept beoordeelt en de controles afvinkt." : "Upload eerst het concept als PDF bij Bijlagen. Daarna lever je het hier in ter beoordeling."}</p>
+                <p className="subtle small">{attCount ? "Het dashboard leest de tekst uit de PDF en controleert hem. Daarna gaat de kans naar Evalueren, waar een collega hem beoordeelt." : "Upload eerst het concept als PDF (of Word) bij Bijlagen. Daarna lever je het hier in ter beoordeling."}</p>
               </div>
-              <button className="btn btn-primary btn-sm" disabled={busy || !attCount} onClick={() => act({ action: "submit" }, "Ingeleverd ter beoordeling")}><Send aria-hidden />Inleveren</button>
+              <div className="submit-actions">
+                {attCount > 0 && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act({ action: "textcheck" }, "Tekst gecontroleerd")}><ClipboardCheck aria-hidden />Tekst controleren</button>}
+                <button className="btn btn-primary btn-sm" disabled={busy || !attCount} onClick={() => act({ action: "submit" }, "Ingeleverd ter beoordeling")}><Send aria-hidden />Inleveren</button>
+              </div>
             </div>
+          )}
+
+          {idea.text_check && (
+            <section className="psec" aria-labelledby="cp-textcheck">
+              <h3 className="psec-title" id="cp-textcheck"><ClipboardCheck aria-hidden />Tekstcontrole<span className="subtle">{idea.text_check.name ? `${idea.text_check.name} · ` : ""}{new Date(idea.text_check.at).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span></h3>
+              {idea.text_check.error ? <p className="field-error">De tekst kon niet worden gelezen: {idea.text_check.error}</p> : (
+                <>
+                  {idea.text_check.stats && idea.text_check.readable && (
+                    <table className="ptable kpi-table">
+                      <thead><tr><th>Woorden</th><th>Zinslengte</th><th>Tussenkoppen</th><th>Jaartallen</th></tr></thead>
+                      <tbody><tr>
+                        <td className="kpi-val">{idea.text_check.stats.words}</td>
+                        <td className="kpi-val">{String(idea.text_check.stats.avgSentence).replace(".", ",")} <span className="subtle small">woorden</span></td>
+                        <td className="kpi-val">{idea.text_check.stats.headings}</td>
+                        <td>{idea.text_check.stats.years.join(", ") || "—"}</td>
+                      </tr></tbody>
+                    </table>
+                  )}
+                  <table className="ptable textcheck-table">
+                    <thead><tr><th>Controle</th><th>Uitkomst</th></tr></thead>
+                    <tbody>{(idea.text_check.checks || []).map(c => (
+                      <tr key={c.key}>
+                        <th scope="row"><span className={`tc-dot ${c.ok === true ? "is-ok" : c.ok === false ? "is-bad" : "is-info"}`} aria-hidden />{c.label}</th>
+                        <td>{c.detail}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                  <p className="field-hint">Vaste regels, geen AI. Na publicatie legt het dashboard deze kenmerken naast de resultaten in Google, zodat het leert welke teksten het best werken.</p>
+                </>
+              )}
+            </section>
           )}
 
           {step >= 3 && (

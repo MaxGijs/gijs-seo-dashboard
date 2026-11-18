@@ -10,7 +10,7 @@ function date(iso?: string | null) {
   return iso ? new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "datum onbekend"
 }
 
-export function buildBriefing(idea: ContentIdea, learned: string[] = []): string {
+export function buildBriefing(idea: ContentIdea, learned: string[] = [], style: StyleGuide | null = null): string {
   const L: string[] = []
   L.push(`Je schrijft als contentredacteur voor Gijs – Groen in je straat (${SITE}). Gijs helpt particuliere woningeigenaren hun huis te verduurzamen, met een energiescan als startpunt, en voert daarna isolatie- en installatiemaatregelen uit.`)
   L.push("")
@@ -61,6 +61,19 @@ export function buildBriefing(idea: ContentIdea, learned: string[] = []): string
     L.push("LESSEN UIT EERDERE CORRECTIES VAN DE REDACTIE:")
     learned.forEach(l => L.push(`- ${l}`))
   }
+  if (style) {
+    L.push("")
+    L.push(style.measured
+      ? `SCHRIJFSTIJL DIE WERKT: de ${style.examples.length} best presterende eigen artikelen van Gijs (gemeten in Google na publicatie) hebben deze kenmerken. Schrijf in dezelfde stijl en toon:`
+      : `SCHRIJFSTIJL VAN GIJS: zo schrijft de redactie zelf (nog niet genoeg gemeten artikelen om te weten wat het best werkt). Schrijf in dezelfde stijl en toon:`)
+    L.push(`- lengte rond ${style.words} woorden, gemiddeld ${String(style.avgSentence).replace(".", ",")} woorden per zin, ${style.headings} tussenkoppen;`)
+    if (style.kwIntro) L.push("- het hoofdonderwerp staat al in de eerste alinea;")
+    style.examples.forEach((e, i) => {
+      L.push("")
+      L.push(`VOORBEELD ${i + 1}: "${e.title}"${e.clicks30 !== null ? ` (${e.clicks30} klikken in de eerste 30 dagen)` : ""}. Begin van de tekst:`)
+      L.push(`"""${e.excerpt}"""`)
+    })
+  }
   L.push("")
   L.push("LEVER:")
   L.push("- 3 titelopties (positief, probleemgericht, neutraal) en een meta description van max. 155 tekens;")
@@ -87,4 +100,27 @@ export function lessonsFrom(ideas: Pick<ContentIdea, "feedback">[]): string[] {
   const count = new Map<string, number>()
   ideas.forEach(i => (i.feedback || []).forEach(f => count.set(f.tag, (count.get(f.tag) || 0) + 1)))
   return [...count.entries()].filter(([t, n]) => n >= 2 && LESSON[t]).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${LESSON[t]} (${n}× genoemd)`)
+}
+
+// Stijlvoorbeelden uit eigen, door de redactie geschreven teksten (ingeleverde PDF/Word).
+// Zijn er minstens 2 gepubliceerde en gemeten artikelen, dan de best presterende; anders de nieuwste eigen teksten.
+export interface StyleGuide { measured: boolean; words: number; avgSentence: number; headings: number; kwIntro: boolean; examples: { title: string; excerpt: string; clicks30: number | null }[] }
+export function styleGuideFrom(ideas: ContentIdea[], exclude?: string): StyleGuide | null {
+  const own = ideas.filter(i => i.id !== exclude && i.text_check?.readable && i.text_check.stats && i.concept_final && ["review", "goedgekeurd", "gepubliceerd"].includes(i.status))
+  if (!own.length) return null
+  const clicks = (i: ContentIdea) => (i.evals as any)?.d30?.clicks ?? null
+  const measured = own.filter(i => i.status === "gepubliceerd" && clicks(i) !== null)
+  const pick = measured.length >= 2
+    ? [...measured].sort((a, b) => clicks(b) - clicks(a)).slice(0, 2)
+    : [...own].sort((a, b) => (b.text_check!.at || "").localeCompare(a.text_check!.at || "")).slice(0, 2)
+  const avg = (f: (i: ContentIdea) => number) => Math.round((pick.reduce((s, i) => s + f(i), 0) / pick.length) * 10) / 10
+  const excerpt = (t: string) => { const w = t.replace(/\s+/g, " ").trim().split(" "); return w.slice(0, 150).join(" ") + (w.length > 150 ? " …" : "") }
+  return {
+    measured: measured.length >= 2,
+    words: Math.round(avg(i => i.text_check!.stats!.words) / 50) * 50,
+    avgSentence: avg(i => i.text_check!.stats!.avgSentence),
+    headings: Math.round(avg(i => i.text_check!.stats!.headings)),
+    kwIntro: pick.every(i => i.text_check!.features?.kwIntro !== false),
+    examples: pick.map(i => ({ title: i.title, excerpt: excerpt(i.concept_final!), clicks30: measured.length >= 2 ? clicks(i) : null })),
+  }
 }

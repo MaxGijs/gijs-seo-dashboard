@@ -1,3 +1,5 @@
+import { latestAttachmentText } from "@/lib/server/readdoc"
+import { analyzeText } from "@/lib/content/textcheck"
 import { NextResponse } from "next/server"
 import { getSupabase, requireUser } from "@/lib/server/guard"
 import { ANGLE_META, changePct, FEEDBACK_TAGS, FORMATS, REVIEW_ROLES, requiredReviews, STATUS_META, type ContentIdea } from "@/lib/content/model"
@@ -74,6 +76,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const { count } = await sb.from("seo_attachments").select("id", { count: "exact", head: true }).eq("ref_kind", "content").eq("ref_id", id).eq("confirmed", true).is("deleted_at", null)
       if (!count) return bad("Upload eerst het concept (PDF) bij Bijlagen; daarna kun je het inleveren.")
       patch.status = "review"
+      Object.assign(patch, await readAndCheck(cur).catch(e => ({ text_check: { error: String(e?.message || e), at: now } })))
+      break
+    }
+    case "textcheck": {
+      // Alleen de tekst controleren (zonder in te leveren)
+      const r = await readAndCheck(cur).catch(e => ({ text_check: { error: String(e?.message || e), at: now } }))
+      if (!r) return bad("Upload eerst het concept (PDF of Word) bij Bijlagen.")
+      Object.assign(patch, r)
       break
     }
     case "concept": {
@@ -138,4 +148,20 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   await sb.from("seo_attachments").update({ deleted_at: new Date().toISOString() }).eq("ref_kind", "content").eq("ref_id", id)
   return NextResponse.json({ ok: true })
+}
+
+// Lees de nieuwste PDF/Word-bijlage en controleer de tekst. De eigen tekst wordt de definitieve versie;
+// is er een eerder (AI-)concept, dan wordt vastgelegd hoeveel de redactie veranderde.
+async function readAndCheck(cur: ContentIdea) {
+  const doc = await latestAttachmentText(cur.id)
+  if (!doc) return null
+  const a = analyzeText(doc.text, cur)
+  const out: Record<string, unknown> = {
+    text_check: { at: new Date().toISOString(), attachment: doc.attachmentId, name: doc.name, stats: a.stats, checks: a.checks, features: a.features, firstLine: a.firstLine.slice(0, 200), readable: a.readable },
+  }
+  if (a.readable) {
+    out.concept_final = doc.text.slice(0, 60000)
+    if (cur.concept_original) out.concept_change_pct = changePct(cur.concept_original, doc.text)
+  }
+  return out
 }

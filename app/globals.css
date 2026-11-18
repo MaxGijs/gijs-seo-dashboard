@@ -1050,3 +1050,9 @@ img, svg { display: block; max-width: 100%; }
 .submit-box.is-ready { border-style: solid; border-color: var(--accent-200, #bfe6d2); background: var(--accent-050, #eef8f2); }
 .submit-box p { margin: 3px 0 0; }
 @media (max-width: 560px) { .submit-box { flex-direction: column; align-items: flex-start; } }
+.submit-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tc-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 0; background: var(--grey-300); }
+.tc-dot.is-ok { background: #2f9e6a; }
+.tc-dot.is-bad { background: #d9a520; }
+.tc-dot.is-info { background: #3a9fc4; }
+.textcheck-table tbody th { width: 34%; white-space: normal; }

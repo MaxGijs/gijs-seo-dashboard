@@ -9,7 +9,7 @@ export async function recomputeLessons(by = "systeem") {
   const [{ data: exps }, { data: statuses }, { data: ideas }, { data: existing }] = await Promise.all([
     sb.from("seo_experiments").select("advice_key, description, outcome, query, page, baseline"),
     sb.from("seo_advice_status").select("advice_key, status, note, snapshot"),
-    sb.from("content_ideas").select("service, origin, status, feedback, format, evals"),
+    sb.from("content_ideas").select("service, origin, status, feedback, format, evals, text_check"),
     sb.from("seo_lessons").select("*"),
   ])
   const snap = new Map((statuses || []).map(s => [s.advice_key, s.snapshot]))
@@ -23,7 +23,7 @@ export async function recomputeLessons(by = "systeem") {
     }
   })
   const decisions: DecisionFact[] = (statuses || []).filter(s => s.snapshot?.kind).map(s => ({ kind: s.snapshot.kind, intent: s.snapshot.intent, status: s.status, note: s.note }))
-  const content: ContentFact[] = (ideas || []).map(i => ({ service: i.service, origin: i.origin, status: i.status, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null }))
+  const content: ContentFact[] = (ideas || []).map(i => ({ service: i.service, origin: i.origin, status: i.status, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
 
   const drafts = computeLessons({ experiments, decisions, content })
   const old = new Map<string, any>((existing || []).map(l => [l.key, l]))

@@ -72,6 +72,7 @@ export interface ContentIdea {
   feedback: Feedback[]
   decision_note: string | null
   note?: string | null          // vrije notitie van een medewerker
+  text_check?: { at: string; attachment?: string; name?: string; error?: string; stats?: import("./textcheck").TextStats; checks?: import("./textcheck").TextCheck[]; features?: import("./textcheck").TextFeatures; firstLine?: string; readable?: boolean } | null
   note_by?: string | null
   note_at?: string | null
   published_url: string | null
