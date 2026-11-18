@@ -3,7 +3,7 @@
 
 import { getSupabase, supabaseConfigured } from "./guard"
 import { ga4Client, ga4Report, readMeasurement } from "./dashboard"
-import { CTA_EVENT } from "./conversion"
+import { CTA_EVENT, CTA_EVENTS } from "./conversion"
 import { sourceOverview } from "./content"
 import type { DataCheck } from "@/lib/types"
 
@@ -79,15 +79,16 @@ export async function readChecks(fresh = false): Promise<DataCheck[]> {
   // 3b. Meten per artikel: lezen tot onderaan en klikken op de energiescanknop (via Google Tag Manager)
   try {
     const g = ga4Client()
-    const rows = await ga4Report(g, { dateRanges: [{ startDate: "90daysAgo", endDate: "yesterday" }], dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", CTA_EVENT] } } }, limit: 10 })
+    const rows = await ga4Report(g, { dateRanges: [{ startDate: "90daysAgo", endDate: "yesterday" }], dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", ...CTA_EVENTS] } } }, limit: 10 })
     const seen = new Set(rows.filter(r => r.mets[0] > 0).map(r => r.dims[0]))
-    const missing = [!seen.has(CTA_EVENT) && "klikken op de knop naar de energiescan", !seen.has("scroll") && "lezen tot onderaan"].filter(Boolean) as string[]
+    const ctaSeen = CTA_EVENTS.some(e => seen.has(e))
+    const missing = [!ctaSeen && "klikken op de knop naar de energiescan", !seen.has("scroll") && "lezen tot onderaan"].filter(Boolean) as string[]
     if (missing.length) out.push({
       id: "gtm-artikelmeting", area: "Meting", severity: "warning",
       what: `Meten per artikel aanvullen via Google Tag Manager: ${missing.join(" en ")} ${missing.length === 1 ? "wordt" : "worden"} nog niet gemeten.`,
       effect: "Per artikel zie je nu wel hoe vaak het bekeken wordt, hoe lang en hoeveel aanvragen het oplevert, maar niet of mensen het uitlezen en op de knop naar de energiescan klikken. Daarmee zie je eerder of een artikel werkt, ook als er (nog) geen aanvraag volgt.",
       steps: [
-        ...(!seen.has(CTA_EVENT) ? [
+        ...(!ctaSeen ? [
           { title: "Maak in GTM een trigger voor klikken naar de energiescan", detail: "Triggers → Nieuw → Klik – Alleen links. Laat de trigger afgaan bij: Click URL bevat /energiescan (of het adres van het aanvraagformulier). Zet eerst onder Variabelen de ingebouwde klikvariabelen aan (Click URL, Click Text)." },
           { title: `Stuur het event "${CTA_EVENT}" naar GA4`, detail: `Tags → Nieuw → Google Analytics: GA4-gebeurtenis, naam ${CTA_EVENT}, met parameters link_url = {{Click URL}} en link_text = {{Click Text}}. Koppel de trigger van de vorige stap. Het dashboard herkent precies deze naam.` },
         ] : []),

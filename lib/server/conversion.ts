@@ -55,6 +55,8 @@ export interface ArticleGa4 {
 
 // Event dat GTM stuurt bij een klik op een knop of link naar de energiescan
 export const CTA_EVENT = "cta_click"
+// Bestaande events die ook een klik richting de energiescan zijn (in de huidige GTM-container)
+export const CTA_EVENTS = [CTA_EVENT, "region_to_scan"]
 export async function articleGa4(path: string, start: string, end: string): Promise<ArticleGa4> {
   const g = ga4Client()
   const measurement = await readMeasurement(g)
@@ -73,7 +75,7 @@ export async function articleGa4(path: string, start: string, end: string): Prom
     lead ? g.client.runReport({ property: g.property, dateRanges: range, metrics: [{ name: "sessions" }], dimensionFilter: { andGroup: { expressions: [landF, lead] } } } as any) : Promise.resolve([null]),
     contact ? g.client.runReport({ property: g.property, dateRanges: range, metrics: [{ name: "sessions" }], dimensionFilter: { andGroup: { expressions: [landF, contact] } } } as any) : Promise.resolve([null]),
     // Gedrag op de pagina zelf: tot onderaan gelezen en klikken op de energiescanknop
-    g.client.runReport({ property: g.property, dateRanges: range, dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { andGroup: { expressions: [pageF, { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", CTA_EVENT] } } }] } } } as any),
+    g.client.runReport({ property: g.property, dateRanges: range, dimensions: [{ name: "eventName" }], metrics: [{ name: "eventCount" }], dimensionFilter: { andGroup: { expressions: [pageF, { filter: { fieldName: "eventName", inListFilter: { values: ["scroll", ...CTA_EVENTS] } } }] } } } as any),
   ])
   const evCount = (name: string) => { const r = (ev as any)?.rows?.find((x: any) => x.dimensionValues?.[0]?.value === name); return r ? Number(r.metricValues[0].value) : null }
   const m = (r: any, i: number) => Number(r?.rows?.[0]?.metricValues?.[i]?.value || 0)
@@ -85,7 +87,7 @@ export async function articleGa4(path: string, start: string, end: string): Prom
     requests: lead ? m((c as any)[0], 0) : null,
     contacts: contact ? m((d as any)[0], 0) : null,
     scrolled: evCount("scroll"),
-    ctaClicks: evCount(CTA_EVENT),
+    ctaClicks: CTA_EVENTS.map(evCount).every(v => v === null) ? null : CTA_EVENTS.reduce((a, e) => a + (evCount(e) || 0), 0),
     measurement: measurement.status,
   }
 }
