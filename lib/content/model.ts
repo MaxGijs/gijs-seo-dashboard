@@ -79,6 +79,9 @@ export interface ContentIdea {
   decision_note: string | null
   note?: string | null          // vrije notitie van een medewerker
   due_date?: string | null      // deadline voor inleveren (JJJJ-MM-DD)
+  outline?: string | null       // opzet van Claude (via de koppeling)
+  outline_at?: string | null
+  outline_by?: string | null
   text_check?: { at: string; attachment?: string; name?: string; error?: string; stats?: import("./textcheck").TextStats; checks?: import("./textcheck").TextCheck[]; features?: import("./textcheck").TextFeatures; firstLine?: string; readable?: boolean } | null
   note_by?: string | null
   note_at?: string | null

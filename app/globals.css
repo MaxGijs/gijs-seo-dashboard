@@ -1117,3 +1117,5 @@ img, svg { display: block; max-width: 100%; }
 .tcard.is-rejected .tcard-title { color: #7a2a20; }
 .badge-rejected svg { flex: none; width: 14px; height: 14px; }
 .badge-rejected { flex: none; white-space: nowrap; }
+.outline-box { white-space: pre-wrap; max-height: 420px; overflow: auto; font-size: var(--fs-sm); line-height: 1.55; background: #f4f8fc; color: var(--text); }
+.cpage-main > [aria-labelledby="cp-outline"] { order: 6; }

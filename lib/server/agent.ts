@@ -22,6 +22,8 @@ import { reconcile } from "@/lib/contract"
 import { baselineFrom, buildDiagnosis } from "@/lib/diagnosis"
 import { addDays, today } from "@/lib/format"
 import { readAlerts } from "@/lib/server/alerts"
+import { PATCH as contentPATCH } from "@/app/api/content/[id]/route"
+import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
 import { GET as campGET, POST as campPOST } from "@/app/api/campaigns/route"
 import { CAMPAIGN_KINDS, describe, type Campaign } from "@/lib/campaigns"
 import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Priority, Signal, Status, Task } from "@/lib/types"
@@ -336,6 +338,37 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "artikel_opzet", title: "Opzet voor een artikel ophalen", readOnly: true,
+    description: "Haalt alles op wat nodig is om de opzet (basis) van een artikel of pagina-update te maken voor een contentkans: aanleiding, bronnen met datum, zoekvragen uit Search Console, doelgroep, dienst, doelpagina, interne links, regio, call-to-action, de schrijfregels van Gijs, lessen uit eerdere correcties en stijlvoorbeelden uit eigen artikelen die goed werkten. Gebruik daarna de instructie in het resultaat om de opzet te schrijven en sla hem op met artikel_opzet_opslaan.",
+    inputSchema: { type: "object", properties: { kans: str("De id van de contentkans, of een stuk van de titel (bijvoorbeeld 'hybride warmtepomp')") }, required: ["kans"] },
+    run: async a => {
+      const c = await call(contentGET, `/api/content`)
+      const ideas: any[] = c.ideas || []
+      const idea = findIdea(ideas, a.kans)
+      const style = styleGuideFrom(ideas, idea.id)
+      const briefing = buildBriefing(idea, lessonsFrom(ideas), style)
+      return {
+        kans: { id: idea.id, titel: idea.title, status: idea.status, advies: idea.advice === "bijwerken" ? `Bestaande pagina ${idea.target_page} bijwerken` : idea.advice === "nieuw" ? "Nieuw artikel" : idea.advice, pagina: `https://gijs-dashboard.vercel.app/content/${idea.id}` },
+        briefing,
+        bestaande_opzet: idea.outline || null,
+        instructie: OUTLINE_INSTRUCTIE,
+      }
+    },
+  },
+  {
+    name: "artikel_opzet_opslaan", title: "Opzet opslaan bij de contentkans", readOnly: false,
+    description: "Slaat de opzet die je hebt gemaakt op bij de contentkans in het dashboard, zodat een medewerker hem kan uitwerken. Vervangt een eerdere opzet. Laat de gebruiker de opzet eerst zien en sla pas op als die akkoord is of erom vraagt.",
+    inputSchema: { type: "object", properties: { kans: str("De id van de contentkans"), opzet: str("De volledige opzet als platte tekst (Markdown mag)") }, required: ["kans", "opzet"] },
+    run: async a => {
+      const c = await call(contentGET, `/api/content`)
+      const idea = findIdea(c.ideas || [], a.kans)
+      const res = await contentPATCH(new Request(`http://gijs.intern/api/content/${idea.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "outline", outline: a.opzet }) }), { params: Promise.resolve({ id: idea.id }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      return { ok: true, kans: idea.title, bekijken: `https://gijs-dashboard.vercel.app/content/${idea.id}` }
+    },
+  },
+  {
     name: "campagnes", title: "Offline campagnes", readOnly: true,
     description: "Offline campagnes (brieven, flyers, advertenties, informatieavonden) die zijn vastgelegd. Die verklaren bezoek en aanvragen die niet uit Google komen.",
     inputSchema: { type: "object", properties: {} },
@@ -367,6 +400,28 @@ export const TOOLS: Tool[] = [
   },
 ]
 
+function findIdea(ideas: any[], q: string) {
+  const v = String(q || "").trim().toLowerCase()
+  const byId = ideas.find(i => i.id === q)
+  if (byId) return byId
+  const hits = ideas.filter(i => !["verlopen"].includes(i.status) && i.title.toLowerCase().includes(v))
+  if (hits.length === 1) return hits[0]
+  if (!hits.length) throw new Error(`Geen contentkans gevonden voor "${q}". Gebruik contentkansen om de juiste te vinden.`)
+  throw new Error(`Meerdere kansen passen bij "${q}": ${hits.slice(0, 6).map(i => `${i.title} (id ${i.id})`).join("; ")}. Kies er één met de id.`)
+}
+
+const OUTLINE_INSTRUCTIE = `Maak op basis van de briefing een OPZET, geen volledig artikel. Een medewerker van Gijs schrijft de tekst daarna zelf uit; de opzet zorgt dat de juiste raakpunten erin komen.
+Lever in deze vorm (Nederlands, je-vorm):
+1. Drie titelopties (positief, probleemgericht, neutraal) en een meta description van max. 155 tekens.
+2. Inleiding: 2-4 raakpunten (welk probleem of welke vraag, voor wie, wat de lezer na het lezen weet). Het hoofdzoekwoord staat in de inleiding.
+3. Per tussenkop (H2, 4-7 stuks): de kop zelf, 3-5 raakpunten in steekwoorden, welke zoekvraag uit Search Console hier beantwoord wordt, en welke bron erbij hoort.
+4. Waar en naar welke pagina van groeninjestraat.nl een interne link logisch is.
+5. Drie veelgestelde vragen met in één zin de kern van het antwoord.
+6. Het afsluitende blok met de vervolgstap (energiescan of contact), passend bij het onderwerp.
+7. Een lijst [CHECK] met alle feiten, bedragen, data en voorwaarden die de redactie moet controleren, met de bron per feit. Verzin geen bedragen of datums.
+8. Richtlijn voor lengte en toon (uit de stijlvoorbeelden als die er zijn).
+Laat de opzet eerst aan de gebruiker zien. Sla hem op met artikel_opzet_opslaan als de gebruiker akkoord is of daarom vraagt.`
+
 async function diagnose(ws: Workspace, t: Task) {
   const isSeo = !(t.signal.kind === "eigen" && t.signal.goal && t.signal.goal !== "seo")
   const raw = t.signal
@@ -391,5 +446,6 @@ Het takenbord heeft vijf kolommen: Te beoordelen → Gepland → In uitvoering �
 - Eigen taken hebben een doel: seo (gemeten in Google), conversie (gemeten op energiescanaanvragen in GA4) of overig. Kies conversie voor alles rond leads en gebruiksgemak.
 - Afwijzen vraagt een reden: het systeem leert daarvan.
 - Wordt er een brief, flyer of andere offline actie verstuurd? Leg die vast met "campagne_toevoegen", zodat metingen er rekening mee houden.
+- Voor een artikel: gebruik artikel_opzet om alles op te halen en maak dan een opzet met raakpunten per sectie (geen volledig artikel); sla hem op met artikel_opzet_opslaan.
 - De live website wordt niet via deze koppeling aangepast; teksten en titels stel je voor, de gebruiker zet ze zelf live.
 Antwoord in het Nederlands.`

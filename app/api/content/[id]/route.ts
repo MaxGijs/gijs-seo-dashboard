@@ -27,6 +27,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   switch (body.action) {
+    case "outline": {
+      // Opzet (raakpunten per sectie) die Claude via de koppeling maakte; een medewerker werkt hem uit
+      const t = String(body.outline ?? "").trim()
+      if (t && t.length < 100) return bad("De opzet is te kort.")
+      patch.outline = t ? t.slice(0, 20000) : null
+      patch.outline_at = t ? now : null
+      patch.outline_by = t ? who : null
+      break
+    }
     case "due": {
       const d = body.date ? String(body.date) : null
       if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return bad("Ongeldige datum")

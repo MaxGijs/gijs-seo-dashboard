@@ -5,7 +5,7 @@ import { CONTENT_STEP } from "@/lib/content/useContent"
 import { articleVerdict } from "@/lib/content/verdict"
 import { ownerName } from "@/components/OwnerSelect"
 import { Fragment, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
+import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -93,6 +93,15 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
     setBriefing(text)
     const saved = await act({ action: "edit", fields: { briefing: text } })
     if (saved) await act({ action: "status", status: "briefing" }, "Briefing klaar")
+  }
+  // Opdracht voor Claude (met de Gijs-koppeling): opzet maken en terugzetten in het dashboard
+  const askOutline = async () => {
+    const prompt = `Gebruik de Gijs-koppeling. Haal met artikel_opzet alles op voor contentkans ${idea.id} ("${idea.title}") en maak de opzet volgens de instructie. Laat hem mij zien en sla hem daarna op met artikel_opzet_opslaan.`
+    try {
+      await navigator.clipboard.writeText(prompt)
+      window.open("https://claude.ai/new", "_blank", "noopener")
+      toast("Opdracht gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
+    } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
   }
   const copyBriefing = async () => {
     try {
@@ -278,6 +287,27 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                     <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(idea.concept_final || "").then(() => toast("Tekst gekopieerd"))}><Copy aria-hidden />Kopiëren</button>
                   </div>
                   <details className="evidence-details"><summary>Oorspronkelijk concept bekijken</summary><div className="note-box" style={{ marginTop: 8, maxHeight: 260, overflow: "auto" }}>{idea.concept_original}</div></details>
+                </>
+              )}
+            </section>
+          )}
+
+          {step >= 1 && step <= 4 && (
+            <section className="psec" aria-labelledby="cp-outline">
+              <h3 className="psec-title" id="cp-outline"><Sparkles aria-hidden />Opzet van Claude{idea.outline_at && <span className="subtle">{new Date(idea.outline_at).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}</h3>
+              {idea.outline ? (
+                <>
+                  <div className="note-box outline-box">{idea.outline}</div>
+                  <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(idea.outline || "").then(() => toast("Opzet gekopieerd"), () => toast("Kopiëren lukte niet", "error"))}><Copy aria-hidden />Kopiëren</button>
+                    <button className="btn btn-ghost btn-sm" onClick={askOutline}><Sparkles aria-hidden />Nieuwe opzet vragen</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Laat Claude de basis van de pagina maken: titels, tussenkoppen met per sectie de raakpunten, interne links, veelgestelde vragen en wat er gecontroleerd moet worden. Claude haalt via de Gijs-koppeling zelf de aanleiding, zoekvragen, bronnen, jullie stijl en de lessen op. Jij werkt de tekst daarna uit en levert hem hier in als PDF.</p>
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={askOutline}><Sparkles aria-hidden />Opzet maken in Claude</button>
+                  <p className="field-hint">Werkt met de Claude-koppeling (connector "Gijs"). Nog niet gekoppeld? Zie Claude-koppeling in de zijbalk, of gebruik Briefing maken en plak die in Claude.</p>
                 </>
               )}
             </section>
