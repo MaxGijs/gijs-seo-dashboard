@@ -27,6 +27,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   switch (body.action) {
+    case "due": {
+      const d = body.date ? String(body.date) : null
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return bad("Ongeldige datum")
+      patch.due_date = d
+      break
+    }
     case "note": {
       const n = String(body.note ?? "").trim().slice(0, 2000)
       patch.note = n || null

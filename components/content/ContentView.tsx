@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
@@ -9,7 +10,6 @@ import {
   type CapacityMode, type ContentIdea, type IdeaStatus, type Origin, ANGLE_META, CAPACITY_META, effectiveScore, IMPACT_META,
   ORIGIN_META, STATUS_META, serviceLabel,
 } from "@/lib/content/model"
-import ContentPanel from "./ContentPanel"
 import AddIdeaDialog from "./AddIdeaDialog"
 
 export interface SourceRow { id: string; name: string; publisher: string; region: string | null; status: "actief" | "storing" | "geblokkeerd" | "web"; lastOk: string | null; lastError: string | null; failedRuns: number; itemsLastRun: number | null; new24h: number; relevant30d: number; why?: string }
@@ -234,7 +234,7 @@ export default function ContentView() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("beoordelen")
   const [origin, setOrigin] = useState<"alle" | Origin>("alle")
-  const [openId, setOpenId] = useState<string | null>(null)
+  const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [scanning, setScanning] = useState(false)
 
@@ -269,7 +269,6 @@ export default function ContentView() {
       .sort((a, b) => tab === "productie" ? STATUS_META[b.status].step - STATUS_META[a.status].step || effectiveScore(b) - effectiveScore(a)
         : tab === "gepubliceerd" ? +new Date(b.published_at || 0) - +new Date(a.published_at || 0) : effectiveScore(b) - effectiveScore(a))
   }, [data, tab, origin])
-  const open = data?.ideas.find(i => i.id === openId) || null
 
   return (
     <>
@@ -312,7 +311,7 @@ export default function ContentView() {
           </div>
 
           {list.length ? (
-            <div className="idea-list">{list.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => setOpenId(i.id)} />)}</div>
+            <div className="idea-list">{list.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
           ) : (
             <div className="card">
               {!data.ideas.length ? (
@@ -332,8 +331,7 @@ export default function ContentView() {
         </>
       )}
 
-      {open && <ContentPanel idea={open} all={data?.ideas || []} onClose={() => setOpenId(null)} onUpdate={update} onDeleted={id => setData(d => (d ? { ...d, ideas: d.ideas.filter(i => i.id !== id) } : d))} />}
-      {adding && data && <AddIdeaDialog services={data.services} onClose={() => setAdding(false)} onAdded={idea => { setData(d => (d ? { ...d, ideas: [idea, ...d.ideas] } : d)); setTab("beoordelen"); setOpenId(idea.id) }} />}
+      {adding && data && <AddIdeaDialog services={data.services} onClose={() => setAdding(false)} onAdded={idea => { setData(d => (d ? { ...d, ideas: [idea, ...d.ideas] } : d)); setTab("beoordelen"); router.push(`/content/${idea.id}`) }} />}
     </>
   )
 }

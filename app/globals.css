@@ -1056,3 +1056,50 @@ img, svg { display: block; max-width: 100%; }
 .tc-dot.is-bad { background: #d9a520; }
 .tc-dot.is-info { background: #3a9fc4; }
 .textcheck-table tbody th { width: 34%; white-space: normal; }
+
+/* Contentopdracht als eigen pagina (inleverpunt) */
+.cpage { max-width: 1240px; }
+.cpage-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; font-size: var(--fs-sm); }
+.cpage-back svg { width: 15px; height: 15px; }
+.cpage-head { background: var(--white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); margin-bottom: 18px; }
+.cpage-head .panel-head { border-bottom: 0; position: static; padding: 20px 24px; }
+.cpage-head .panel-title { font-size: 1.5rem; }
+.cpage-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+.cpage-main { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 4px 8px 12px; }
+.cpage-main > * { order: 50; }
+/* Volgorde als een inleverpunt: opdracht → inleveren → controle → beoordeling → publicatie; achtergrond onderaan */
+.cpage-main > [aria-label="Samenvatting"] { order: 1; }
+.cpage-main > [aria-labelledby="cp-brief"] { order: 5; }
+.cpage-main > [aria-labelledby="att-content"] { order: 10; }
+.cpage-main > .submit-box { order: 11; margin-left: 16px; margin-right: 16px; }
+.cpage-main > [aria-labelledby="cp-textcheck"] { order: 12; }
+.cpage-main > [aria-labelledby="cp-concept"] { order: 13; }
+.cpage-main > [aria-labelledby="cp-review"] { order: 14; }
+.cpage-main > [aria-labelledby="cp-pub"] { order: 15; }
+.cpage-main > [aria-labelledby="cp-note"] { order: 16; }
+.cpage-main > [aria-labelledby="cp-why"] { order: 30; }
+.cpage-main > [aria-labelledby="cp-plan"] { order: 31; }
+.cpage-main > [aria-labelledby="cp-score"] { order: 32; }
+.cpage-main > [aria-labelledby="cp-risk"] { order: 33; }
+.cpage-side { position: sticky; top: 16px; display: grid; gap: 14px; }
+.cpage-card { background: var(--white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 16px; }
+.cpage-card .ptable { margin-top: 8px; }
+.cpage-card .ptable-kv tbody th { width: 42%; }
+.cpage-actions .panel-actions { flex-direction: column; align-items: stretch; gap: 8px; }
+.cpage-actions .panel-actions .grow { display: none; }
+.cpage-actions .panel-actions .btn { justify-content: center; width: 100%; }
+.cpage-actions .modal-row { grid-template-columns: 1fr; }
+.input-sm { padding: 4px 8px; font-size: var(--fs-sm); min-height: 30px; }
+.input.is-overdue { border-color: var(--error); color: var(--error); }
+.att-drop { min-height: 64px; display: flex; align-items: center; }
+.cpage .att-drop { min-height: 110px; justify-content: center; text-align: center; background: var(--grey-050, #f6f8f7); }
+.cpage .att-pick { justify-content: center; flex-direction: column; font-size: var(--fs-md, 15px); }
+.cpage .att-pick svg { width: 22px; height: 22px; }
+@media (max-width: 1000px) { .cpage-grid { grid-template-columns: 1fr; } .cpage-side { position: static; order: -1; } }
+.cpage-grid > *, .cpage-side > * { min-width: 0; }
+.cpage-card .input-sm { width: 100%; max-width: 170px; }
+@media (max-width: 1000px) { .cpage-side { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) {
+  .src-table th:nth-child(2), .src-table td:nth-child(2), .src-table th:nth-child(4), .src-table td:nth-child(4) { display: none; }
+  .ptable { word-break: break-word; }
+}

@@ -105,6 +105,7 @@ interface WorkspaceValue {
   setStatus: (task: Task, to: Status, opts?: StatusOptions) => Promise<boolean>
   setOwner: (task: Task, owner: string | null) => Promise<boolean>
   removeTask: (task: Task) => Promise<boolean>
+  undoExecution: (task: Task, status: Status) => Promise<boolean>
   setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
   openTask: (key: string, intent?: PanelIntent) => void
@@ -406,6 +407,18 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [toast])
 
   // Eigenaar toewijzen (wie pakt dit op). Status blijft zoals hij is.
+  // Een stap terug uit Evalueren: de nog lopende meting vervalt (alleen vóór het eerste meetmoment)
+  const undoExecution = useCallback(async (task: Task, status: Status) => {
+    try {
+      await getJson(`/api/experiments?key=${encodeURIComponent(task.key)}`, { method: "DELETE" })
+      setExperiments(es => es.filter(e => !(e.advice_key === task.key && !e.outcome)))
+    } catch (e: any) {
+      toast(e?.message || "Terugzetten mislukt", "error")
+      return false
+    }
+    return setStatus(task, status, { note: task.note, snoozeUntil: null })
+  }, [toast, setStatus])
+
   // Zelf toegevoegde taak verwijderen (per ongeluk aangemaakt)
   const removeTask = useCallback(async (task: Task) => {
     try {
@@ -478,7 +491,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),

@@ -1,9 +1,10 @@
 "use client"
 
 import Attachments from "@/components/Attachments"
+import { CONTENT_STEP } from "@/lib/content/useContent"
 import { ownerName } from "@/components/OwnerSelect"
 import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, StickyNote, Trash2, X } from "lucide-react"
+import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -38,7 +39,8 @@ function Tags({ value, onChange }: { value: string[]; onChange: (v: string[]) =>
   )
 }
 
-export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }: { idea: ContentIdea; all: ContentIdea[]; onClose: () => void; onUpdate: (i: ContentIdea) => void; onDeleted?: (id: string) => void }) {
+export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, variant = "panel", backLabel = "Terug" }: { idea: ContentIdea; all: ContentIdea[]; onClose: () => void; onUpdate: (i: ContentIdea) => void; onDeleted?: (id: string) => void; variant?: "panel" | "page"; backLabel?: string }) {
+  const isPage = variant === "page"
   const [confirmDelete, setConfirmDelete] = useState(false)
   const { toast, users, me } = useWorkspace()
   const [editNote, setEditNote] = useState(false)
@@ -56,10 +58,11 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
   const [pubDate, setPubDate] = useState(idea.published_at || new Date().toISOString().slice(0, 10))
 
   useEffect(() => {
+    if (isPage) return
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, isPage])
   useEffect(() => { setFinal(idea.concept_final || ""); setBriefing(idea.briefing || "") }, [idea.id, idea.concept_final, idea.briefing])
 
   const lessons = useMemo(() => lessonsFrom(all), [all])
@@ -102,11 +105,8 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
   const corrections = idea.score_parts.filter(p => p.label === "Correctie")
   const parts = idea.score_parts.filter(p => p.label !== "Correctie")
 
-  return (
-    <>
-      <div className="panel-overlay" onClick={onClose} aria-hidden />
-      <aside className="panel" role="dialog" aria-modal="true" aria-labelledby="cp-title">
-        <div className="panel-head">
+  const headEl = (
+    <div className="panel-head">
           <div className="panel-head-top">
             <div className="panel-tags">
               <Badge tone="accent">{ORIGIN_META[idea.origin].label}</Badge>
@@ -114,7 +114,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
               <Badge tone={step < 0 ? "neutral" : "success"} dot>{STATUS_META[idea.status].label}</Badge>
               <OwnerSelect value={idea.owner} onChange={o => act({ action: "owner", owner: o }, o ? "Toegewezen" : "Toewijzing verwijderd")} />
             </div>
-            <button className="icon-btn" onClick={onClose} aria-label="Sluiten"><X /></button>
+            {!isPage && <button className="icon-btn" onClick={onClose} aria-label="Sluiten"><X /></button>}
           </div>
           <h2 className="panel-title" id="cp-title">{idea.title}</h2>
           <p className="panel-subtitle">{idea.format} · {serviceLabel(idea.service)}{idea.regions.length ? ` · ${idea.regions.map(r => r[0].toUpperCase() + r.slice(1)).join(", ")}` : ""} · gevonden {ago(idea.created_at)}</p>
@@ -124,8 +124,9 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
             </ol>
           )}
         </div>
-
-        <div className="panel-body">
+  )
+  const bodyEl = (
+    <>
           {issues.length > 0 && (
             <div className="psec" style={{ paddingBottom: 0 }}>
               <Alert tone="error" title="Dit voorstel is geblokkeerd: de onderbouwing klopt niet">{issues.join(" ")}</Alert>
@@ -406,9 +407,11 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
               </ul>
             </section>
           )}
-        </div>
-
-        <div className="panel-foot">
+        
+    </>
+  )
+  const footEl = (
+    <>
           {mode === "edit" && (
             <div className="inline-form">
               <label className="field-label" htmlFor="e-title">Titel</label>
@@ -489,7 +492,47 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
           ) : (
             <div className="panel-links"><button className="link-btn link-danger" onClick={() => setConfirmDelete(true)}><Trash2 aria-hidden />Kans verwijderen</button></div>
           ))}
+        
+    </>
+  )
+
+  if (isPage) {
+    const overdue = !!idea.due_date && idea.due_date < new Date().toISOString().slice(0, 10) && step >= 1 && step <= 3
+    return (
+      <div className="cpage">
+        <button className="link-btn cpage-back" onClick={onClose}><ArrowLeft aria-hidden />{backLabel}</button>
+        <div className="cpage-head">{headEl}</div>
+        <div className="cpage-grid">
+          <div className="cpage-main">{bodyEl}</div>
+          <aside className="cpage-side" aria-label="Inleverpunt">
+            <div className="cpage-card">
+              <p className="eyebrow">Inleverpunt</p>
+              <table className="ptable ptable-kv">
+                <tbody>
+                  <tr><th scope="row">Status</th><td>{STATUS_META[idea.status].label}</td></tr>
+                  <tr><th scope="row">Volgende stap</th><td>{CONTENT_STEP[idea.status] || "—"}</td></tr>
+                  <tr><th scope="row">Deadline</th><td>
+                    <input type="date" className={`input input-sm${overdue ? " is-overdue" : ""}`} aria-label="Deadline" value={idea.due_date || ""} onChange={e => act({ action: "due", date: e.target.value || null }, e.target.value ? "Deadline ingesteld" : "Deadline verwijderd")} />
+                    {overdue && <span className="txt-down small" style={{ display: "block", marginTop: 4 }}>Verlopen</span>}
+                  </td></tr>
+                  <tr><th scope="row">Ingeleverd</th><td>{attCount ? `${attCount} ${attCount === 1 ? "bestand" : "versies"}` : "Nog niets"}</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="cpage-card cpage-actions">{footEl}</div>
+          </aside>
         </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="panel-overlay" onClick={onClose} aria-hidden />
+      <aside className="panel" role="dialog" aria-modal="true" aria-labelledby="cp-title">
+        {headEl}
+        <div className="panel-body">{bodyEl}</div>
+        <div className="panel-foot">{footEl}</div>
       </aside>
     </>
   )

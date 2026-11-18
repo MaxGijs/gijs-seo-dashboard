@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
 import { sortByPriority, useWorkspace } from "@/lib/workspace"
@@ -9,7 +10,6 @@ import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
 import BoardLegend from "./BoardLegend"
-import ContentPanel from "@/components/content/ContentPanel"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
 import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
@@ -37,6 +37,10 @@ function contentMeta(i: ContentIdea, col: ColumnId) {
   if (col === "evalueren") {
     const next = !i.evals?.d7 ? 7 : !i.evals?.d30 ? 30 : 90
     return { icon: <CalendarClock aria-hidden />, text: i.published_at ? `${next}-dagenmeting ${dateShort(addDays(i.published_at, next))}` : "Wordt gemeten" }
+  }
+  if (i.due_date && ["geaccepteerd", "briefing", "concept"].includes(i.status)) {
+    const late = i.due_date < new Date().toISOString().slice(0, 10)
+    return { icon: <CalendarClock aria-hidden />, text: `${late ? "Te laat: inleveren vóór" : "Inleveren vóór"} ${dateShort(i.due_date)}`, late }
   }
   return { icon: col === "uitvoering" ? <Play aria-hidden /> : <CalendarClock aria-hidden />, text: CONTENT_STEP[i.status] || "" }
 }
@@ -67,11 +71,14 @@ function cardMeta(t: Task) {
 // Wat er gebeurt als je een kaart naar een kolom sleept
 const DROP_STATUS: Partial<Record<ColumnId, Status>> = { beoordelen: "nieuw", gepland: "goedgekeurd", uitvoering: "in_uitvoering" }
 const VIEW_KEY = "gijs.seo.tasksView"
+const ORDER: ColumnId[] = ["beoordelen", "gepland", "uitvoering", "evalueren", "afgerond"]
 
 export default function TasksView() {
-  const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, toast, users, me } = useWorkspace()
+  const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, undoExecution, toast, users, me } = useWorkspace()
   const content = useContentIdeas()
-  const [openIdea, setOpenIdea] = useState<string | null>(null)
+  const router = useRouter()
+  // Contentkansen openen op een eigen pagina (inleverpunt) in plaats van een zijpaneel
+  const setOpenIdea = (id: string | null) => { if (id) router.push(`/content/${id}?van=taken`) }
   const [legend, setLegend] = useState(false)
   const [view, setViewState] = useState<"bord" | "lijst">("bord")
   const [viewChosen, setViewChosen] = useState(false)
@@ -142,7 +149,15 @@ export default function TasksView() {
       content.update(json.idea); toast(msg)
     }
     if (from === "beoordelen" && to === "gepland") return patch("geaccepteerd", "Geaccepteerd. Open de kaart om de briefing te maken.")
-    if (from === "gepland" && to === "beoordelen") return patch("nieuw", "Terug naar te beoordelen")
+    // Terug slepen: zonder vragen naar de vorige stap
+    if (ORDER.indexOf(to) < ORDER.indexOf(from)) {
+      if (i.status === "gepubliceerd") { toast("Een gepubliceerd artikel wordt gemeten en kan niet terug.", "info"); return }
+      if (from === "afgerond" && (to === "uitvoering" || to === "evalueren")) { toast("Zet een afgewezen kans eerst terug naar Te beoordelen of Gepland.", "info"); return }
+      if (to === "beoordelen") return patch("nieuw", "Terug naar te beoordelen")
+      if (to === "gepland") return patch(i.briefing ? "briefing" : "geaccepteerd", "Terug naar Gepland")
+      if (to === "uitvoering") return patch("concept", "Terug naar In uitvoering")
+      if (to === "evalueren") return patch("review", "Terug naar Evalueren")
+    }
     if (to === "evalueren" && (from === "gepland" || from === "uitvoering")) {
       // Inleveren: alleen als het concept als bijlage is geüpload
       const res = await fetch(`/api/content/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "submit" }) })
@@ -158,8 +173,20 @@ export default function TasksView() {
   const drop = async (t: Task, to: ColumnId) => {
     const from = columnOf(t.status)
     if (from === to) return
-    if (from === "evalueren" && to !== "afgerond") {
-      toast("Een taak in evaluatie wordt gemeten. Sleep hem naar Afgerond om af te sluiten, of laat de meting lopen.", "info"); return
+    const back = ORDER.indexOf(to) < ORDER.indexOf(from)
+    const label = COLUMNS.find(c => c.id === to)!.label
+    // Een stap (of meer) terug: zonder vragen
+    if (back && from === "evalueren") {
+      const ok = await undoExecution(t, DROP_STATUS[to]!)
+      if (ok) toast(`Terug naar ${label}; de meting is gestopt`)
+      return
+    }
+    if (back && from === "afgerond") {
+      if (t.experiments.some(e => e.outcome)) { toast("Deze taak is gemeten en afgerond; terugzetten zou de uitkomst weggooien.", "info"); return }
+      if (!DROP_STATUS[to]) { toast("Zet een afgesloten taak terug naar Te beoordelen, Gepland of In uitvoering.", "info"); return }
+      const ok = await setStatus(t, DROP_STATUS[to]!, { note: t.note, snoozeUntil: null })
+      if (ok) toast(`Terug naar ${label}`)
+      return
     }
     if (to === "evalueren") { openTask(t.key, "execute"); return }
     if (to === "afgerond") { openTask(t.key, "close"); return }
@@ -270,7 +297,7 @@ export default function TasksView() {
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
                         {(i.note || i.decision_note) && <span className="tcard-note" title={(i.note || i.decision_note)!}><StickyNote aria-hidden /><span>{i.note || i.decision_note}</span></span>}
-                        <span className="tcard-foot"><span>{meta.icon}{meta.text}</span>{i.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(i.owner, users, me)}</span> : null}{i.status === "later" ? <span>Later</span> : null}</span>
+                        <span className="tcard-foot"><span className={"late" in meta && meta.late ? "txt-down" : undefined}>{meta.icon}{meta.text}</span>{i.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(i.owner, users, me)}</span> : null}{i.status === "later" ? <span>Later</span> : null}</span>
                       </button>
                     )
                   }
@@ -342,9 +369,6 @@ export default function TasksView() {
         </div>
       )}
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
-      {openIdea && content.ideas?.find(i => i.id === openIdea) && (
-        <ContentPanel idea={content.ideas.find(i => i.id === openIdea)!} all={content.ideas} onClose={() => setOpenIdea(null)} onUpdate={content.update} onDeleted={content.remove} />
-      )}
     </>
   )
 }
