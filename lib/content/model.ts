@@ -137,7 +137,10 @@ export const FORMATS = [
 ] as const
 
 // Controles in de review. "Subsidie en actualiteit" en "techniek" zijn verplicht bij regels en subsidies.
+// Eén controle volstaat (klein team: Max, met Thom of Naud). De oude rollen blijven staan
+// zodat eerdere vinkjes nog leesbaar zijn, maar zijn niet meer verplicht.
 export const REVIEW_ROLES = [
+  { key: "controle", label: "Gecontroleerd: inhoud, feiten en toon" },
   { key: "marketing", label: "Marketingcontrole" },
   { key: "techniek", label: "Technische controle" },
   { key: "actualiteit", label: "Subsidies en actualiteit gecontroleerd" },
@@ -145,10 +148,8 @@ export const REVIEW_ROLES = [
   { key: "goedkeuring", label: "Definitieve goedkeuring" },
 ] as const
 
-export function requiredReviews(idea: Pick<ContentIdea, "impact">): string[] {
-  const base = ["marketing", "eindredactie", "goedkeuring"]
-  if (idea.impact === "regelgeving" || idea.impact === "subsidie" || idea.impact === "kosten") base.splice(1, 0, "techniek", "actualiteit")
-  return base
+export function requiredReviews(_idea: Pick<ContentIdea, "impact">): string[] {
+  return ["controle"]
 }
 
 // ── Diensten ────────────────────────────────────────────────────────────────

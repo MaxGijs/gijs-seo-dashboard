@@ -310,7 +310,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
             <section className="psec" aria-labelledby="cp-review">
               <h3 className="psec-title" id="cp-review"><ClipboardCheck aria-hidden />Controle</h3>
               <ul className="review-list">
-                {REVIEW_ROLES.filter(r => needed.includes(r.key) || idea.review?.[r.key]).map(r => {
+                {REVIEW_ROLES.filter(r => needed.includes(r.key)).map(r => {
                   const v = idea.review?.[r.key]
                   return (
                     <li key={r.key} className={v?.ok ? "is-ok" : ""}>
@@ -320,7 +320,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted }
                   )
                 })}
               </ul>
-              {(idea.impact === "subsidie" || idea.impact === "regelgeving" || idea.impact === "kosten") && <p className="field-hint">Bij subsidies, regels en kosten zijn de technische controle en de controle op actualiteit verplicht.</p>}
+              <p className="field-hint">Eén vinkje volstaat: lees het concept, controleer de feiten en de toon van Gijs.{(idea.impact === "subsidie" || idea.impact === "regelgeving" || idea.impact === "kosten") ? " Let bij subsidies, regels en kosten extra op bedragen, voorwaarden en datums." : ""}</p>
             </section>
           )}
 
