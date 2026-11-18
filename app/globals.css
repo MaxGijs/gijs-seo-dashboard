@@ -1111,3 +1111,9 @@ img, svg { display: block; max-width: 100%; }
 .verdict-box.tone-error { background: #fbeeec; border-left-color: #c2412e; }
 .verdict-label { margin: 0 0 6px; font-size: var(--fs-sm); }
 .verdict-box ul { margin: 0; padding-left: 18px; font-size: var(--fs-xs); color: var(--text-muted); display: grid; gap: 3px; }
+.badge-rejected { display: inline-flex; align-items: center; gap: 4px; background: #fbe4e1; color: #b0291a; border: 1px solid #f2b8b0; font-weight: 700; }
+.badge-rejected svg { width: 13px; height: 13px; color: #c2412e; }
+.tcard.is-rejected { border-left-color: #c2412e; background: #fffafa; }
+.tcard.is-rejected .tcard-title { color: #7a2a20; }
+.badge-rejected svg { flex: none; width: 14px; height: 14px; }
+.badge-rejected { flex: none; white-space: nowrap; }

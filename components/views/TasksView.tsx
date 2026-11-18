@@ -12,7 +12,7 @@ import AddTaskDialog from "./AddTaskDialog"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
-import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, Skeleton, StatusBadge } from "@/components/ui"
+import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
 
 type TypeFilter = "alle" | "techniek" | "kansen" | "dalingen" | "snippet" | "analyse" | "content"
 const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
@@ -289,10 +289,10 @@ export default function TasksView() {
                   if (en.kind === "content") {
                     const i = en.i, meta = contentMeta(i, c.id)
                     return (
-                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
+                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
                         <span className="tcard-top">
                           <span className="kind-label tone-info"><Newspaper aria-hidden />Content · {ORIGIN_META[i.origin].label}</span>
-                          {c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
+                          {c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : i.status === "afgewezen" ? <RejectedBadge /> : null}
                         </span>
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
@@ -304,7 +304,7 @@ export default function TasksView() {
                   const t = en.t
                   const meta = cardMeta(t)
                   return (
-                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
+                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
                       <span className="tcard-top">
                         <KindLabel signal={t.signal} />
                         {c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
@@ -344,7 +344,7 @@ export default function TasksView() {
                   <tr key={en.key} className="is-clickable" onClick={() => setOpenIdea(en.i.id)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") setOpenIdea(en.i.id) }}>
                     <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{en.i.title}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{en.i.format} · {serviceLabel(en.i.service)}</span></td>
                     <td className="nowrap">Content<div style={{ marginTop: 4 }}><span className="badge tone-neutral">{ORIGIN_META[en.i.origin].label}</span></div></td>
-                    <td><span className="badge tone-info badge-dot">{CONTENT_STEP[en.i.status] || en.i.status}</span>{en.i.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(en.i.owner, users, me)}</span></div>}</td>
+                    <td>{en.i.status === "afgewezen" ? <RejectedBadge /> : <span className="badge tone-info badge-dot">{CONTENT_STEP[en.i.status] || en.i.status}</span>}{en.i.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(en.i.owner, users, me)}</span></div>}</td>
                     <td><PriorityMeter priority={en.prio} /></td>
                     <td className="nowrap"><TrendingUp size={13} style={{ display: "inline", verticalAlign: -2, marginRight: 4, color: "var(--accent-700)" }} aria-hidden />Score {effectiveScore(en.i)}</td>
                     <td className="num">{en.i.keywords?.length ? num(en.i.keywords.reduce((s, k) => s + k.impressions, 0)) : "—"}</td>

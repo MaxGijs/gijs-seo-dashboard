@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { AlertCircle, CheckCircle2, Info, X } from "lucide-react"
+import { AlertCircle, CheckCircle2, Info, X, XCircle } from "lucide-react"
 import type { Priority, Signal, Status, Task } from "@/lib/types"
 import { KIND_META, STATUS_META, type Tone } from "@/lib/workflow"
 import { dateShort, pos } from "@/lib/format"
@@ -16,7 +16,13 @@ export function KindLabel({ signal }: { signal: Signal }) {
   return <span className={`kind-label tone-${meta.tone}`}>{meta.label}</span>
 }
 
+// Rood afgewezen-label met kruis (takenbord en lijsten)
+export function RejectedBadge() {
+  return <span className="badge badge-rejected"><XCircle aria-hidden />Afgewezen</span>
+}
+
 export function StatusBadge({ task }: { task: Pick<Task, "status" | "snoozeUntil" | "snoozed"> }) {
+  if (task.status === "afgewezen") return <RejectedBadge />
   const meta = STATUS_META[task.status]
   const label = task.status === "uitgesteld" && task.snoozeUntil
     ? (task.snoozed ? `Uitgesteld tot ${dateShort(task.snoozeUntil)}` : "Uitstel verlopen")
