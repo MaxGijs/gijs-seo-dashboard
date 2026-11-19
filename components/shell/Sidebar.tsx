@@ -3,13 +3,14 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
-import { BookOpenCheck, CalendarCheck, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper, MessageSquare, Mail } from "lucide-react"
+import { BookOpenCheck, CalendarCheck, Compass, Database, FileBarChart, LayoutDashboard, FlaskConical, KanbanSquare, LineChart, LogOut, Newspaper, MessageSquare, Mail } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
 import { handleSignOut } from "@/app/actions"
 
 export const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/advies", label: "Siteadvies", icon: Compass },
   { href: "/vandaag", label: "Vandaag", icon: CalendarCheck },
   { href: "/taken", label: "Mijn taken", icon: KanbanSquare },
   { href: "/analyses", label: "SEO-analyses", icon: LineChart },
