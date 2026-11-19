@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AdviceDetail, AdviceRecord, DataCheck, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
-import type { RouteTry } from "./routes"
+import { ROUTE_LABEL, type RouteTry } from "./routes"
 import { buildCtrModel, type CtrModel } from "./ctr"
 import { buildAdhocSignal, signalKey, toPath } from "./signals"
 import { isVisible, mergeTasks } from "./workflow"
@@ -72,6 +72,7 @@ export interface NewTask {
   status: "nieuw" | "goedgekeurd" | "in_uitvoering"
   effort?: Level
   goal?: "seo" | "conversie" | "overig"
+  route?: "inhoud" | "interne-links" | "titel-meta"   // soort aanpassing: telt mee in de lessen en het route-geheugen per pagina
 }
 
 // Waarmee het zijpaneel opent (bv. na slepen naar Evalueren: direct "wat heb je aangepast?")
@@ -480,7 +481,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       generatedAt: new Date().toISOString(),
       intent: base?.intent,
       place: base?.place,
-      action: input.title.trim(),
+      // De soort aanpassing vooraan, zodat meting en lessen de route herkennen
+      action: input.route ? `${ROUTE_LABEL[input.route]}: ${input.title.trim()}` : input.title.trim(),
       effort: input.effort || "middel",
       risk: "laag",
     }

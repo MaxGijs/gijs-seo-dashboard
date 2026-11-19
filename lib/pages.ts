@@ -22,8 +22,10 @@ export const LAUNCH_DATES: Record<string, string> = {
 export const OPBOUW_DAGEN = 56
 
 const PARTICLES = new Set(["van", "de", "den", "der", "aan", "op", "het", "in", "bij", "ter", "te"])
+// "ij" aan het begin is in het Nederlands één letter: IJsselstein, IJsselmuiden
+const capWord = (w: string) => (w.startsWith("ij") ? "IJ" + w.slice(2) : w.charAt(0).toUpperCase() + w.slice(1))
 export function prettySlug(slug: string) {
-  return slug.split("-").map((w, i) => (i > 0 && PARTICLES.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ")
+  return slug.split("-").map((w, i) => (i > 0 && PARTICLES.has(w) ? w : capWord(w))).join(" ")
 }
 
 export const ARTICLE_SECTIONS = new Set(["blog", "blogs", "nieuws", "artikelen", "artikel", "kennis", "kennisbank", "actueel", "inspiratie", "verhalen"])

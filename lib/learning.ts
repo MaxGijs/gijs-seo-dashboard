@@ -80,6 +80,10 @@ export function pageGroup(path?: string | null) {
 export function actionOf(text?: string | null) {
   const t = (text || "").toLowerCase()
   if (!t) return undefined
+  // Expliciet gekozen soort aanpassing (eigen taak: "Inhoud uitbreiden: …") gaat voor
+  if (t.startsWith("inhoud uitbreiden:")) return "inhoud"
+  if (t.startsWith("interne links:")) return "interne-links"
+  if (t.startsWith("title en h1 aanpassen:")) return "titel-meta"
   if (/interne? link|linkt?ekst|link vanaf|links? naar/.test(t)) return "interne-links"
   if (/title|titel|meta ?descr|h1|kop/.test(t)) return "titel-meta"
   if (/doorverwijz|redirect|sitemap|404|index/.test(t)) return "techniek"
