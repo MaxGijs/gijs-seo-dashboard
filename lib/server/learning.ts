@@ -73,7 +73,46 @@ export async function readLessons() {
     sb.from("seo_advice_status").select("advice_key", { count: "exact", head: true }).in("status", ["afgewezen", "onvoldoende_bewijs"]),
     sb.from("content_ideas").select("id", { count: "exact", head: true }).eq("status", "gepubliceerd"),
   ])
-  return { lessons: (lessons || []) as Lesson[], log: log || [], stats: { lopend: open || 0, afgerond: done || 0, afgewezen: rejected || 0, gepubliceerd: published || 0 } }
+  const list = (lessons || []) as Lesson[]
+  await attachRejections(sb, list).catch(() => { /* uitleg is extra; de lessen zelf blijven zichtbaar */ })
+  return { lessons: list, log: log || [], stats: { lopend: open || 0, afgerond: done || 0, afgewezen: rejected || 0, gepubliceerd: published || 0 } }
+}
+
+// Waarom is iets afgewezen? Live uit de beslissingen, zodat de uitleg altijd klopt (ook zonder herberekening)
+export async function attachRejections(sb: ReturnType<typeof getSupabase>, lessons: Lesson[]) {
+  const needContent = lessons.some(l => l.key.startsWith("content|") && l.effect?.type === "content-afwijzing")
+  const needSeo = lessons.some(l => l.key.startsWith("afwijzing|"))
+  const [{ data: ideas }, { data: statuses }] = await Promise.all([
+    needContent ? sb.from("content_ideas").select("id, title, service, origin, status, feedback, decision_note, updated_at").eq("status", "afgewezen") : Promise.resolve({ data: [] as any[] }),
+    needSeo ? sb.from("seo_advice_status").select("advice_key, advice_title, status, note, snapshot, updated_at").in("status", ["afgewezen", "onvoldoende_bewijs"]) : Promise.resolve({ data: [] as any[] }),
+  ])
+  for (const l of lessons) {
+    if (l.key.startsWith("content|") && l.effect?.type === "content-afwijzing") {
+      const [, service, origin] = l.key.split("|")
+      l.rejections = (ideas || []).filter(i => (i.service || "-") === service && i.origin === origin)
+        .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+        .map(i => {
+          const fb: any[] = (i.feedback || []).filter((f: any) => f && f.tag)
+          const last = fb[fb.length - 1]
+          return {
+            title: i.title, href: `/content/${i.id}?van=geleerd`,
+            reasons: [...new Set(fb.map(f => f.tag).filter((t: string) => t !== "opmerking"))],
+            note: fb.map(f => f.note).filter(Boolean).pop() || i.decision_note || null,
+            by: last?.by || null, at: last?.at || i.updated_at || null,
+          }
+        })
+    } else if (l.key.startsWith("afwijzing|")) {
+      const [, kind, intent] = l.key.split("|")
+      l.rejections = (statuses || []).filter(r => r.snapshot?.kind === kind && (r.snapshot?.intent || "-") === intent && !(r.note || "").startsWith("Al opgelost"))
+        .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+        .map(r => ({
+          title: r.snapshot?.query ? `"${r.snapshot.query}"` : r.snapshot?.headline || r.advice_title,
+          taskKey: r.advice_key,
+          reasons: r.status === "onvoldoende_bewijs" ? ["onvoldoende bewijs"] : [],
+          note: r.note || null, by: null, at: r.updated_at || null,
+        }))
+    }
+  }
 }
 
 export async function setLessonStatus(key: string, to: "teruggedraaid" | "actief", by: string) {

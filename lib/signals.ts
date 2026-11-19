@@ -282,10 +282,11 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     }
     const conv = page ? ga.get(page) : undefined
     d.conversions = input.ga4Pages ? (conv ? { page: page!, sessions: conv.sessions, keyEvents: conv.keyEvents } : page ? { page, sessions: 0, keyEvents: 0 } : null) : null
-    d.rejectedSimilar = (input.feedback || []).filter(f => f.key !== d.key && f.kind === d.kind && (f.intent || null) === (d.intent || null)).length
     d.effort = EFFORT_RISK[d.kind].effort
     d.risk = EFFORT_RISK[d.kind].risk
     d.intent = d.query ? classifyQuery(d.query, regions, isBrandQuery(d.query)) : classifyPage(d.page || "/")
+    // Pas ná het bepalen van de zoekintentie: afwijzingen tellen bij dezelfde soort én intentie
+    d.rejectedSimilar = (input.feedback || []).filter(f => f.key !== d.key && f.kind === d.kind && (f.intent || null) === (d.intent || null)).length
     d.place = d.query ? placeIn(d.query, regions) : null
     d.estimate = estimateFor(d, model)
     if (d.estimate) d.gain = d.estimate.gain

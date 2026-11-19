@@ -32,6 +32,16 @@ export interface LessonEffect {
   text: string
 }
 
+export interface LessonRejection {
+  title: string
+  href?: string          // contentkans
+  taskKey?: string       // SEO-advies (opent het taakpaneel)
+  reasons: string[]      // gekozen redenen (labels)
+  note: string | null    // toelichting van de medewerker
+  by: string | null
+  at: string | null
+}
+
 export interface Lesson {
   key: string
   source: "meting" | "afwijzing" | "content"
@@ -40,6 +50,8 @@ export interface Lesson {
   evidence: { n: number; success?: number; fail?: number; rate?: number; baseline?: number; examples?: string[]; reasons?: string[]; items?: { id: string; title: string }[] }
   confidence: "laag" | "middel" | "hoog"
   effect: LessonEffect | null
+  // Alleen bij het lezen (niet opgeslagen): welke afwijzingen zitten erachter, met reden en notitie
+  rejections?: LessonRejection[]
   status?: "actief" | "teruggedraaid" | "vervallen"
   first_seen?: string
   updated_at?: string
@@ -219,7 +231,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
     if (list.length < LESSON_MIN_REJECTIONS) continue
     const [service, origin] = k.split("|")
     const tags = new Map<string, number>()
-    list.forEach(c => c.tags.forEach(t => tags.set(t, (tags.get(t) || 0) + 1)))
+    list.forEach(c => c.tags.filter(t => t !== "opmerking").forEach(t => tags.set(t, (tags.get(t) || 0) + 1)))
     const factor = Math.max(0.5, Math.pow(0.85, list.length))
     out.push({
       key: `content|${k}`, source: "content",
