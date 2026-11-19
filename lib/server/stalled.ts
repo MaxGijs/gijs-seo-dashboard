@@ -22,7 +22,8 @@ export async function readStalled(): Promise<Stalled[]> {
   const sb = getSupabase()
   const [{ data: ideas }, { data: tasks }] = await Promise.all([
     sb.from("content_ideas").select("id, title, status, updated_at").in("status", ["review", "concept", "briefing", "goedgekeurd"]),
-    sb.from("seo_advice_status").select("advice_key, advice_title, status, updated_at").in("status", ["goedgekeurd", "in_uitvoering"]),
+    // Een ingepland siteadvies is geen taak die blijft liggen (de taken die het maakte wel)
+    sb.from("seo_advice_status").select("advice_key, advice_title, status, updated_at").in("status", ["goedgekeurd", "in_uitvoering"]).not("advice_key", "like", "site:%"),
   ])
   const out: Stalled[] = []
   const review = (ideas || []).filter(i => i.status === "review" && workdaysSince(i.updated_at) > 3)

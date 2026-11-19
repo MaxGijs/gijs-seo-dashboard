@@ -12,6 +12,7 @@ import { columnOf } from "./workflow"
 import { gainFromMove, type CtrModel } from "./ctr"
 import { servicesIn, SERVICE_TERMS, SCAN_SERVICE, serviceLabel, type ContentIdea } from "./content/model"
 import { placeIn, regionSegments } from "./intent"
+import { placePage } from "./places"
 
 export type AdviceKind = "groep" | "route-uitrollen" | "route-stoppen" | "regio" | "indexering" | "dienst" | "conversie"
 export type Confidence = "laag" | "middel" | "hoog"
@@ -27,10 +28,12 @@ export interface SiteAdvice {
   gainNote?: string              // aanname achter de schatting
   confidence: Confidence
   confidenceWhy: string
-  pages: { path: string; note?: string }[]
+  pages: { path: string; note?: string; query?: string }[]
   taskKeys: string[]
   ideaIds: string[]
   pageGains?: Record<string, number>   // winst per pagina (om opnieuw op te tellen als pagina's afvallen)
+  route?: Route                        // aanpak voor de taken die "Inplannen" maakt
+  priority?: "hoog" | "middel" | "laag"
 }
 
 export interface SiteAdviceInput {
@@ -160,11 +163,13 @@ function groupAdvice(i: SiteAdviceInput): SiteAdvice[] {
     const sev = tasks.filter(t => t.signal.evidence === "sterk").length / tasks.length
     let steps: string[]
     let title: string
+    let groupRoute: Route | undefined = kind === "ctr" ? "titel-meta" : undefined
     if (kind === "kans") {
       const r = routeFor(g.type, pages, i.lessons, i.tries)
       title = `${tasks.length} ${g.label} staan net buiten pagina 1`
       steps = [...routeSteps(r.route, g, pages.length), MEASURE]
       if (r.why) evidence.push(r.why)
+      groupRoute = r.route
     } else if (kind === "ctr") {
       title = `${tasks.length} ${g.label} worden vaak getoond maar weinig aangeklikt`
       steps = [
@@ -188,7 +193,7 @@ function groupAdvice(i: SiteAdviceInput): SiteAdvice[] {
       gainNote: "Som van de geschatte winst van de afzonderlijke adviezen.",
       confidence: tasks.length >= 8 && sev >= 0.5 ? "hoog" : tasks.length >= 5 ? "middel" : "laag",
       confidenceWhy: `${tasks.length} adviezen, ${pct(sev)} met sterk bewijs.`,
-      pages: pages.map(p => ({ path: p })), taskKeys: tasks.map(t => t.key), ideaIds: [],
+      pages: pages.map(p => ({ path: p })), taskKeys: tasks.map(t => t.key), ideaIds: [], route: groupRoute,
     })
   }
   return out
@@ -222,7 +227,7 @@ function routeAdvice(i: SiteAdviceInput): SiteAdvice[] {
         steps: [...routeSteps(route, { type: type || "", prov: null }, cands.length), MEASURE],
         gain, gainNote: `Als elke pagina een kwart in positie stijgt, maal het slagingspercentage (${pct(rate)}).`,
         confidence: l.confidence, confidenceWhy: `Gebaseerd op ${ok + bad} metingen.`,
-        pages: cands.map(p => ({ path: p.path, note: `positie ${nl1(p.position_28d!)}, ${nlNum(p.imp_28d)} vertoningen` })), taskKeys: [], ideaIds: [], pageGains,
+        pages: cands.map(p => ({ path: p.path, note: `positie ${nl1(p.position_28d!)}, ${nlNum(p.imp_28d)} vertoningen` })), taskKeys: [], ideaIds: [], pageGains, route,
       })
     } else if ((e.factor || 1) < 1 && bad >= 2) {
       const still = i.tasks.filter(t => OPEN.has(columnOf(t.status) || "") && actionOf(t.signal.action) === route && (!type || pageGroup(t.signal.page) === type))
@@ -350,7 +355,16 @@ function serviceAdvice(i: SiteAdviceInput): SiteAdvice[] {
     local.forEach(r => bySvc.set(r.svc, [...(bySvc.get(r.svc) || []), r]))
     const svcs = [...bySvc].map(([s, rs]) => ({ s, rs, imp: rs.reduce((a, r) => a + r.imp, 0), pos: wPos(rs.map(r => ({ imp: r.imp, pos: r.pos }))) })).sort((a, b) => b.imp - a.imp)
     const places = [...new Set(local.map(r => r.place!))]
-    const pages = [...new Set(places.map(p => idx.pageFor(p)).filter(Boolean) as string[])]
+    // Per pagina het meest gezochte "dienst + plaats"-zoekwoord (voor de taak die Inplannen maakt)
+    const topFor = (place: string) => [...local.filter(r => r.place === place)].sort((a, b) => b.imp - a.imp)[0]
+    const pageRows = new Map<string, { path: string; note?: string; query?: string }>()
+    for (const pl of places) {
+      const path = idx.pageFor(pl)
+      if (!path || pageRows.has(path)) continue
+      const t = topFor(pl)
+      pageRows.set(path, { path, query: t.q, note: `„${t.q}" ${nlNum(t.imp)}×, positie ${nl1(t.pos)}` })
+    }
+    const pages = [...pageRows.values()].sort((a, b) => (topFor(b.path.split("/").pop()!)?.imp || 0) - (topFor(a.path.split("/").pop()!)?.imp || 0))
     out.push({
       key: "dienst|lokaal", kind: "dienst",
       title: `Mensen zoeken op "dienst + plaats", maar Gijs staat daar gemiddeld op positie ${nl1(lPos)}`,
@@ -368,7 +382,7 @@ function serviceAdvice(i: SiteAdviceInput): SiteAdvice[] {
       ],
       gain: gainOf(local), gainNote: "Als de zoekwoorden die nu lager staan naar positie 8 gaan, bij gelijke zoekvraag.",
       confidence: lImp >= 1000 ? "hoog" : "middel", confidenceWhy: `${nlNum(lImp)} vertoningen gemeten in Search Console.`,
-      pages: pages.map(p => ({ path: p })), taskKeys: [], ideaIds: [],
+      pages, taskKeys: [], ideaIds: [], route: "inhoud",
     })
   }
 
@@ -397,7 +411,8 @@ function serviceAdvice(i: SiteAdviceInput): SiteAdvice[] {
       ],
       gain: gainOf(rs), gainNote: "Als de zoekwoorden die nu lager staan naar positie 8 gaan, bij gelijke zoekvraag.",
       confidence: imp >= 1000 ? "hoog" : "middel", confidenceWhy: `${nlNum(imp)} vertoningen gemeten in Search Console.`,
-      pages: [], taskKeys: [], ideaIds: open.map(x => x.id),
+      pages: i.inventory.some(p => p.path === `/maatregelen/${s}`) ? [{ path: `/maatregelen/${s}`, query: [...rs].sort((a, b) => b.imp - a.imp)[0]?.q }] : [],
+      taskKeys: [], ideaIds: open.map(x => x.id), route: "inhoud",
     })
   }
   return out
@@ -446,8 +461,46 @@ export function buildSiteAdvice(i: SiteAdviceInput): SiteAdvice[] {
   return all
     .map(a => ({ a, w: ((a.gain ?? 0) + BASE[a.kind]) * CONF_W[a.confidence] }))
     .sort((x, y) => y.w - x.w)
-    .map(x => x.a)
+    .map(x => ({ ...x.a, priority: (x.w >= 60 ? "hoog" : x.w >= 20 ? "middel" : "laag") as SiteAdvice["priority"] }))
     .slice(0, 10)
+}
+
+// Wat "Inplannen" doet: bestaande taken inplannen (groep) of per pagina een taak maken
+export interface PlannedTask {
+  title: string; description: string; page?: string; query?: string
+  route?: Route; goal: "seo" | "conversie" | "overig"; priority: "hoog" | "middel" | "laag"
+}
+export const PLAN_MAX = 15
+export function planFor(a: SiteAdvice, tasks: (Pick<Task, "key" | "status"> & { signal?: Pick<Task["signal"], "page"> })[]): { plan: string[]; create: PlannedTask[]; summary: string; skipped: string[] } {
+  const prio = a.priority || "middel"
+  const description = `${a.title}\n\nUit het siteadvies. Wat te doen:\n${a.steps.map(s => `- ${s}`).join("\n")}`
+  const label = (path: string) => placePage(path)?.label || path
+  const open = new Set(tasks.filter(t => columnOf(t.status) === "beoordelen").map(t => t.key))
+  if (a.kind === "groep") {
+    const plan = a.taskKeys.filter(k => open.has(k))
+    return { plan, create: [], skipped: [], summary: plan.length ? `${plan.length} bestaande ${plan.length === 1 ? "taak" : "taken"} inplannen` : "De taken zijn al ingepland" }
+  }
+  if (a.kind === "route-stoppen") return { plan: [], create: [], skipped: [], summary: "Alleen ter kennisgeving; geen nieuwe taken" }
+  let create: PlannedTask[] = []
+  if (a.kind === "route-uitrollen" || (a.kind === "dienst" && a.key === "dienst|lokaal")) {
+    const what = a.kind === "dienst" ? "Diensten in deze plaats uitwerken" : (ROUTE_LABEL[a.route || "inhoud"] || "Aanpassing")
+    create = a.pages.map(p => ({ title: `${what} – ${label(p.path)}`, description, page: p.path, query: p.query, route: a.route, goal: "seo" as const, priority: prio }))
+  } else if (a.kind === "dienst") {
+    create = a.pages.map(p => ({ title: `Hoofdpagina versterken: ${label(p.path)}`, description, page: p.path, query: p.query, route: "inhoud" as const, goal: "seo" as const, priority: prio }))
+    if (!create.length) create = [{ title: a.title.slice(0, 140), description, goal: "seo", priority: prio, route: "inhoud" }]
+  } else if (a.kind === "conversie") {
+    create = a.pages.map(p => ({ title: `Meer aanvragen via ${label(p.path)}`, description, page: p.path, goal: "conversie" as const, priority: prio }))
+  } else {
+    // indexering / regio: één taak voor de provincie
+    const prov = a.key.split("|")[1]
+    create = [{ title: a.title.slice(0, 140), description, page: prov ? `/regio/${prov}` : undefined, goal: "seo", priority: prio }]
+  }
+  // Eén aanpassing tegelijk per pagina: waar al een taak loopt, maken we er geen tweede bij (anders is niet te meten wat werkte)
+  const busy = new Set(tasks.filter(t => t.signal?.page && ["gepland", "uitvoering", "evalueren"].includes(columnOf(t.status) || "")).map(t => t.signal!.page!))
+  const skipped = create.filter(c => c.page && busy.has(c.page)).map(c => c.page!)
+  create = create.filter(c => !(c.page && busy.has(c.page))).slice(0, PLAN_MAX)
+  const skipNote = skipped.length ? ` (${skipped.length} overgeslagen: daar loopt al een taak)` : ""
+  return { plan: [], create, skipped, summary: create.length ? `${create.length} ${create.length === 1 ? "taak" : "taken"} aanmaken${create.length > 1 ? ", één per pagina" : ""}${skipNote}` : `Geen nieuwe taken${skipNote}` }
 }
 
 // De stand van de site in een paar zinnen (bovenaan de pagina)

@@ -126,7 +126,8 @@ export function mergeTasks(signals: Signal[], records: AdviceRecord[], experimen
     seen.add(s.key)
   }
   for (const r of records) {
-    if (seen.has(r.advice_key)) continue
+    // Beslissingen over siteadvies (site:…) zijn geen taken; die staan in de adviesrij
+    if (seen.has(r.advice_key) || r.advice_key.startsWith("site:")) continue
     const signal = r.snapshot && r.snapshot.key ? { ...r.snapshot, key: r.advice_key } : signalFromRecord(r)
     // Eigen taken zijn altijd actueel: ze komen niet uit de data maar van jou
     tasks.push(make(signal, r, signal.kind === "eigen"))

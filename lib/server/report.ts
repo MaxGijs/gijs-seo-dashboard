@@ -27,8 +27,9 @@ export async function buildReport(by = "systeem") {
     sb.from("seo_lesson_log").select("action, detail, at").gte("at", since).order("at", { ascending: false }),
   ])
 
-  const done = (statuses || []).filter(s => ["in_uitvoering", "uitgevoerd", "in_evaluatie"].includes(s.status)).map(s => s.advice_title)
-  const rejected = (statuses || []).filter(s => ["afgewezen", "onvoldoende_bewijs"].includes(s.status)).length
+  const taskStatuses = (statuses || []).filter(s => !s.advice_key.startsWith("site:"))   // siteadvies-beslissingen zijn geen taken
+  const done = taskStatuses.filter(s => ["in_uitvoering", "uitgevoerd", "in_evaluatie"].includes(s.status)).map(s => s.advice_title)
+  const rejected = taskStatuses.filter(s => ["afgewezen", "onvoldoende_bewijs"].includes(s.status)).length
   const started = (exps || []).filter(e => e.created_at >= since).map(e => `${e.query ? `"${e.query}"` : e.page || e.advice_key}: ${e.description}`)
   const results: string[] = []
   for (const e of exps || []) {

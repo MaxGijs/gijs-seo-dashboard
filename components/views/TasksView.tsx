@@ -10,6 +10,7 @@ import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
 import ReminderDialog from "@/components/reminders/ReminderDialog"
+import SiteAdviceStrip from "@/components/siteadvice/SiteAdviceStrip"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
@@ -248,6 +249,7 @@ export default function TasksView() {
 
       {legend && <BoardLegend onClose={() => setLegend(false)} />}
 
+
       <div className="toolbar">
         <div className="toolbar-left" role="group" aria-label="Filter op type">
           {TYPE_FILTERS.filter(f => f.id === "alle" || typeCounts[f.id] > 0).map(f => (
@@ -402,6 +404,8 @@ export default function TasksView() {
           </div>
         </div>
       )}
+      {/* Onder het bord: grote adviezen die veel pagina's of de hele site raken */}
+      <SiteAdviceStrip />
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
       {reminding && <ReminderDialog onClose={() => setReminding(false)} />}
     </>

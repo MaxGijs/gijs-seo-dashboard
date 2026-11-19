@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AdviceDetail, AdviceRecord, DataCheck, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
-import { ROUTE_LABEL, type RouteTry } from "./routes"
+import { ROUTE_LABEL, toTries, type RouteTry } from "./routes"
+import { buildSiteAdvice, planFor, type SiteAdvice } from "./siteadvice"
 import { buildCtrModel, type CtrModel } from "./ctr"
 import { buildAdhocSignal, signalKey, toPath } from "./signals"
 import { isVisible, mergeTasks } from "./workflow"
@@ -119,6 +120,10 @@ interface WorkspaceValue {
   // Herinnering: een eigen notitie die op een datum terugkomt (Vandaag en Te beoordelen)
   addReminder: (input: NewReminder) => Promise<string | null>
   snoozeReminder: (task: Task, date: string) => Promise<boolean>
+  // Siteadvies: automatisch berekend, plus wat er per advies is besloten (sleutel = advies-key)
+  siteAdvice: SiteAdvice[]
+  siteDecisions: Map<string, AdviceRecord>
+  decideSiteAdvice: (a: SiteAdvice, decision: "ingepland" | "afgewezen" | "later" | "gezien" | "terug", note?: string) => Promise<boolean>
   undoExecution: (task: Task, status: Status) => Promise<boolean>
   setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
@@ -262,6 +267,16 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments, contentTries]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
+
+  // Siteadvies (voor de hele site) en wat ermee gedaan is
+  const siteAdvice = useMemo(() => (loading ? [] : buildSiteAdvice({
+    tasks, inventory, lessons, tries: [...toTries(experiments), ...contentTries], keywords, ctrModel, ga4Pages,
+  })), [loading, tasks, inventory, lessons, experiments, contentTries, keywords, ctrModel, ga4Pages])
+  const siteDecisions = useMemo(() => {
+    const m = new Map<string, AdviceRecord>()
+    for (const r of records) if (r.advice_key.startsWith("site:")) m.set(r.advice_key.slice(5), r)
+    return m
+  }, [records])
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks])
 
   // "Sinds je vorige bezoek": welke signalen zijn nieuw t.o.v. de vorige keer dat je keek
@@ -538,13 +553,45 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     return ok ? signal.key : null
   }, [keywords, pages, ctrModel, setStatus])
 
+  // Beslissing over een siteadvies vastleggen. Inplannen = bestaande taken plannen en/of per pagina taken maken.
+  const decideSiteAdvice = useCallback(async (a: SiteAdvice, decision: "ingepland" | "afgewezen" | "later" | "gezien" | "terug", note?: string) => {
+    let made = 0, planned = 0
+    if (decision === "ingepland") {
+      const p = planFor(a, tasks)
+      for (const k of p.plan) {
+        const t = tasks.find(x => x.key === k)
+        if (t && await setStatus(t, "goedgekeurd", { note: t.note })) planned++
+      }
+      for (const c of p.create) {
+        if (await addTask({ title: c.title, description: c.description, query: c.query, page: c.page, route: c.route, goal: c.goal, priority: c.priority, status: "goedgekeurd", effort: "middel" })) made++
+      }
+    }
+    const status: Status = decision === "afgewezen" ? "afgewezen" : decision === "later" ? "uitgesteld" : decision === "terug" ? "nieuw" : "goedgekeurd"
+    const snooze = decision === "later" ? new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10) : null
+    const done = decision === "terug" ? null : decision === "ingepland" ? `Ingepland: ${[planned && `${planned} bestaande ${planned === 1 ? "taak" : "taken"}`, made && `${made} nieuwe ${made === 1 ? "taak" : "taken"}`].filter(Boolean).join(" en ") || "niets nieuws"}` : decision === "gezien" ? "Gezien" : note || null
+    try {
+      const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ advice_key: `site:${a.key}`, advice_title: `${a.title} — Siteadvies`, advice_type: "site", status, note: done, snooze_until: snooze,
+          snapshot: { kind: "site", adviceKind: a.kind, headline: a.title, priority: a.priority, gain: a.gain, confidence: a.confidence } }),
+      })
+      setRecords(rs => [res.row, ...rs.filter(r => r.advice_key !== `site:${a.key}`)])
+      toast(decision === "ingepland" ? `${done}. Ze staan in Gepland.` : decision === "afgewezen" ? "Siteadvies afgewezen" : decision === "later" ? "Komt over 2 weken terug" : decision === "terug" ? "Advies staat weer open" : "Gemarkeerd als gezien")
+      return true
+    } catch (e: any) {
+      toast(`Opslaan mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return false
+    }
+  }, [tasks, setStatus, addTask, toast])
+
   const value: WorkspaceValue = {
     user,
     loading, error, authError, storageError,
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, addReminder, snoozeReminder, openTask, openSubject, closePanel, panelTask, panelIntent,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, addReminder, snoozeReminder, openTask,
+    siteAdvice, siteDecisions, decideSiteAdvice, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),

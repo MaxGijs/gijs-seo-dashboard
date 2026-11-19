@@ -9,7 +9,8 @@ export async function recomputeLessons(by = "systeem") {
   const sb = getSupabase()
   const [{ data: exps }, { data: statuses }, { data: ideas }, { data: existing }] = await Promise.all([
     sb.from("seo_experiments").select("advice_key, description, outcome, query, page, baseline"),
-    sb.from("seo_advice_status").select("advice_key, status, note, snapshot"),
+    // Beslissingen over siteadvies (site:…) zijn geen SEO-adviezen; die tellen niet mee in de lessen
+    sb.from("seo_advice_status").select("advice_key, status, note, snapshot").not("advice_key", "like", "site:%"),
     sb.from("content_ideas").select("id, title, service, origin, status, feedback, format, evals, text_check, advice, summary, why_now, impact, decision_note"),
     sb.from("seo_lessons").select("*"),
   ])
@@ -72,7 +73,7 @@ export async function readLessons() {
     sb.from("seo_lesson_log").select("*").order("at", { ascending: false }).limit(60),
     sb.from("seo_experiments").select("id", { count: "exact", head: true }).is("outcome", null),
     sb.from("seo_experiments").select("id", { count: "exact", head: true }).not("outcome", "is", null),
-    sb.from("seo_advice_status").select("advice_key", { count: "exact", head: true }).in("status", ["afgewezen", "onvoldoende_bewijs"]),
+    sb.from("seo_advice_status").select("advice_key", { count: "exact", head: true }).in("status", ["afgewezen", "onvoldoende_bewijs"]).not("advice_key", "like", "site:%"),
     sb.from("content_ideas").select("id", { count: "exact", head: true }).eq("status", "gepubliceerd"),
   ])
   const list = (lessons || []) as Lesson[]

@@ -1,13 +1,14 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Compass, ListChecks, Target, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
 import { buildSiteAdvice, siteState, type AdviceKind, type SiteAdvice } from "@/lib/siteadvice"
 import { toTries } from "@/lib/routes"
-import { Badge, EmptyState, Skeleton } from "@/components/ui"
+import { Badge, EmptyState, PriorityMeter, Skeleton } from "@/components/ui"
+import AdviceActions from "@/components/siteadvice/AdviceActions"
 
 const KIND_LABEL: Record<AdviceKind, string> = {
   groep: "Patroon in je taken", "route-uitrollen": "Bewezen aanpak uitrollen", "route-stoppen": "Stoppen met wat niet werkt",
@@ -22,6 +23,12 @@ export default function SiteAdviceView() {
     tasks, inventory, lessons, tries: [...toTries(experiments), ...(contentTries || [])], keywords, ctrModel, ga4Pages, ideas,
   })), [loading, tasks, inventory, lessons, experiments, contentTries, keywords, ctrModel, ga4Pages, ideas])
   const st = useMemo(() => siteState({ inventory }), [inventory])
+  // Vanuit de rij in Mijn taken: naar het juiste advies scrollen zodra het geladen is
+  useEffect(() => {
+    if (!advice.length || !window.location.hash) return
+    const el = document.getElementById(window.location.hash.slice(1))
+    if (el) { el.scrollIntoView({ block: "start" }); el.classList.add("is-flash") }
+  }, [advice.length])
   const trend = st.prev ? (st.imp - st.prev) / st.prev : null
 
   return (
@@ -64,6 +71,7 @@ function AdviceCard({ a, rank, openTask, taskTitle, ideaTitle }: { a: SiteAdvice
       <div className="advice-rank" aria-hidden>{rank}</div>
       <div className="advice-main">
         <div className="learn-card-top">
+          {a.priority && <PriorityMeter priority={a.priority} />}
           <Badge tone="neutral">{KIND_LABEL[a.kind]}</Badge>
           <Badge tone={a.confidence === "hoog" ? "success" : a.confidence === "middel" ? "info" : "neutral"} title={a.confidenceWhy}>Zekerheid {a.confidence}</Badge>
           {a.gain ? <span className="advice-gain" title={a.gainNote}><TrendingUp aria-hidden />± {num(a.gain)} klikken per 28 dagen</span> : null}
@@ -81,6 +89,7 @@ function AdviceCard({ a, rank, openTask, taskTitle, ideaTitle }: { a: SiteAdvice
           </div>
         </div>
         {a.gainNote && a.gain ? <p className="field-hint">Verwacht effect: {a.gainNote} {a.confidenceWhy}</p> : <p className="field-hint">{a.confidenceWhy}</p>}
+        <AdviceActions a={a} />
         {items > 0 && (
           <div>
             <button className="link-btn" aria-expanded={open} onClick={() => setOpen(x => !x)}>{open ? "Verberg" : "Toon"} waar dit over gaat ({items})</button>
