@@ -1117,5 +1117,9 @@ img, svg { display: block; max-width: 100%; }
 .tcard.is-rejected .tcard-title { color: #7a2a20; }
 .badge-rejected svg { flex: none; width: 14px; height: 14px; }
 .badge-rejected { flex: none; white-space: nowrap; }
+.badge-new { display: inline-flex; align-items: center; gap: 4px; background: #e3f3e6; color: #1f7a3a; border: 1px solid #b7e0c2; font-weight: 700; flex: none; white-space: nowrap; }
+.badge-new svg { flex: none; width: 14px; height: 14px; color: #2f9150; }
+.tcard.is-new { border-left-color: #2f9150; background: #fbfff9; }
+.tcard.is-new .tcard-title { color: #1f5c33; }
 .outline-box { white-space: pre-wrap; max-height: 420px; overflow: auto; font-size: var(--fs-sm); line-height: 1.55; background: #f4f8fc; color: var(--text); }
 .cpage-main > [aria-labelledby="cp-outline"] { order: 6; }

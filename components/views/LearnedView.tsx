@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
 import { BookOpenCheck, CheckCircle2, CircleSlash, History, RotateCcw, Sparkles, Undo2 } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import type { Lesson } from "@/lib/learning"
@@ -129,6 +130,11 @@ function LessonCard({ l, busy, onRevert, onRestore }: { l: Lesson; busy: boolean
       {l.effect && <p className="learn-effect"><CheckCircle2 aria-hidden /><span><b>Effect:</b> {l.effect.text}</span></p>}
       {l.evidence.examples?.length ? (
         <details className="learn-examples"><summary>Gebruikte metingen ({l.evidence.examples.length})</summary><ul>{l.evidence.examples.map((e, i) => <li key={i}>{e}</li>)}</ul></details>
+      ) : null}
+      {l.evidence.items?.length ? (
+        <details className="learn-examples"><summary>Welke contentkansen ({l.evidence.items.length})</summary>
+          <ul>{l.evidence.items.map(it => <li key={it.id}><Link href={`/content/${it.id}?van=geleerd`}>{it.title}</Link></li>)}</ul>
+        </details>
       ) : null}
       <div className="learn-actions">
         {onRevert && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onRevert}><Undo2 aria-hidden />Terugdraaien</button>}

@@ -1,6 +1,7 @@
 "use client"
 
 import { BarChart3, Dot, StickyNote, UserRound } from "lucide-react"
+import { NewBadge, RejectedBadge } from "@/components/ui"
 
 const STEPS = [
   { id: "beoordelen", label: "Te beoordelen", text: "Nieuwe signalen uit Search Console, GA4 en de nachtelijke controles, plus taken die je zelf toevoegt. Jij beslist: inplannen, uitstellen of afwijzen (met reden, daar leert het systeem van)." },
@@ -33,7 +34,8 @@ export default function BoardLegend({ onClose }: { onClose: () => void }) {
               <thead><tr><th>Label</th><th>Betekenis</th></tr></thead>
               <tbody>
                 <tr><td><span className="legend-chip"><BarChart3 aria-hidden />Hoog</span></td><td>Prioriteit: hoog, middel of laag. Rekent met verwachte winst, bewijs en wat eerder werkte.</td></tr>
-                <tr><td><span className="new-dot">Nieuw</span></td><td>Nieuw sinds je vorige bezoek.</td></tr>
+                <tr><td><NewBadge /></td><td>Nieuw sinds je vorige bezoek (alleen bij Te beoordelen).</td></tr>
+                <tr><td><RejectedBadge /></td><td>Afgewezen. Blijft zichtbaar in Afgerond; het systeem leert van de reden.</td></tr>
                 <tr><td><span className="tcard-note" style={{ display: "inline-flex", marginTop: 0 }}><StickyNote aria-hidden /><span>Notitie</span></span></td><td>Notitie bij de taak.</td></tr>
                 <tr><td><span className="owner-chip"><UserRound aria-hidden />Thom</span></td><td>Wie de taak oppakt.</td></tr>
                 <tr><td><span className="legend-chip"><Dot aria-hidden />Niet actueel</span></td><td>Het signaal komt niet meer uit de data (bijvoorbeeld vanzelf opgelost). Controleer en sluit af.</td></tr>

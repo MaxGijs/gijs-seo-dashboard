@@ -136,10 +136,10 @@ export function useWorkspace() {
 const SEEN_KEY = "gijs.seo.seenSignals"
 const VISIT_KEY = "gijs.seo.lastVisit"
 
-function readStorage(key: string) {
+export function readStorage(key: string) {
   try { return window.localStorage.getItem(key) } catch { return null }
 }
-function writeStorage(key: string, value: string) {
+export function writeStorage(key: string, value: string) {
   try { window.localStorage.setItem(key, value) } catch { /* privémodus e.d. */ }
 }
 

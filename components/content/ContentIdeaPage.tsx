@@ -9,7 +9,7 @@ import ContentPanel from "./ContentPanel"
 export default function ContentIdeaPage({ id }: { id: string }) {
   const router = useRouter()
   const from = useSearchParams().get("van")
-  const back = from === "taken" ? { href: "/taken", label: "Terug naar Mijn taken" } : from === "vandaag" ? { href: "/vandaag", label: "Terug naar Vandaag" } : from === "experimenten" ? { href: "/experimenten?tab=content", label: "Terug naar Experimenten" } : { href: "/content", label: "Terug naar Contentkansen" }
+  const back = from === "taken" ? { href: "/taken", label: "Terug naar Mijn taken" } : from === "vandaag" ? { href: "/vandaag", label: "Terug naar Vandaag" } : from === "experimenten" ? { href: "/experimenten?tab=content", label: "Terug naar Experimenten" } : from === "geleerd" ? { href: "/geleerd", label: "Terug naar Wat hebben we geleerd?" } : { href: "/content", label: "Terug naar Contentkansen" }
   const content = useContentIdeas()
   if (content.error) return <Alert tone="error" title="Contentkansen konden niet worden geladen">{content.error}</Alert>
   if (!content.ideas) return <div style={{ display: "grid", gap: 16 }}><Skeleton height={120} /><Skeleton height={400} /></div>

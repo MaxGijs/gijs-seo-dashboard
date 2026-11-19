@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { AlertCircle, CheckCircle2, Info, X, XCircle } from "lucide-react"
+import { AlertCircle, CheckCircle2, Info, Sparkle, X, XCircle } from "lucide-react"
 import type { Priority, Signal, Status, Task } from "@/lib/types"
 import { KIND_META, STATUS_META, type Tone } from "@/lib/workflow"
 import { dateShort, pos } from "@/lib/format"
@@ -19,6 +19,11 @@ export function KindLabel({ signal }: { signal: Signal }) {
 // Rood afgewezen-label met kruis (takenbord en lijsten)
 export function RejectedBadge() {
   return <span className="badge badge-rejected"><XCircle aria-hidden />Afgewezen</span>
+}
+
+// Groen nieuw-label (takenbord): kaart die nieuw is sinds je vorige bezoek
+export function NewBadge() {
+  return <span className="badge badge-new"><Sparkle aria-hidden />Nieuw</span>
 }
 
 export function StatusBadge({ task }: { task: Pick<Task, "status" | "snoozeUntil" | "snoozed"> }) {

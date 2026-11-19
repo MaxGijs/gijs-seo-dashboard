@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
-import { sortByPriority, useWorkspace } from "@/lib/workspace"
+import { readStorage, sortByPriority, useWorkspace, writeStorage } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
@@ -12,7 +12,29 @@ import AddTaskDialog from "./AddTaskDialog"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
-import { Breakable, EmptyState, IntentBadge, KindLabel, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
+import { Breakable, EmptyState, IntentBadge, KindLabel, NewBadge, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
+
+// Contentkansen hebben geen eigen "sinds je vorige bezoek"-mechanisme zoals SEO-signalen;
+// dat bouwen we hier apart op, met dezelfde opslag-aanpak (lib/workspace.tsx).
+const CONTENT_SEEN_KEY = "gijs.content.seenIdeas"
+function useNewContentIds(ideas: ContentIdea[] | null) {
+  const [newIds, setNewIds] = useState<Set<string>>(new Set())
+  const markedRef = useRef<string>("")
+  useEffect(() => {
+    if (!ideas) return
+    // React (in dev met Strict Mode) kan een effect twee keer achter elkaar aanroepen; zonder
+    // deze bewaking zou de tweede aanroep de net geschreven opslag alweer als "gezien" lezen.
+    const key = ideas.map(i => i.id).sort().join(",")
+    if (markedRef.current === key) return
+    markedRef.current = key
+    const prevSeen = readStorage(CONTENT_SEEN_KEY)
+    const seen = new Set<string>(prevSeen ? JSON.parse(prevSeen) : [])
+    setNewIds(prevSeen ? new Set(ideas.filter(i => !seen.has(i.id)).map(i => i.id)) : new Set())
+    const all = new Set([...seen, ...ideas.map(i => i.id)])
+    writeStorage(CONTENT_SEEN_KEY, JSON.stringify([...all].slice(-500)))
+  }, [ideas])
+  return newIds
+}
 
 type TypeFilter = "alle" | "techniek" | "kansen" | "dalingen" | "snippet" | "analyse" | "content"
 const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
@@ -76,6 +98,7 @@ const ORDER: ColumnId[] = ["beoordelen", "gepland", "uitvoering", "evalueren", "
 export default function TasksView() {
   const { loading, visibleTasks, openTask, newSinceLastVisit, setStatus, undoExecution, toast, users, me } = useWorkspace()
   const content = useContentIdeas()
+  const newContentIds = useNewContentIds(content.ideas)
   const router = useRouter()
   // Contentkansen openen op een eigen pagina (inleverpunt) in plaats van een zijpaneel
   const setOpenIdea = (id: string | null) => { if (id) router.push(`/content/${id}?van=taken`) }
@@ -287,12 +310,12 @@ export default function TasksView() {
                     "aria-roledescription": "versleepbare kaart",
                   }
                   if (en.kind === "content") {
-                    const i = en.i, meta = contentMeta(i, c.id)
+                    const i = en.i, meta = contentMeta(i, c.id), isNew = c.id === "beoordelen" && newContentIds.has(i.id)
                     return (
-                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
+                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
                         <span className="tcard-top">
                           <span className="kind-label tone-info"><Newspaper aria-hidden />Content · {ORIGIN_META[i.origin].label}</span>
-                          {c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : i.status === "afgewezen" ? <RejectedBadge /> : null}
+                          {i.status === "afgewezen" ? <RejectedBadge /> : isNew ? <NewBadge /> : c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
                         </span>
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
@@ -303,11 +326,12 @@ export default function TasksView() {
                   }
                   const t = en.t
                   const meta = cardMeta(t)
+                  const isNew = c.id === "beoordelen" && newSinceLastVisit.has(t.key)
                   return (
-                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
+                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
                       <span className="tcard-top">
                         <KindLabel signal={t.signal} />
-                        {c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
+                        {isNew ? <NewBadge /> : c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
                       </span>
                       <span className="tcard-title">{t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
                       <span className="tcard-sub clamp2" title={t.signal.action || t.signal.title}>{t.signal.action || t.signal.title}</span>
@@ -315,8 +339,7 @@ export default function TasksView() {
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
                         {t.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span> : null}
-                        {newSinceLastVisit.has(t.key) && c.id === "beoordelen" ? <span className="new-dot">Nieuw</span>
-                          : t.status === "onderzoeken" ? <span>In onderzoek</span>
+                        {t.status === "onderzoeken" ? <span>In onderzoek</span>
                           : !t.current && c.id !== "afgerond" ? <span title="Niet meer in de actuele signalen">Niet actueel</span> : null}
                       </span>
                     </button>

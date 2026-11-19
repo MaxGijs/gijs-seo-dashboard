@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
+import { ArrowDown, ArrowUp, CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
 import { num, pct } from "@/lib/format"
@@ -30,6 +30,25 @@ const TABS: { id: Tab; label: string; statuses: IdeaStatus[] }[] = [
   { id: "gepubliceerd", label: "Gepubliceerd", statuses: ["gepubliceerd"] },
   { id: "archief", label: "Archief", statuses: ["later", "afgewezen", "verlopen"] },
 ]
+
+type SortKey = "score" | "datum" | "titel"
+const SORT_OPTIONS: { id: SortKey; label: string }[] = [
+  { id: "score", label: "Score" },
+  { id: "datum", label: "Datum" },
+  { id: "titel", label: "Titel (A-Z)" },
+]
+const SORT_DEFAULT_DIR: Record<SortKey, "asc" | "desc"> = { score: "desc", datum: "desc", titel: "asc" }
+// Welke datum tellen we bij "Datum": per tab de datum die er het meest toe doet.
+function dateOf(i: ContentIdea, tab: Tab) {
+  if (tab === "gepubliceerd") return i.published_at || i.updated_at || i.created_at
+  if (tab === "productie") return i.due_date || i.updated_at || i.created_at
+  return i.updated_at || i.created_at
+}
+function sortValue(i: ContentIdea, tab: Tab, key: SortKey): number | string {
+  if (key === "titel") return i.title.toLocaleLowerCase("nl")
+  if (key === "datum") return +new Date(dateOf(i, tab) || 0)
+  return effectiveScore(i)
+}
 
 const ORIGIN_ICON: Record<Origin, React.ReactNode> = {
   actualiteit: <Newspaper aria-hidden />, trend: <Globe aria-hidden />, zoekdata: <Search aria-hidden />, seizoen: <CalendarDays aria-hidden />, handmatig: <Lightbulb aria-hidden />,
@@ -234,6 +253,9 @@ export default function ContentView() {
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("beoordelen")
   const [origin, setOrigin] = useState<"alle" | Origin>("alle")
+  const [sort, setSort] = useState<SortKey>("score")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const chooseSort = (k: SortKey) => { setSort(k); setSortDir(SORT_DEFAULT_DIR[k]) }
   const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [scanning, setScanning] = useState(false)
@@ -266,9 +288,12 @@ export default function ContentView() {
   const list = useMemo(() => {
     const t = TABS.find(x => x.id === tab)!
     return (data?.ideas || []).filter(i => t.statuses.includes(i.status) && (origin === "alle" || i.origin === origin))
-      .sort((a, b) => tab === "productie" ? STATUS_META[b.status].step - STATUS_META[a.status].step || effectiveScore(b) - effectiveScore(a)
-        : tab === "gepubliceerd" ? +new Date(b.published_at || 0) - +new Date(a.published_at || 0) : effectiveScore(b) - effectiveScore(a))
-  }, [data, tab, origin])
+      .sort((a, b) => {
+        const va = sortValue(a, tab, sort), vb = sortValue(b, tab, sort)
+        const base = typeof va === "string" ? va.localeCompare(vb as string, "nl") : (va as number) - (vb as number)
+        return sortDir === "desc" ? -base : base
+      })
+  }, [data, tab, origin, sort, sortDir])
 
   return (
     <>
@@ -306,6 +331,15 @@ export default function ContentView() {
                 {(["alle", "actualiteit", "trend", "zoekdata", "seizoen", "handmatig"] as const).map(o => (
                   <button key={o} className={`chip${origin === o ? " is-active" : ""}`} onClick={() => setOrigin(o)}>{o === "alle" ? "Alle" : ORIGIN_META[o].label}</button>
                 ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <label className="subtle small" htmlFor="content-sort">Sorteer op</label>
+                <select id="content-sort" className="select" style={{ height: 34, fontSize: "var(--fs-sm)" }} value={sort} onChange={e => chooseSort(e.target.value as SortKey)}>
+                  {SORT_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+                <button type="button" className="btn btn-ghost btn-sm" title={sortDir === "desc" ? "Aflopend (hoog/nieuw naar laag/oud) — klik voor oplopend" : "Oplopend — klik voor aflopend"} onClick={() => setSortDir(d => (d === "desc" ? "asc" : "desc"))}>
+                  {sortDir === "desc" ? <ArrowDown aria-hidden /> : <ArrowUp aria-hidden />}
+                </button>
               </div>
             </div>
           </div>

@@ -37,7 +37,7 @@ export interface Lesson {
   source: "meting" | "afwijzing" | "content"
   title: string
   conclusion: string
-  evidence: { n: number; success?: number; fail?: number; rate?: number; baseline?: number; examples?: string[]; reasons?: string[] }
+  evidence: { n: number; success?: number; fail?: number; rate?: number; baseline?: number; examples?: string[]; reasons?: string[]; items?: { id: string; title: string }[] }
   confidence: "laag" | "middel" | "hoog"
   effect: LessonEffect | null
   status?: "actief" | "teruggedraaid" | "vervallen"
@@ -128,7 +128,7 @@ const factorNl = (f: number) => f.toFixed(2).replace(/0$/, "").replace(".", ",")
 
 export interface ExperimentFact { outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | null; features: Features; label: string }
 export interface DecisionFact { kind: string; intent?: string; status: string; note?: string | null }
-export interface ContentFact { service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null
+export interface ContentFact { id?: string; title?: string; service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null
   views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 30 dagen
   // Kenmerken van de eigen tekst (uit de ingeleverde PDF/Word)
   text?: { words: number; lengthBucket: "kort" | "middel" | "lang"; readable: boolean; kwIntro: boolean | null; kwCoverage: number | null; cta: boolean } | null }
@@ -224,7 +224,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       key: `content|${k}`, source: "content",
       title: `Contentkansen ${origin === "actualiteit" ? "uit nieuws" : origin === "zoekdata" ? "uit zoekdata" : origin === "seizoen" ? "uit de seizoenskalender" : origin === "trend" ? "uit webtrends" : "van eigen ideeën"} over ${service === "-" ? "algemene onderwerpen" : service.replace(/-/g, " ")} — ${list.length}× afgewezen`,
       conclusion: `${list.length}× afgewezen.${tags.size ? ` Meest genoemd: ${[...tags.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, n]) => `${t} (${n}×)`).join(", ")}.` : ""}`,
-      evidence: { n: list.length, reasons: [...tags.keys()] },
+      evidence: { n: list.length, reasons: [...tags.keys()], items: list.filter(c => c.id && c.title).slice(0, 10).map(c => ({ id: c.id!, title: c.title! })) },
       confidence: list.length >= 6 ? "hoog" : list.length >= 3 ? "middel" : "laag",
       effect: { type: "content-afwijzing", factor, service: service === "-" ? null : service, origin, text: `Nieuwe kansen van deze soort krijgen een lagere score (nu ×${factorNl(factor)}).` },
     })
