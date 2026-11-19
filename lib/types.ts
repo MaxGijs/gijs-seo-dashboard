@@ -110,6 +110,7 @@ export interface Signal {
   lesson?: { key: string; title: string; factor: number } | null  // prioriteit aangepast door een les
   routeNote?: string          // waarom een andere route dan normaal wordt geadviseerd
   goal?: "seo" | "conversie" | "overig"  // eigen taak: wat moet het opleveren (bepaalt de meting)
+  reminder?: { date: string; link: string | null }  // herinnering: komt op deze datum terug
 }
 
 export type Level = "laag" | "middel" | "hoog"

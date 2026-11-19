@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useMemo } from "react"
 import { AlertsBlock } from "@/components/dashboard/Alerts"
+import RemindersBlock from "@/components/reminders/RemindersBlock"
 import { ArrowRight, ArrowUpRight, CalendarClock, CheckCircle2, Eye, FlaskConical, Play, ShieldCheck, TrendingUp, ListTodo } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
@@ -32,7 +33,7 @@ export default function TodayView({ embedded = false }: { embedded?: boolean }) 
   const impressions = sum(overview, "impressions")
   const clickDelta = prevClicks ? ((clicks - prevClicks) / prevClicks) * 100 : null
   // Merkzoekwoorden horen zelden bij de drie acties van de dag; ze blijven wel op het bord staan.
-  const focus = toReview.filter(t => t.signal.intent !== "merk").slice(0, 3)
+  const focus = toReview.filter(t => t.signal.intent !== "merk" && !t.signal.reminder).slice(0, 3)
   const highCount = toReview.filter(t => t.signal.priority === "hoog").length
   const newCount = toReview.filter(t => newSinceLastVisit.has(t.key)).length
   const inProgress = active.filter(t => t.status === "in_uitvoering").length
@@ -53,6 +54,9 @@ export default function TodayView({ embedded = false }: { embedded?: boolean }) 
 
   const body = () => (
     <>
+      {/* Herinneringen: wat vandaag terugkomt staat bovenaan */}
+      <RemindersBlock />
+
       {/* Drie tellers: wat ligt er op je bord */}
       <div className="stat-grid">
         <Link href="/taken" className="stat stat--dark interactive">

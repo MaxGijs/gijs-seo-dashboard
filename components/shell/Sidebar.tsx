@@ -43,7 +43,8 @@ export default function Sidebar({ user }: { user: { name?: string | null; email?
   const counts: Record<string, number> = {
     // Mijn taken = SEO-adviezen én contentkansen die op beoordeling wachten (zelfde telling als de kolom op het bord)
     "/taken": loading ? 0 : toReview.length + contentNew,
-    "/vandaag": loading ? 0 : toReview.filter(t => t.signal.priority === "hoog").length,
+    // Vandaag: hoge prioriteit plus herinneringen die vandaag (of eerder) terugkomen
+    "/vandaag": loading ? 0 : toReview.filter(t => t.signal.priority === "hoog" || t.signal.reminder).length,
     "/experimenten": loading ? 0 : evaluating.length,
     "/content": contentNew,
   }

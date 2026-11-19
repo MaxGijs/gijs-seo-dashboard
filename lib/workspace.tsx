@@ -75,6 +75,14 @@ export interface NewTask {
   route?: "inhoud" | "interne-links" | "titel-meta"   // soort aanpassing: telt mee in de lessen en het route-geheugen per pagina
 }
 
+export interface NewReminder {
+  title: string
+  description?: string
+  date: string               // JJJJ-MM-DD
+  link?: string
+  owner?: string | null      // e-mail; standaard wie hem aanmaakt
+}
+
 // Waarmee het zijpaneel opent (bv. na slepen naar Evalueren: direct "wat heb je aangepast?")
 export type PanelIntent = null | "execute" | "close"
 
@@ -107,7 +115,10 @@ interface WorkspaceValue {
   // acties
   setStatus: (task: Task, to: Status, opts?: StatusOptions) => Promise<boolean>
   setOwner: (task: Task, owner: string | null) => Promise<boolean>
-  removeTask: (task: Task) => Promise<boolean>
+  removeTask: (task: Task, done?: string) => Promise<boolean>
+  // Herinnering: een eigen notitie die op een datum terugkomt (Vandaag en Te beoordelen)
+  addReminder: (input: NewReminder) => Promise<string | null>
+  snoozeReminder: (task: Task, date: string) => Promise<boolean>
   undoExecution: (task: Task, status: Status) => Promise<boolean>
   setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
@@ -425,12 +436,12 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [toast, setStatus])
 
   // Zelf toegevoegde taak verwijderen (per ongeluk aangemaakt)
-  const removeTask = useCallback(async (task: Task) => {
+  const removeTask = useCallback(async (task: Task, done = "Taak verwijderd") => {
     try {
       await getJson(`/api/advice?key=${encodeURIComponent(task.key)}`, { method: "DELETE" })
       setRecords(rs => rs.filter(r => r.advice_key !== task.key))
       setExperiments(es => es.filter(e => e.advice_key !== task.key))
-      toast("Taak verwijderd")
+      toast(done)
       return true
     } catch (e: any) {
       toast(`Verwijderen mislukt: ${e?.message || "onbekende fout"}`, "error")
@@ -442,7 +453,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     try {
       const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ advice_key: task.key, advice_title: `${task.signal.headline} — ${task.signal.title}`, advice_type: task.signal.legacyType, status: task.status, snapshot: { ...task.signal }, owner: owner || null }),
+        // snooze_until meesturen: anders wist toewijzen de uitsteldatum (en de datum van een herinnering)
+        body: JSON.stringify({ advice_key: task.key, advice_title: `${task.signal.headline} — ${task.signal.title}`, advice_type: task.signal.legacyType, status: task.status, snapshot: { ...task.signal }, owner: owner || null, snooze_until: task.status === "uitgesteld" ? task.snoozeUntil : null }),
       })
       setRecords(rs => [res.row, ...rs.filter(r => r.advice_key !== task.key)])
       return true
@@ -451,6 +463,41 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       return false
     }
   }, [toast])
+
+  // Herinnering: opgeslagen als eigen taak die tot de datum is uitgesteld. Op de datum komt hij
+  // vanzelf terug (Vandaag, en in Te beoordelen als "uitstel verlopen").
+  const addReminder = useCallback(async (input: NewReminder) => {
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+    const signal: Signal = {
+      key: signalKey("eigen", id), kind: "eigen", legacyType: "eigen",
+      headline: input.title.trim(),
+      title: input.description?.trim().split("\n")[0].slice(0, 140) || "Herinnering",
+      summary: input.description?.trim() || "Herinnering.",
+      description: input.description?.trim() || undefined,
+      metrics: {}, gain: 0, priority: "middel", priorityRank: 0,
+      evidence: "redelijk", evidenceReason: "Herinnering: wordt niet gemeten.",
+      goal: "overig", score: 0, generatedAt: new Date().toISOString(),
+      action: input.title.trim(), effort: "laag", risk: "laag",
+      reminder: { date: input.date, link: input.link?.trim() || null },
+    }
+    try {
+      const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ advice_key: signal.key, advice_title: `${signal.headline} — Herinnering`, advice_type: "eigen", status: "uitgesteld", snooze_until: input.date, snapshot: signal, owner: input.owner === undefined ? me : input.owner }),
+      })
+      setRecords(rs => [res.row, ...rs.filter(r => r.advice_key !== signal.key)])
+      return signal.key
+    } catch (e: any) {
+      toast(`Opslaan mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return null
+    }
+  }, [me, toast])
+
+  // Herinnering naar een nieuwe datum
+  const snoozeReminder = useCallback(async (task: Task, date: string) => {
+    const signal: Signal = { ...task.signal, reminder: { ...(task.signal.reminder || { link: null }), date } }
+    return setStatus({ ...task, signal }, "uitgesteld", { note: task.note, snoozeUntil: date })
+  }, [setStatus])
 
   // Eigen taak toevoegen: wordt als statusregel met momentopname opgeslagen, net als adviezen
   const addTask = useCallback(async (input: NewTask) => {
@@ -497,7 +544,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, addReminder, snoozeReminder, openTask, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
     reload: () => setReloadTick(t => t + 1),

@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck } from "lucide-react"
+import { BellRing, CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
 import { readStorage, sortByPriority, useWorkspace, writeStorage } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
+import ReminderDialog from "@/components/reminders/ReminderDialog"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
@@ -113,6 +114,7 @@ export default function TasksView() {
   const [viewChosen, setViewChosen] = useState(false)
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
+  const [reminding, setReminding] = useState(false)
   const [overCol, setOverCol] = useState<ColumnId | null>(null)
   const setView = (v: "bord" | "lijst") => {
     setViewState(v); setViewChosen(true)
@@ -234,6 +236,7 @@ export default function TasksView() {
           <p className="page-sub">Elk SEO-advies en elke contentkans van signaal tot resultaat. Open een kaart om te beslissen wat ermee gebeurt, of sleep hem naar een andere kolom.</p>
         </div>
         <div className="page-actions">
+          <button className="btn btn-secondary btn-sm" onClick={() => setReminding(true)}><BellRing aria-hidden />Herinnering</button>
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Taak toevoegen</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setLegend(l => !l)} aria-expanded={legend}><CircleHelp aria-hidden />Hoe werkt het bord?</button>
           <div className="seg" role="group" aria-label="Weergave">
@@ -400,6 +403,7 @@ export default function TasksView() {
         </div>
       )}
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
+      {reminding && <ReminderDialog onClose={() => setReminding(false)} />}
     </>
   )
 }

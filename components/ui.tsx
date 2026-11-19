@@ -12,6 +12,7 @@ export function Badge({ tone = "neutral", children, dot = false, title }: { tone
 }
 
 export function KindLabel({ signal }: { signal: Signal }) {
+  if (signal.reminder) return <span className="kind-label tone-warning">Herinnering</span>
   const meta = KIND_META[signal.kind]
   return <span className={`kind-label tone-${meta.tone}`}>{meta.label}</span>
 }

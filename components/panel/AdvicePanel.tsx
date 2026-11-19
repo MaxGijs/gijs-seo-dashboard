@@ -185,7 +185,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
           {raw.kind !== "analyse" && <PriorityMeter priority={raw.priority} />}
           {raw.intent && <IntentBadge intent={raw.intent} />}
           <OwnerSelect value={task.owner} onChange={o => setOwner(task, o)} />
-          {raw.kind === "eigen" && (
+          {raw.kind === "eigen" && !raw.reminder && (
             <label className="owner-select" title="Wat moet deze taak opleveren? Bepaalt hoe er gemeten wordt.">
               <Target aria-hidden /><span className="sr-only">Doel</span>
               <select value={raw.goal || "seo"} onChange={e => setGoal(task, e.target.value as "seo" | "conversie" | "overig").then(ok => ok && toast("Doel aangepast"))}>
@@ -200,7 +200,9 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
       </div>
       <h2 className="panel-title" id="panel-title">{raw.kind === "eigen" ? raw.headline : raw.query ? `"${raw.query}"` : <Breakable text={raw.headline} />}</h2>
       <p className="panel-subtitle">
-        {target ? (
+        {raw.reminder ? (
+          <>Herinnering voor {dateShort(raw.reminder.date)}{raw.reminder.link && <> · <a href={raw.reminder.link} target="_blank" rel="noopener noreferrer">bron openen<ExternalLink aria-hidden /></a></>}</>
+        ) : target ? (
           <a href={`${SITE}${target}`} target="_blank" rel="noopener noreferrer">{target}<ExternalLink aria-hidden /></a>
         ) : !diag ? "Pagina en cijfers worden live gecontroleerd…" : raw.kind === "techniek" ? "Uit de pagina-audit (nachtelijke controle)" : raw.kind === "eigen" ? (raw.query ? "Geen rankende pagina gevonden" : "Eigen taak") : "Geen rankende pagina gevonden"}
         {dataUntil && raw.kind !== "techniek" && <> · laatste 28 dagen t/m {dateShort(rec?.signal.scope?.window?.endDate || dataUntil)}</>}
