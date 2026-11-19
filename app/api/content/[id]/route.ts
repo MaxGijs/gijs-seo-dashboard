@@ -49,6 +49,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       patch.note_at = n ? now : null
       break
     }
+    case "relevantie": {
+      // Relevantie-oordeel van Claude (via de koppeling), vóór acceptatie
+      const verdict = String(body.verdict || "")
+      if (!["relevant", "twijfel", "niet_relevant"].includes(verdict)) return bad("Onbekend oordeel")
+      const reasoning = String(body.reasoning || "").trim().slice(0, 4000)
+      if (!reasoning) return bad("Geef een toelichting bij het oordeel")
+      patch.relevance_check = { verdict, reasoning, at: now, by: who }
+      break
+    }
     case "owner": {
       patch.owner = typeof body.owner === "string" && /^[^\s@]+@[^\s@]+$/.test(body.owner) ? body.owner.toLowerCase() : null
       break

@@ -5,7 +5,7 @@ import { CONTENT_STEP } from "@/lib/content/useContent"
 import { articleVerdict } from "@/lib/content/verdict"
 import { ownerName } from "@/components/OwnerSelect"
 import { Fragment, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
+import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, HelpCircle, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -17,7 +17,7 @@ const BASIS_META: Record<Basis, { label: string; tone: "success" | "info" | "neu
 }
 import { num, pct, pos } from "@/lib/format"
 import {
-  type Angle, type ContentIdea, ANGLE_META, effectiveScore, FEEDBACK_TAGS, FORMATS, IMPACT_META, ORIGIN_META, RELIABILITY_META,
+  type Angle, type ContentIdea, ANGLE_META, effectiveScore, FEEDBACK_TAGS, FORMATS, IMPACT_META, ORIGIN_META, RELEVANCE_META, RELIABILITY_META,
   REVIEW_ROLES, requiredReviews, serviceLabel, STATUS_META, consistencyIssues, type Basis,
 } from "@/lib/content/model"
 import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
@@ -97,6 +97,15 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   // Opdracht voor Claude (met de Gijs-koppeling): opzet maken en terugzetten in het dashboard
   const askOutline = async () => {
     const prompt = `Gebruik de Gijs-koppeling. Haal met artikel_opzet alles op voor contentkans ${idea.id} ("${idea.title}") en maak de opzet volgens de instructie. Laat hem mij zien en sla hem daarna op met artikel_opzet_opslaan.`
+    try {
+      await navigator.clipboard.writeText(prompt)
+      window.open("https://claude.ai/new", "_blank", "noopener")
+      toast("Opdracht gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
+    } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
+  }
+  // Opdracht voor Claude: kritisch checken of deze (nog niet geaccepteerde) kans relevant genoeg is
+  const askRelevance = async () => {
+    const prompt = `Gebruik de Gijs-koppeling. Haal met contentkans_relevantie alles op voor contentkans ${idea.id} ("${idea.title}") en beoordeel kritisch of dit relevant genoeg is om over te schrijven. Laat je oordeel eerst aan mij zien en sla het daarna op met contentkans_relevantie_opslaan.`
     try {
       await navigator.clipboard.writeText(prompt)
       window.open("https://claude.ai/new", "_blank", "noopener")
@@ -192,6 +201,30 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
             {idea.score_override !== null && <p className="field-hint">Een medewerker heeft de score aangepast naar {idea.score_override}.</p>}
             <p className="field-hint"><b>Gemeten</b>: rechtstreeks uit data. <b>Afgeleid</b>: door een vaste regel bepaald. <b>Aangenomen</b>: aanname tot er echte data is.</p>
           </section>
+
+          {["nieuw", "later", "verlopen"].includes(idea.status) && (
+            <section className="psec" aria-labelledby="cp-relevance">
+              <h3 className="psec-title" id="cp-relevance"><HelpCircle aria-hidden />Relevantie-check door Claude{idea.relevance_check?.at && <span className="subtle">{new Date(idea.relevance_check.at).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}</h3>
+              {idea.relevance_check ? (
+                <>
+                  <div className={`verdict-box tone-${RELEVANCE_META[idea.relevance_check.verdict].tone}`}>
+                    <p className="verdict-label"><b>{RELEVANCE_META[idea.relevance_check.verdict].label}</b></p>
+                    <p>{idea.relevance_check.reasoning}</p>
+                  </div>
+                  <p className="field-hint">{idea.relevance_check.by} · dit neemt de beslissing niet over, jij beoordeelt nog steeds zelf.</p>
+                  <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                    <button className="btn btn-ghost btn-sm" onClick={askRelevance}><HelpCircle aria-hidden />Opnieuw vragen</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Laat Claude kritisch checken of dit onderwerp relevant genoeg is om over te schrijven, voordat je tijd in schrijven steekt: klopt de aanleiding nog, past het bij Gijs' doelgroep, en bestaat er al een pagina over? Claude haalt via de Gijs-koppeling zelf alle gegevens op.</p>
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={askRelevance}><HelpCircle aria-hidden />Vraag Claude of dit relevant is</button>
+                  <p className="field-hint">Werkt met de Claude-koppeling (connector "Gijs"). Nog niet gekoppeld? Zie Claude-koppeling in de zijbalk.</p>
+                </>
+              )}
+            </section>
+          )}
 
           <section className="psec" aria-labelledby="cp-plan">
             <h3 className="psec-title" id="cp-plan"><span className="psec-num">3</span>Voorstel</h3>

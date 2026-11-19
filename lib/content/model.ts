@@ -85,6 +85,8 @@ export interface ContentIdea {
   text_check?: { at: string; attachment?: string; name?: string; error?: string; stats?: import("./textcheck").TextStats; checks?: import("./textcheck").TextCheck[]; features?: import("./textcheck").TextFeatures; firstLine?: string; readable?: boolean } | null
   note_by?: string | null
   note_at?: string | null
+  // Relevantie-check door Claude (via de koppeling), vóór acceptatie: is dit onderwerp het schrijven waard?
+  relevance_check?: { verdict: "relevant" | "twijfel" | "niet_relevant"; reasoning: string; at: string; by: string } | null
   published_url: string | null
   published_at: string | null
   evals: Partial<Record<"d7" | "d30" | "d90", Eval>>
@@ -127,6 +129,12 @@ export const ANGLE_META: Record<Angle, { label: string }> = {
   negatief: { label: "Negatief" },
   positief: { label: "Positief" },
   neutraal: { label: "Neutraal" },
+}
+
+export const RELEVANCE_META: Record<NonNullable<ContentIdea["relevance_check"]>["verdict"], { label: string; tone: "success" | "warning" | "error" }> = {
+  relevant: { label: "Relevant om over te schrijven", tone: "success" },
+  twijfel: { label: "Twijfelachtig — lees de toelichting", tone: "warning" },
+  niet_relevant: { label: "Niet relevant om over te schrijven", tone: "error" },
 }
 
 export const CAPACITY_META: Record<CapacityMode, { label: string; factor: number; hint: string }> = {

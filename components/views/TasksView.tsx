@@ -12,7 +12,7 @@ import AddTaskDialog from "./AddTaskDialog"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
-import { Breakable, EmptyState, IntentBadge, KindLabel, NewBadge, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
+import { Breakable, EmptyState, IntentBadge, KindLabel, MeasuringBadge, NewBadge, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
 
 // Contentkansen hebben geen eigen "sinds je vorige bezoek"-mechanisme zoals SEO-signalen;
 // dat bouwen we hier apart op, met dezelfde opslag-aanpak (lib/workspace.tsx).
@@ -311,11 +311,12 @@ export default function TasksView() {
                   }
                   if (en.kind === "content") {
                     const i = en.i, meta = contentMeta(i, c.id), isNew = c.id === "beoordelen" && newContentIds.has(i.id)
+                    const isMeasuring = c.id === "evalueren" && i.status === "gepubliceerd"
                     return (
-                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
+                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : isMeasuring ? " is-measuring" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
                         <span className="tcard-top">
                           <span className="kind-label tone-info"><Newspaper aria-hidden />Content · {ORIGIN_META[i.origin].label}</span>
-                          {i.status === "afgewezen" ? <RejectedBadge /> : isNew ? <NewBadge /> : c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
+                          {i.status === "afgewezen" ? <RejectedBadge /> : isNew ? <NewBadge /> : isMeasuring ? <MeasuringBadge /> : c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
                         </span>
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
@@ -327,11 +328,12 @@ export default function TasksView() {
                   const t = en.t
                   const meta = cardMeta(t)
                   const isNew = c.id === "beoordelen" && newSinceLastVisit.has(t.key)
+                  const isMeasuring = c.id === "evalueren"
                   return (
-                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
+                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : isMeasuring ? " is-measuring" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
                       <span className="tcard-top">
                         <KindLabel signal={t.signal} />
-                        {isNew ? <NewBadge /> : c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
+                        {isNew ? <NewBadge /> : isMeasuring ? <MeasuringBadge /> : c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
                       </span>
                       <span className="tcard-title">{t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
                       <span className="tcard-sub clamp2" title={t.signal.action || t.signal.title}>{t.signal.action || t.signal.title}</span>

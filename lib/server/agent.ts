@@ -369,6 +369,48 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "contentkans_relevantie", title: "Relevantie van een contentkans beoordelen", readOnly: true,
+    description: "Haalt alles op om te beoordelen of een contentkans (nog niet geaccepteerd) het schrijven waard is: aanleiding, bron(nen) met betrouwbaarheid en datum, zoekvragen en vertoningen uit Search Console, dienst, doelgroep, regio en of de onderbouwing consistent is. Gebruik dit om kritisch te checken of het onderwerp relevant genoeg is voor Gijs (verduurzaming voor huiseigenaren in Overijssel, Gelderland, Utrecht en Flevoland) vóórdat iemand tijd steekt in schrijven. Sla je oordeel op met contentkans_relevantie_opslaan.",
+    inputSchema: { type: "object", properties: { kans: str("De id van de contentkans, of een stuk van de titel") }, required: ["kans"] },
+    run: async a => {
+      const c = await call(contentGET, `/api/content`)
+      const ideas: any[] = c.ideas || []
+      const idea = findIdea(ideas, a.kans)
+      const related = ideas.filter(i => i.id !== idea.id && i.service === idea.service && (i.status === "gepubliceerd" || i.target_page === idea.target_page)).slice(0, 5)
+      return {
+        kans: {
+          id: idea.id, titel: idea.title, status: idea.status, dienst: idea.service, advies: idea.advice, doelpagina: idea.target_page,
+          waarom_nu: idea.why_now, samenvatting: idea.summary, doelgroep: idea.audience, regio: idea.regions, impact: idea.impact,
+          score: idea.score, score_onderbouwing: idea.score_parts, bronnen: idea.sources, zoekwoorden: idea.keywords,
+          bestaand_relevantie_oordeel: idea.relevance_check || null,
+        },
+        gerelateerde_contentkansen_of_paginas: related.map((i: any) => ({ titel: i.title, status: i.status, doelpagina: i.target_page })),
+        instructie: RELEVANTIE_INSTRUCTIE,
+      }
+    },
+  },
+  {
+    name: "contentkans_relevantie_opslaan", title: "Relevantie-oordeel opslaan bij de contentkans", readOnly: false,
+    description: "Slaat je oordeel over de relevantie van een contentkans op, met een toelichting. Een medewerker ziet dit oordeel bij het beoordelen van de kans (vóór accepteren). Dit neemt de beslissing niet over: een medewerker beslist nog steeds zelf.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kans: str("De id van de contentkans"),
+        oordeel: str("Je oordeel", { enum: ["relevant", "twijfel", "niet_relevant"] }),
+        toelichting: str("Waarom dit oordeel: leg uit in een paar zinnen, concreet en onderbouwd"),
+      },
+      required: ["kans", "oordeel", "toelichting"],
+    },
+    run: async a => {
+      const c = await call(contentGET, `/api/content`)
+      const idea = findIdea(c.ideas || [], a.kans)
+      const res = await contentPATCH(new Request(`http://gijs.intern/api/content/${idea.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "relevantie", verdict: a.oordeel, reasoning: a.toelichting }) }), { params: Promise.resolve({ id: idea.id }) })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`)
+      return { ok: true, kans: idea.title, oordeel: a.oordeel, bekijken: `https://gijs-dashboard.vercel.app/content/${idea.id}` }
+    },
+  },
+  {
     name: "campagnes", title: "Offline campagnes", readOnly: true,
     description: "Offline campagnes (brieven, flyers, advertenties, informatieavonden) die zijn vastgelegd. Die verklaren bezoek en aanvragen die niet uit Google komen.",
     inputSchema: { type: "object", properties: {} },
@@ -422,6 +464,13 @@ Lever in deze vorm (Nederlands, je-vorm):
 8. Richtlijn voor lengte en toon (uit de stijlvoorbeelden als die er zijn).
 Laat de opzet eerst aan de gebruiker zien. Sla hem op met artikel_opzet_opslaan als de gebruiker akkoord is of daarom vraagt.`
 
+const RELEVANTIE_INSTRUCTIE = `Beoordeel kritisch of deze contentkans het schrijven waard is voor Gijs (verduurzamingsadvies aan huiseigenaren in Overijssel, Gelderland, Utrecht en Flevoland). Let op:
+1. Klopt de aanleiding nog, en is de bron betrouwbaar en recent genoeg?
+2. Is dit relevant voor een huiseigenaar in dit gebied, en niet te landelijk, te specifiek of te niche?
+3. Is het onderwerp al gedekt door een bestaande of eerder geschreven pagina (zie gerelateerde contentkansen of pagina's)? Zo ja, is een nieuw artikel dan nog zinvol, of is bijwerken van de bestaande pagina logischer?
+4. Is de onderbouwing (score, zoekvragen, aanleiding) consistent, of lijkt de score hoger dan de aanleiding rechtvaardigt?
+Geef een kort, concreet oordeel: relevant, twijfel, of niet_relevant, met een toelichting van een paar zinnen die de reden benoemt. Laat je oordeel eerst aan de gebruiker zien. Sla het op met contentkans_relevantie_opslaan als de gebruiker akkoord is of erom vraagt.`
+
 async function diagnose(ws: Workspace, t: Task) {
   const isSeo = !(t.signal.kind === "eigen" && t.signal.goal && t.signal.goal !== "seo")
   const raw = t.signal
@@ -447,5 +496,6 @@ Het takenbord heeft vijf kolommen: Te beoordelen → Gepland → In uitvoering �
 - Afwijzen vraagt een reden: het systeem leert daarvan.
 - Wordt er een brief, flyer of andere offline actie verstuurd? Leg die vast met "campagne_toevoegen", zodat metingen er rekening mee houden.
 - Voor een artikel: gebruik artikel_opzet om alles op te halen en maak dan een opzet met raakpunten per sectie (geen volledig artikel); sla hem op met artikel_opzet_opslaan.
+- Wordt gevraagd of een (nog niet geaccepteerde) contentkans relevant genoeg is om over te schrijven: gebruik contentkans_relevantie om alles op te halen, beoordeel kritisch en sla het oordeel op met contentkans_relevantie_opslaan.
 - De live website wordt niet via deze koppeling aangepast; teksten en titels stel je voor, de gebruiker zet ze zelf live.
 Antwoord in het Nederlands.`

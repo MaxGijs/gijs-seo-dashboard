@@ -294,6 +294,9 @@ export default function ContentView() {
         return sortDir === "desc" ? -base : base
       })
   }, [data, tab, origin, sort, sortDir])
+  // Twee rijen: nieuwe artikelen apart van het bijwerken van bestaande pagina's
+  const newArticles = useMemo(() => list.filter(i => i.advice !== "bijwerken"), [list])
+  const pageUpdates = useMemo(() => list.filter(i => i.advice === "bijwerken"), [list])
 
   return (
     <>
@@ -345,7 +348,20 @@ export default function ContentView() {
           </div>
 
           {list.length ? (
-            <div className="idea-list">{list.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
+            <>
+              <section className="content-row" aria-labelledby="row-articles">
+                <h2 className="content-row-title" id="row-articles">Artikelen<span className="chip-count">{newArticles.length}</span></h2>
+                {newArticles.length ? (
+                  <div className="idea-list">{newArticles.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
+                ) : <p className="muted small">Geen artikelen in deze lijst.</p>}
+              </section>
+              <section className="content-row" aria-labelledby="row-updates">
+                <h2 className="content-row-title" id="row-updates">Bestaande pagina's bijwerken<span className="chip-count">{pageUpdates.length}</span></h2>
+                {pageUpdates.length ? (
+                  <div className="idea-list">{pageUpdates.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
+                ) : <p className="muted small">Niets om bij te werken in deze lijst.</p>}
+              </section>
+            </>
           ) : (
             <div className="card">
               {!data.ideas.length ? (

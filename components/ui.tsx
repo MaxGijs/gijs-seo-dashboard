@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { AlertCircle, CheckCircle2, Info, Sparkle, X, XCircle } from "lucide-react"
+import { AlertCircle, CheckCircle2, Info, Loader2, Sparkle, X, XCircle } from "lucide-react"
 import type { Priority, Signal, Status, Task } from "@/lib/types"
 import { KIND_META, STATUS_META, type Tone } from "@/lib/workflow"
 import { dateShort, pos } from "@/lib/format"
@@ -24,6 +24,11 @@ export function RejectedBadge() {
 // Groen nieuw-label (takenbord): kaart die nieuw is sinds je vorige bezoek
 export function NewBadge() {
   return <span className="badge badge-new"><Sparkle aria-hidden />Nieuw</span>
+}
+
+// Blauw meet-label (takenbord): kaart staat in Evalueren en wordt nu gemeten
+export function MeasuringBadge() {
+  return <span className="badge badge-measuring"><Loader2 aria-hidden />Wordt gemeten</span>
 }
 
 export function StatusBadge({ task }: { task: Pick<Task, "status" | "snoozeUntil" | "snoozed"> }) {
