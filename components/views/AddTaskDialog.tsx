@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Plus, Search, X } from "lucide-react"
 import { useWorkspace, type NewTask } from "@/lib/workspace"
 import type { Level, Priority } from "@/lib/types"
-import { demandForTopic, placePage, queryFor, searchPages, type PlacePage } from "@/lib/places"
+import { demandForTopic, placePage, queryFor, searchPages, topicTerms, type PlacePage } from "@/lib/places"
+import type { GscRow } from "@/lib/types"
 import { normalize } from "@/lib/format"
 
 const MAX_PAGES = 25
@@ -42,7 +43,30 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
   const slugs = useMemo(() => new Set(inventory.filter(r => placePage(r.path)).map(r => r.path.split("/").filter(Boolean).pop() || "")), [inventory])
   const typed = normalize(query).trim()
   const hasPlace = typed.split(/\s+/).some(w => slugs.has(w)) || [...slugs].some(s => s.includes("-") && `-${typed.replace(/\s+/g, "-")}-`.includes(`-${s}-`))
-  const demand = useMemo(() => (goal === "seo" && typed.length >= 3 && !hasPlace ? demandForTopic(typed, keywords, inventory) : []), [goal, typed, hasPlace, keywords, inventory])
+  // Onderwerp: alle zoekwoorden met dat onderwerp uit Search Console ophalen (laatste 3 maanden), ook de long tail
+  // buiten de top 250 die het dashboard standaard laadt ("warmtepomp hardenberg" met een paar vertoningen)
+  const topicOn = goal === "seo" && typed.length >= 3 && !hasPlace
+  const [topicRows, setTopicRows] = useState<{ topic: string; rows: GscRow[] } | null>(null)
+  const [topicBusy, setTopicBusy] = useState(false)
+  const [topicErr, setTopicErr] = useState<string | null>(null)
+  useEffect(() => {
+    if (!topicOn) return
+    const terms = topicTerms(typed)
+    if (!terms.length) return
+    let stop = false
+    setTopicBusy(true); setTopicErr(null)
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/gsc?type=keywords&days=90&limit=1000&order=impressions&terms=${encodeURIComponent(terms.join(","))}`, { cache: "no-store" })
+        const j = await r.json()
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+        if (!stop) setTopicRows({ topic: typed, rows: j.rows || [] })
+      } catch (e: any) { if (!stop) setTopicErr(e.message) } finally { if (!stop) setTopicBusy(false) }
+    }, 400)
+    return () => { stop = true; clearTimeout(t) }
+  }, [topicOn, typed])
+  const topicKeywords = topicRows?.topic === typed ? topicRows.rows : keywords
+  const demand = useMemo(() => (topicOn ? demandForTopic(typed, topicKeywords, inventory) : []), [topicOn, typed, topicKeywords, inventory])
   const suggestions = useMemo(() => searchPages(pageSearch, inventory).filter(p => !pages.some(x => x.path === p.path)), [pageSearch, inventory, pages])
   const dup = (p: PlacePage) => pages.filter(x => x.label === p.label).length > 1
 
@@ -123,7 +147,7 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
             <input id="t-query" className="input" value={query} onChange={e => setQuery(e.target.value)} placeholder="warmtepomp, of: isolatie zwolle" />
             {demand.length > 0 && (
               <div className="demand-box">
-                <p className="field-hint" style={{ margin: "0 0 6px" }}>Plaatsen met zoekvraag naar „{typed}" in Search Console (laatste 28 dagen). Vink aan om toe te voegen:</p>
+                <p className="field-hint" style={{ margin: "0 0 6px" }}>Plaatsen met zoekvraag naar „{typed}" in Search Console ({topicRows?.topic === typed ? "laatste 3 maanden" : "laatste 28 dagen"}{topicBusy ? ", wordt bijgewerkt…" : ""}). Vink aan om toe te voegen:</p>
                 <ul className="demand-list">
                   {demand.slice(0, 15).flatMap(d => d.pages.map(p => {
                     const on = pages.some(x => x.path === p.path)
@@ -141,7 +165,9 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
                 </ul>
               </div>
             )}
-            {goal === "seo" && typed.length >= 3 && !hasPlace && demand.length === 0 && keywords.length > 0 && <p className="field-hint">Geen plaatsen met zoekvraag naar „{typed}" gevonden. Kies hieronder zelf de pagina's.</p>}
+            {topicOn && demand.length === 0 && topicBusy && <p className="field-hint">Zoeken in Search Console naar „{typed}"…</p>}
+            {topicOn && demand.length === 0 && !topicBusy && topicRows?.topic === typed && <p className="field-hint">Geen plaatsen met zoekvraag naar „{typed}" gevonden in de laatste 3 maanden. Kies hieronder zelf de pagina's.</p>}
+            {topicOn && topicErr && <p className="field-hint">Search Console kon niet worden doorzocht ({topicErr}); de lijst gebruikt alleen de zoekwoorden die het dashboard al had.</p>}
           </>}
 
           <label className="field-label" htmlFor="t-page">{goal === "conversie" ? "Alleen bezoekers via deze pagina's meten" : "Pagina's"} <span className="subtle">(optioneel{goal === "conversie" ? "; leeg = hele site" : ""})</span></label>

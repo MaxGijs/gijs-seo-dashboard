@@ -62,11 +62,15 @@ export function demandForTopic(topic: string, keywords: GscRow[], inventory: Pag
     const p = placePage(r.path)
     if (!p) continue
     const slug = r.path.split("/").filter(Boolean).pop()!
-    // Zelfde plaatsnaam als gemeente én plaats in dezelfde provincie: de diepste pagina
+    // Zelfde plaatsnaam als gemeente én plaats in dezelfde provincie (/nijkerk en /nijkerk/nijkerk):
+    // de pagina die Google het meest toont, bij gelijke stand de gemeentepagina
     const list = bySlug.get(slug) || []
     const sameProv = list.findIndex(x => x.path.split("/")[2] === r.path.split("/")[2])
-    if (sameProv >= 0) { if (r.path.length > list[sameProv].path.length) list[sameProv] = p }
-    else list.push(p)
+    if (sameProv >= 0) {
+      const cur = inventory.find(x => x.path === list[sameProv].path)
+      const better = r.imp_28d > (cur?.imp_28d || 0) || (r.imp_28d === (cur?.imp_28d || 0) && r.path.length < list[sameProv].path.length)
+      if (better) list[sameProv] = p
+    } else list.push(p)
     bySlug.set(slug, list)
   }
   const slugs = [...bySlug.keys()].sort((a, b) => b.length - a.length)
