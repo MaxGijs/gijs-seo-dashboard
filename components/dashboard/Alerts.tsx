@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui"
 
 interface Data { alerts: AlertRow[]; cwv: CwvRow[]; keyConfigured: boolean }
 
-function useAlerts() {
+export function useAlerts() {
   const { reloadTick } = useWorkspace()
   const [d, setD] = useState<Data | null>(null)
   const [err, setErr] = useState<string | null>(null)

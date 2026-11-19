@@ -1,0 +1,41 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Nieuwe opmaak (proef): Tailwind + shadcn/ui, alleen voor components/v2.
+   - Geen preflight (reset): bestaande pagina's veranderen niet.
+   - source(none) + @source: alleen klassen uit de nieuwe onderdelen worden gemaakt.
+   - Utilities zonder layer, zodat ze voorgaan op de globale elementregels (button, h2, a).
+   - Kleuren en vormen komen uit het GIJS Design System (app/globals.css).
+   ───────────────────────────────────────────────────────────────────────── */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" source(none);
+@source "../components/v2";
+
+@theme inline {
+  --font-sans: var(--font);
+  --color-canvas: var(--surface-canvas);
+  --color-card: var(--surface-card);
+  --color-ink: var(--text);
+  --color-heading: var(--text-heading);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-line: var(--border);
+  --color-line-soft: var(--border-subtle);
+  --color-brand: var(--green-800);
+  --color-brand-hover: var(--green-700);
+  --color-accent: var(--accent-700);
+  --color-accent-soft: var(--accent-050);
+  --color-accent-line: var(--accent-200);
+  --color-amber: var(--warning);
+  --color-amber-soft: var(--warning-bg);
+  --color-danger: var(--error);
+  --color-danger-soft: var(--error-bg);
+  --radius-panel: 14px;
+  --radius-control: 8px;
+}
+
+/* Kleine reset alleen binnen de nieuwe opmaak (geen Tailwind-preflight, zodat de rest van het dashboard ongewijzigd blijft).
+   In een laag, zodat de utility-klassen er altijd overheen gaan. */
+@layer base {
+  :where(.v2) button { border: 0; background: transparent; padding: 0; margin: 0; text-align: inherit; }
+  :where(.v2) :where(h1, h2, h3, p) { margin: 0; }
+  :where(.v2) *, :where(.v2) ::before, :where(.v2) ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: var(--border); }
+}

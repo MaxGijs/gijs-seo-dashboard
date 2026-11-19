@@ -194,6 +194,7 @@ export default function TodayView({ embedded = false }: { embedded?: boolean }) 
       <div className="page-head">
         <div>
           <h1 className="page-title">{greeting()}{first ? `, ${first}` : ""}. <span className="soft">{headline}</span></h1>
+          <p className="page-sub small"><Link href="/vandaag-nieuw">Bekijk de nieuwe opmaak (proef)</Link></p>
           <div className="context-line">
             <span>{dateLong(today())}</span>
             {!loading && overview.length > 0 && (
