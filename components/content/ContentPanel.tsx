@@ -3,6 +3,7 @@
 import Attachments from "@/components/Attachments"
 import { CONTENT_STEP } from "@/lib/content/useContent"
 import { articleVerdict } from "@/lib/content/verdict"
+import { compare, isPageUpdate, judgeUpdate, nextMilestone, OUTCOME_META, UPDATE_MILESTONES, UPDATE_RULE, type UpdatePoint } from "@/lib/content/update"
 import { ownerName } from "@/components/OwnerSelect"
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, HelpCircle, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
@@ -55,7 +56,8 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   const [briefing, setBriefing] = useState(idea.briefing || "")
   const [concept, setConcept] = useState("")
   const [final, setFinal] = useState(idea.concept_final || "")
-  const [pubUrl, setPubUrl] = useState(idea.published_url || "")
+  // Bij bijwerken staat de pagina al vast: vul de bestaande URL alvast in
+  const [pubUrl, setPubUrl] = useState(idea.published_url || (isPageUpdate(idea) && idea.target_page ? `https://www.groeninjestraat.nl${idea.target_page}` : ""))
   const [pubDate, setPubDate] = useState(idea.published_at || new Date().toISOString().slice(0, 10))
 
   useEffect(() => {
@@ -447,18 +449,20 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
               <h3 className="psec-title" id="cp-pub"><Send aria-hidden />Publicatie</h3>
               {step === 5 ? (
                 <div className="inline-form">
-                  <p style={{ fontSize: "var(--fs-sm)" }}>Het dashboard publiceert nooit zelf. Plaats het artikel op de site en leg hier vast waar en wanneer; daarna start de meting na 7, 30 en 90 dagen.</p>
+                  <p style={{ fontSize: "var(--fs-sm)" }}>{isPageUpdate(idea)
+                    ? "Het dashboard past de site nooit zelf aan. Werk de pagina bij en leg hier vast welke pagina en op welke dag de nieuwe versie live ging; daarna wordt dezelfde pagina vóór en na vergeleken (na 14, 28 en 56 dagen)."
+                    : "Het dashboard publiceert nooit zelf. Plaats het artikel op de site en leg hier vast waar en wanneer; daarna start de meting na 7, 30 en 90 dagen."}</p>
                   <div className="modal-row">
                     <div><label className="field-label" htmlFor="cp-url">URL op groeninjestraat.nl</label><input id="cp-url" className="input" style={{ width: "100%" }} value={pubUrl} onChange={e => setPubUrl(e.target.value)} placeholder="https://www.groeninjestraat.nl/kennis/…" /></div>
-                    <div><label className="field-label" htmlFor="cp-date">Publicatiedatum</label><input id="cp-date" type="date" className="input" style={{ width: "100%" }} value={pubDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setPubDate(e.target.value)} /></div>
+                    <div><label className="field-label" htmlFor="cp-date">{isPageUpdate(idea) ? "Datum dat de nieuwe versie live ging" : "Publicatiedatum"}</label><input id="cp-date" type="date" className="input" style={{ width: "100%" }} value={pubDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setPubDate(e.target.value)} /></div>
                   </div>
-                  <div className="inline-form-actions"><button className="btn btn-primary btn-sm" disabled={busy || !pubUrl} onClick={() => act({ action: "publish", url: pubUrl, date: pubDate }, "Vastgelegd als gepubliceerd; meting gestart")}>Vastleggen als gepubliceerd</button></div>
+                  <div className="inline-form-actions"><button className="btn btn-primary btn-sm" disabled={busy || !pubUrl} onClick={() => act({ action: "publish", url: pubUrl, date: pubDate }, isPageUpdate(idea) ? "Vastgelegd als bijgewerkt; voor/na-meting gestart" : "Vastgelegd als gepubliceerd; meting gestart")}>{isPageUpdate(idea) ? "Vastleggen als bijgewerkt" : "Vastleggen als gepubliceerd"}</button></div>
                 </div>
               ) : (
                 <>
                   <p style={{ fontSize: "var(--fs-sm)" }}>Gepubliceerd op {dateNl(idea.published_at)}: <a href={idea.published_url!} target="_blank" rel="noopener noreferrer">{idea.published_url!.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/, "")}</a></p>
                   <ArticleResults idea={idea} all={all} />
-                  <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>
+                  {!isPageUpdate(idea) && <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>}
                 </>
               )}
             </section>
@@ -606,6 +610,54 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
 // Resultaten per artikel: bekeken, tijd op de pagina, aanvragen (GA4) en Google (Search Console)
 const dur = (sec: number | null | undefined) => sec === null || sec === undefined ? "—" : sec < 60 ? `${sec} s` : `${Math.floor(sec / 60)} min ${String(sec % 60).padStart(2, "0")} s`
 export function ArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
+  // Bijgewerkte bestaande pagina: voor/na-experiment, geen artikeloordeel
+  if (isPageUpdate(idea)) return <UpdateResults idea={idea} />
+  return <NewArticleResults idea={idea} all={all} />
+}
+
+// Resultaat van een bijgewerkte pagina: dezelfde pagina vóór en na, gecorrigeerd voor de hele site
+export function UpdateResults({ idea }: { idea: ContentIdea }) {
+  const m = idea.evals?.update || null
+  const changedAt = idea.published_at || null
+  const j = m ? judgeUpdate(m) : null
+  const next = changedAt ? nextMilestone(m || { points: {} }, changedAt) : null
+  const cols = UPDATE_MILESTONES.map(d => ({ d, p: m?.points[`d${d}`] }))
+  const b = m?.baseline || null
+  const cmp = (p: UpdatePoint) => (b ? compare(b, p) : null)
+  const cell = (p: UpdatePoint | undefined, f: (p: UpdatePoint) => React.ReactNode) => <td className="num">{p ? f(p) : <span className="subtle">nog niet</span>}</td>
+  const leads = (g: any) => (g ? (g.measurement === "ok" ? g.requests || 0 : 0) + (g.contacts || 0) : null)
+  const label = !m?.baseline ? "Nulmeting volgt" : !j?.outcome ? "Meting loopt" : j.final ? OUTCOME_META[j.outcome].label : `Voorlopig: ${OUTCOME_META[j.outcome].label.toLowerCase()}`
+  const tone = j?.outcome && j.final ? OUTCOME_META[j.outcome].tone : "neutral"
+  return (
+    <>
+      <div className={`verdict-box tone-${tone}`}>
+        <p className="verdict-label">Werkte de aanpassing? <b>{label}</b>{j?.at ? <span className="subtle"> · na {j.at} dagen{j.final ? "" : " (eindoordeel na 56 dagen)"}</span> : null}</p>
+        {j?.reasons.length ? <ul>{j.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          : <p>{next && changedAt ? `Eerste meting op ${dateNl(next.date)} (${next.days} dagen na de aanpassing). ` : ""}Een bijgewerkte pagina meten we als experiment: dezelfde pagina vóór en na, niet vergeleken met nieuwe artikelen.</p>}
+      </div>
+      {b && (
+        <table className="ptable results-table">
+          <thead><tr><th>Per 28 dagen</th><th className="num">Ervóór</th>{cols.map(c => <th key={c.d} className="num">Na {c.d} d</th>)}</tr></thead>
+          <tbody>
+            <tr className="rt-group"><th colSpan={5}>Google: zoekwoorden van deze kans</th></tr>
+            <tr><th scope="row">Gem. positie</th><td className="num">{b.queries.position ? pos(b.queries.position) : "—"}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => <b>{p.queries.position ? pos(p.queries.position) : "—"}</b>)}</Fragment>)}</tr>
+            <tr><th scope="row">Vertoningen</th><td className="num">{num(b.queries.impressions)}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => num(cmp(p)!.qImpAfter))}</Fragment>)}</tr>
+            <tr className="rt-group"><th colSpan={5}>Google: de hele pagina</th></tr>
+            <tr><th scope="row">Klikken</th><td className="num">{num(b.page.clicks)}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => <b>{num(cmp(p)!.clicksAfter, 1)}</b>)}</Fragment>)}</tr>
+            <tr><th scope="row">Vertoningen</th><td className="num">{num(b.page.impressions)}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => num(cmp(p)!.impAfter))}</Fragment>)}</tr>
+            <tr><th scope="row">Hele site t.o.v. ervóór</th><td className="num subtle">—</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => (p.growth ? `${p.growth >= 1 ? "+" : ""}${Math.round((p.growth - 1) * 100)}%` : "—"))}</Fragment>)}</tr>
+            <tr className="rt-group"><th colSpan={5}>Bezoekers (GA4, ter informatie)</th></tr>
+            <tr><th scope="row">Bekeken</th><td className="num">{b.ga4 ? num(b.ga4.views) : "—"}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => (p.ga4 ? num(Math.round(p.ga4.views * 28 / p.window.days)) : "—"))}</Fragment>)}</tr>
+            <tr><th scope="row">Aanvragen via de pagina <span className="subtle">(geteld, niet omgerekend)</span></th><td className="num">{leads(b.ga4) ?? "—"}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => leads(p.ga4) ?? "—")}</Fragment>)}</tr>
+          </tbody>
+        </table>
+      )}
+      <p className="field-hint"><BarChart3 aria-hidden style={{ width: 12, height: 12, verticalAlign: -1 }} /> Gemeten op {m?.page || idea.target_page || "de pagina"}{m?.queries.length ? `, zoekwoorden: ${m.queries.slice(0, 5).map(q => `"${q}"`).join(", ")}${m.queries.length > 5 ? ` en ${m.queries.length - 5} meer` : ""}` : ""}. Ervóór = de 28 dagen vóór de aanpassing; na 14 dagen telt de eerste 14 dagen, daarna steeds de laatste 28 dagen. Klikken en vertoningen zijn omgerekend naar 28 dagen en gecorrigeerd voor groei of krimp van de hele site. {UPDATE_RULE}</p>
+    </>
+  )
+}
+
+function NewArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
   const v = articleVerdict(idea, all)
   const keys = ["d7", "d30", "d90"] as const
   const ev = idea.evals || {}

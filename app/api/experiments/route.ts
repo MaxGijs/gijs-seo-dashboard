@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
+import { updateTry } from "@/lib/content/update"
+import type { RouteTry } from "@/lib/routes"
 
 // GET /api/experiments — gelogde experimenten (optioneel gefilterd op advice_key)
 export async function GET(request: Request) {
@@ -19,7 +21,13 @@ export async function GET(request: Request) {
 
     const { data, error } = await query
     if (error) throw error
-    return NextResponse.json({ rows: data || [] })
+    // Bijgewerkte pagina's uit Content tellen mee in het route-geheugen per pagina (geen eigen experimentregel)
+    let contentTries: RouteTry[] = []
+    if (!adviceKey) {
+      const { data: ideas } = await getSupabase().from("content_ideas").select("id, title, advice, status, published_at, evals").eq("advice", "bijwerken").eq("status", "gepubliceerd")
+      contentTries = (ideas || []).map(i => updateTry(i as any)).filter((t): t is RouteTry => !!t)
+    }
+    return NextResponse.json({ rows: data || [], contentTries })
   } catch (err: any) {
     return NextResponse.json({ error: err.message, rows: [] }, { status: 500 })
   }

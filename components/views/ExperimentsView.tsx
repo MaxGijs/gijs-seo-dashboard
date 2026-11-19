@@ -110,7 +110,7 @@ function ContentExperiments() {
       <EmptyState
         icon={<Newspaper />}
         title="Nog geen gepubliceerde content"
-        text="Zodra een artikel of contentkans als gepubliceerd wordt vastgelegd, verschijnt het hier en meet het dashboard automatisch na 7, 30 en 90 dagen hoe het presteert."
+        text="Zodra een artikel of contentkans als gepubliceerd wordt vastgelegd, verschijnt het hier en meet het dashboard automatisch hoe het presteert: een nieuw artikel na 7, 30 en 90 dagen, een bijgewerkte pagina vóór en na de aanpassing (14, 28 en 56 dagen)."
         action={<Link href="/content" className="btn btn-secondary btn-sm">Naar Content</Link>}
       />
     </div>
@@ -121,7 +121,7 @@ function ContentExperiments() {
         <div className="card card-pad" key={idea.id}>
           <div className="meta-line" style={{ marginBottom: 6, justifyContent: "space-between" }}>
             <Link href={`/content/${idea.id}?van=experimenten`} className="exp-title" style={{ textDecoration: "none" }}>{idea.title}</Link>
-            <span className="meta-line"><CalendarClock aria-hidden />Gepubliceerd op {dateLong(idea.published_at!)}</span>
+            <span className="meta-line"><CalendarClock aria-hidden />{idea.advice === "bijwerken" ? "Pagina bijgewerkt op" : "Gepubliceerd op"} {dateLong(idea.published_at!)}</span>
           </div>
           <ArticleResults idea={idea} all={ideas} />
         </div>

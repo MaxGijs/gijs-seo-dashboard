@@ -1,3 +1,4 @@
+import type { UpdateMeasure } from "./update"
 // Content Intelligence — gedeelde typen en regels (puur, zonder serveraanroepen).
 //
 // Het dashboard bepaalt met vaste, uitlegbare regels wanneer er een artikel nodig is:
@@ -89,7 +90,8 @@ export interface ContentIdea {
   relevance_check?: { verdict: "relevant" | "twijfel" | "niet_relevant"; reasoning: string; at: string; by: string } | null
   published_url: string | null
   published_at: string | null
-  evals: Partial<Record<"d7" | "d30" | "d90", Eval>>
+  // Nieuwe artikelen: 7, 30 en 90 dagen. Bijgewerkte bestaande pagina's: evals.update (voor/na-experiment)
+  evals: Partial<Record<"d7" | "d30" | "d90", Eval>> & { update?: UpdateMeasure | null }
   owner?: string | null
   original: any
 }

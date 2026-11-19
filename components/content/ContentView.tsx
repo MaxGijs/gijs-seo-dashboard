@@ -77,7 +77,7 @@ function IdeaCard({ idea, onOpen }: { idea: ContentIdea; onOpen: () => void }) {
   const src = newestSource(idea)
   const production = STATUS_META[idea.status].step > 0
   return (
-    <button className="card idea-card" onClick={onOpen}>
+    <button className={`card idea-card${idea.note ? " has-note" : ""}`} onClick={onOpen} title={idea.title}>
       <span className={`idea-score score-${scoreTone(s)}`} title={idea.score_override !== null ? `Score aangepast door een medewerker (berekend: ${idea.score})` : "Score van 0 tot 100"}>
         <strong>{s}</strong><small>{idea.score_override !== null ? "aangepast" : "score"}</small>
       </span>
@@ -141,7 +141,8 @@ function Capacity({ data, onSaved }: { data: ContentData; onSaved: () => void })
 
 // Wat werkt? Vergelijking van gepubliceerde content per invalshoek en vorm (30-dagenmeting)
 function WhatWorks({ ideas }: { ideas: ContentIdea[] }) {
-  const measured = ideas.filter(i => i.status === "gepubliceerd" && i.evals?.d30)
+  // Alleen nieuwe artikelen; bijgewerkte pagina's worden apart gemeten (voor/na op dezelfde pagina)
+  const measured = ideas.filter(i => i.status === "gepubliceerd" && i.advice !== "bijwerken" && i.evals?.d30)
   const group = (key: (i: ContentIdea) => string | null) => {
     const m = new Map<string, ContentIdea[]>()
     measured.forEach(i => { const k = key(i); if (k) m.set(k, [...(m.get(k) || []), i]) })
@@ -155,7 +156,6 @@ function WhatWorks({ ideas }: { ideas: ContentIdea[] }) {
     ...group(i => (i.format ? `Vorm: ${i.format.toLowerCase()}` : null)),
     ...group(i => (i.shelf_life === "actueel" ? "Nieuws (actueel)" : "Evergreen")),
     ...group(i => (i.regions.length ? "Lokaal of regionaal" : "Landelijk")),
-    ...group(i => (i.advice === "bijwerken" ? "Bestaande pagina bijgewerkt" : "Nieuw artikel")),
   ]
   return (
     <section className="card" aria-labelledby="works-title">

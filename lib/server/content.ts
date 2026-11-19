@@ -6,7 +6,10 @@
 import { addDaysIso, articleGa4 } from "./conversion"
 import { getSupabase } from "./guard"
 import { type Item, parseMilieuCentraal, parseRss } from "@/lib/content/parse"
-import { gscQuery, serviceSearchConsole, toPath } from "./gsc"
+import { gscQuery, serviceSearchConsole, SITE_ORIGIN, toPath } from "./gsc"
+import { describe, overlaps, type Campaign } from "@/lib/campaigns"
+import { LAUNCH_DATES } from "@/lib/pages"
+import { baselineWindow, compare, isPageUpdate, judgeUpdate, pointWindow, UPDATE_MILESTONES, updateQueries, type SearchTotals, type UpdateMeasure, type UpdateSnapshot } from "@/lib/content/update"
 import {
   type CapacityMode, type ContentIdea, type Impact, type KeywordRef, type Reliability, type SourceRef,
   impactOf, isForHouseholds, jaccard, relevanceOf, regionsIn, reliabilityOf, SCAN_SERVICE, servicesIn, tokens,
@@ -329,11 +332,21 @@ const WINDOWS = [["d7", 7], ["d30", 30], ["d90", 90]] as const
 
 export async function evaluatePublished() {
   const sb = getSupabase()
-  const { data } = await sb.from("content_ideas").select("id, published_url, published_at, evals").eq("status", "gepubliceerd").not("published_url", "is", null).not("published_at", "is", null)
+  const { data } = await sb.from("content_ideas").select("id, published_url, published_at, evals, advice, keywords, target_page").eq("status", "gepubliceerd").not("published_at", "is", null)
   const sc = serviceSearchConsole()
   const lastComplete = new Date(Date.now() - 3 * dayMs)
-  let measured = 0
+  let measured = 0, updates = 0
+  let campaigns: Campaign[] | null = null
   for (const idea of data || []) {
+    // Bijgewerkte bestaande pagina: voor/na-experiment op dezelfde pagina (14, 28, 56 dagen)
+    if (isPageUpdate(idea)) {
+      if (!idea.published_url && !idea.target_page) continue
+      if (campaigns === null) { const { data: c } = await sb.from("seo_campaigns").select("*"); campaigns = (c || []) as Campaign[] }
+      const next = await measureUpdate(sc, idea, lastComplete.toISOString().slice(0, 10), campaigns)
+      if (next) { await sb.from("content_ideas").update({ evals: { ...(idea.evals || {}), update: next } }).eq("id", idea.id); updates++ }
+      continue
+    }
+    if (!idea.published_url) continue
     const evals = { ...(idea.evals || {}) }
     const start = new Date(idea.published_at + "T00:00:00Z")
     let changed = false
@@ -367,5 +380,77 @@ export async function evaluatePublished() {
     }
     if (changed) await sb.from("content_ideas").update({ evals }).eq("id", idea.id)
   }
-  return { gepubliceerd: data?.length ?? 0, metingen: measured }
+  return { gepubliceerd: data?.length ?? 0, metingen: measured, paginaUpdates: updates }
+}
+
+// ── Bijgewerkte pagina's: voor/na-meting ──────────────────────────────────────
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+async function searchSnapshot(sc: ReturnType<typeof serviceSearchConsole>, path: string, queries: string[], w: { start: string; end: string; days: number }): Promise<Omit<UpdateSnapshot, "ga4" | "ga4Error">> {
+  // Met en zonder slash aan het eind; nooit andere pagina's die met hetzelfde pad beginnen
+  const pageF = { dimension: "page", operator: "includingRegex", expression: `^${escapeRe(SITE_ORIGIN + (path.replace(/\/$/, "") || ""))}/?$` }
+  const range = { startDate: w.start, endDate: w.end }
+  const [pageRows, qRows, siteRows] = await Promise.all([
+    gscQuery(sc, { ...range, dimensions: ["page"], dimensionFilterGroups: [{ filters: [pageF] }], rowLimit: 10 }),
+    queries.length ? gscQuery(sc, { ...range, dimensions: ["query"], dimensionFilterGroups: [{ filters: [pageF] }], rowLimit: 5000 }) : Promise.resolve([]),
+    gscQuery(sc, { ...range, dimensions: ["date"], rowLimit: 100 }),
+  ])
+  const total = (rows: { impressions: number; clicks: number; position: number }[]): SearchTotals => {
+    const impressions = rows.reduce((s, r) => s + r.impressions, 0), clicks = rows.reduce((s, r) => s + r.clicks, 0)
+    return { impressions, clicks, position: impressions ? Math.round((rows.reduce((s, r) => s + r.position * r.impressions, 0) / impressions) * 10) / 10 : null }
+  }
+  const wanted = new Set(queries)
+  const siteImp = siteRows.reduce((s, r) => s + r.impressions, 0)
+  return {
+    window: w,
+    page: total(pageRows),
+    queries: total(qRows.filter(r => wanted.has(String(r.keys[0]).toLowerCase().trim()))),
+    siteImpressionsPerDay: siteRows.length ? Math.round(siteImp / siteRows.length) : null,
+  }
+}
+
+async function withGa4<T extends object>(path: string, w: { start: string; end: string }, snap: T): Promise<T & { ga4?: any; ga4Error?: string }> {
+  try { return { ...snap, ga4: await articleGa4(path, w.start, w.end) } }
+  catch (e: any) { return { ...snap, ga4: null, ga4Error: String(e?.message || e).slice(0, 200) } }
+}
+
+// Meet wat er nog te meten valt; geeft de bijgewerkte meting terug (of null als er niets veranderde)
+export async function measureUpdate(sc: ReturnType<typeof serviceSearchConsole>, idea: any, lastComplete: string, campaigns: Campaign[]): Promise<UpdateMeasure | null> {
+  const changedAt = String(idea.published_at).slice(0, 10)
+  const path = toPath(idea.published_url || idea.target_page)
+  const prev: UpdateMeasure | undefined = idea.evals?.update || undefined
+  const m: UpdateMeasure = prev && prev.page === path && prev.changed_at === changedAt
+    ? { ...prev, points: { ...prev.points } }
+    : { page: path, queries: updateQueries(idea.keywords), changed_at: changedAt, baseline: null, points: {}, outcome: null }
+  if (m.outcome) return null
+  // Nieuwe meting (of de pagina/datum is gewijzigd en we beginnen opnieuw)
+  let changed = !prev || prev.page !== path || prev.changed_at !== changedAt
+  if (!m.baseline) {
+    const w = baselineWindow(changedAt)
+    m.baseline = await withGa4(path, w, await searchSnapshot(sc, path, m.queries, w))
+    changed = true
+  }
+  for (const days of UPDATE_MILESTONES) {
+    const key = `d${days}` as const
+    if (m.points[key]) continue
+    const w = pointWindow(changedAt, days)
+    if (w.end > lastComplete) break
+    const snap = await withGa4(path, w, await searchSnapshot(sc, path, m.queries, w))
+    const b = m.baseline!.siteImpressionsPerDay
+    const growth = b && snap.siteImpressionsPerDay ? Math.round((snap.siteImpressionsPerDay / b) * 100) / 100 : null
+    const confounders: string[] = []
+    for (const [prov, date] of Object.entries(LAUNCH_DATES)) if (date >= m.baseline!.window.start && date <= w.end) confounders.push(`Provincie ${prov} gelanceerd op ${date}`)
+    for (const c of campaigns) if (overlaps(c, m.baseline!.window.start, w.end)) confounders.push(describe(c))
+    m.points[key] = { ...snap, days, measured_at: new Date().toISOString(), growth, confounders }
+    m.measured_at = new Date().toISOString()
+    changed = true
+  }
+  const j = judgeUpdate(m)
+  if (j.final && j.outcome) {
+    m.outcome = j.outcome
+    m.evidence = compare(m.baseline!, m.points.d56!).enough ? "telt mee" : "te weinig data"
+    changed = true
+  }
+  return changed ? m : null
 }

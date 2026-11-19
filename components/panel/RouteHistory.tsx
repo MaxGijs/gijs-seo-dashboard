@@ -11,8 +11,8 @@ const OUTCOME: Record<string, { label: string; cls: string }> = {
 
 // Wegen naar dezelfde pagina of hetzelfde zoekwoord: wat is al geprobeerd en wat leverde het op?
 export default function RouteHistory({ taskKey, page, query, routeNote }: { taskKey: string; page: string | null; query?: string | null; routeNote?: string }) {
-  const { experiments } = useWorkspace()
-  const tries = triesFor(toTries(experiments).filter(t => t.key !== taskKey), { page, query })
+  const { experiments, contentTries } = useWorkspace()
+  const tries = triesFor([...toTries(experiments), ...(contentTries || [])].filter(t => t.key !== taskKey), { page, query })
   if (!tries.length && !routeNote) return null
   return (
     <section className="psec" aria-labelledby="sec-routes">

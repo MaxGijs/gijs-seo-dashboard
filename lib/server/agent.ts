@@ -70,7 +70,7 @@ async function loadWorkspace(): Promise<Workspace> {
   const records: AdviceRecord[] = adv.rows || [], experiments: Experiment[] = exp.rows || []
   const ctrModel = buildCtrModel(keywords)
   const checks = chk?.rows || []
-  const signals = signalsFrom({ keywords, prevKeywords: prevKw.rows || [], pages, streaks: tr?.rows || [], inventory: inv?.rows || [], ga4Pages: ga?.rows || null, records, lessons: les?.lessons || [], checks, experiments }, ctrModel)
+  const signals = signalsFrom({ keywords, prevKeywords: prevKw.rows || [], pages, streaks: tr?.rows || [], inventory: inv?.rows || [], ga4Pages: ga?.rows || null, records, lessons: les?.lessons || [], checks, experiments, contentTries: exp.contentTries || [] }, ctrModel)
   const ws: Workspace = {
     keywords, pages, overview: ov.rows || [], listWindow: kw.startDate && kw.endDate ? { startDate: kw.startDate, endDate: kw.endDate } : null,
     tasks: mergeTasks(signals, records, experiments), signals, records, experiments,

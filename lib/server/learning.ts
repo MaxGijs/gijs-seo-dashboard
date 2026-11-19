@@ -9,7 +9,7 @@ export async function recomputeLessons(by = "systeem") {
   const [{ data: exps }, { data: statuses }, { data: ideas }, { data: existing }] = await Promise.all([
     sb.from("seo_experiments").select("advice_key, description, outcome, query, page, baseline"),
     sb.from("seo_advice_status").select("advice_key, status, note, snapshot"),
-    sb.from("content_ideas").select("id, title, service, origin, status, feedback, format, evals, text_check"),
+    sb.from("content_ideas").select("id, title, service, origin, status, feedback, format, evals, text_check, advice"),
     sb.from("seo_lessons").select("*"),
   ])
   const snap = new Map((statuses || []).map(s => [s.advice_key, s.snapshot]))
@@ -23,7 +23,17 @@ export async function recomputeLessons(by = "systeem") {
     }
   })
   const decisions: DecisionFact[] = (statuses || []).filter(s => s.snapshot?.kind).map(s => ({ kind: s.snapshot.kind, intent: s.snapshot.intent, status: s.status, note: s.note }))
-  const content: ContentFact[] = (ideas || []).map(i => ({ id: i.id, title: i.title, service: i.service, origin: i.origin, status: i.status, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, views30: i.evals?.d30?.ga4?.views ?? null, leads30: i.evals?.d30?.ga4 ? (i.evals.d30.ga4.measurement === "ok" ? i.evals.d30.ga4.requests ?? 0 : 0) + (i.evals.d30.ga4.contacts ?? 0) : null, engagement30: i.evals?.d30?.ga4?.engagementSec ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
+  // Bijgewerkte bestaande pagina's met een afgeronde voor/na-meting tellen mee als meting van de route "inhoud"
+  for (const i of ideas || []) {
+    const u = i.advice === "bijwerken" ? i.evals?.update : null
+    if (!u?.outcome || u.evidence !== "telt mee") continue
+    experiments.push({
+      outcome: u.outcome,
+      features: { ...featuresOf({ position: u.baseline?.queries?.position ?? null, page: u.page, action: "inhoud uitbreiden" }), action: "inhoud" },
+      label: `${u.page}: pagina bijgewerkt (contentkans "${i.title}")`.slice(0, 160),
+    })
+  }
+  const content: ContentFact[] = (ideas || []).map(i => ({ id: i.id, title: i.title, service: i.service, origin: i.origin, status: i.status, advice: i.advice, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, views30: i.evals?.d30?.ga4?.views ?? null, leads30: i.evals?.d30?.ga4 ? (i.evals.d30.ga4.measurement === "ok" ? i.evals.d30.ga4.requests ?? 0 : 0) + (i.evals.d30.ga4.contacts ?? 0) : null, engagement30: i.evals?.d30?.ga4?.engagementSec ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
 
   const drafts = computeLessons({ experiments, decisions, content })
   const old = new Map<string, any>((existing || []).map(l => [l.key, l]))

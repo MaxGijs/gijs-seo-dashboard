@@ -658,6 +658,17 @@ img, svg { display: block; max-width: 100%; }
 .score-inline { display: inline-flex; min-width: 30px; justify-content: center; padding: 1px 7px; border-radius: 7px; }
 .idea-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .idea-tags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* Kaarten in de lijst: allemaal even groot, net als op het takenbord (vaste regels per onderdeel) */
+.idea-list .idea-card { height: 212px; overflow: hidden; }
+.idea-list .idea-main { height: 100%; overflow: hidden; }
+.idea-list .idea-tags { flex-wrap: nowrap; overflow: hidden; flex: none; -webkit-mask-image: linear-gradient(to right, #000 88%, transparent); mask-image: linear-gradient(to right, #000 88%, transparent); }
+.idea-list .idea-tags > * { flex: none; white-space: nowrap; }
+.idea-list .idea-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: none; }
+.idea-list .idea-why { line-height: 1.5; flex: none; }
+.idea-list .idea-card.has-note .idea-why { -webkit-line-clamp: 1; }
+.idea-list .idea-card .tcard-note { flex: none; white-space: nowrap; overflow: hidden; }
+.idea-list .idea-card .tcard-note span { overflow: hidden; text-overflow: ellipsis; }
+.idea-list .idea-meta { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; margin-top: auto; flex: none; -webkit-mask-image: linear-gradient(to right, #000 88%, transparent); mask-image: linear-gradient(to right, #000 88%, transparent); }
 .idea-origin { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); font-weight: 700; color: var(--accent-800); margin-right: 4px; }
 .idea-origin svg { width: 14px; height: 14px; }
 .idea-title { font-weight: 700; color: var(--green-800); font-size: var(--fs-md); line-height: 1.35; }

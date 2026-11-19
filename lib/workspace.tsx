@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AdviceDetail, AdviceRecord, DataCheck, Experiment, GscRow, Level, Priority, Signal, Status, Streak, Task } from "./types"
+import type { RouteTry } from "./routes"
 import { buildCtrModel, type CtrModel } from "./ctr"
 import { buildAdhocSignal, signalKey, toPath } from "./signals"
 import { isVisible, mergeTasks } from "./workflow"
@@ -99,6 +100,7 @@ interface WorkspaceValue {
   tasks: Task[]
   visibleTasks: Task[]
   experiments: Experiment[]
+  contentTries: RouteTry[]          // bijgewerkte pagina's uit Content, voor "Eerder geprobeerd"
   newSinceLastVisit: Set<string>
   lastVisit: string | null
   // acties
@@ -159,6 +161,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [listWindow, setListWindow] = useState<{ startDate: string; endDate: string } | null>(null)
   const [records, setRecords] = useState<AdviceRecord[]>([])
   const [experiments, setExperiments] = useState<Experiment[]>([])
+  const [contentTries, setContentTries] = useState<RouteTry[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [checks, setChecks] = useState<DataCheck[]>([])
   const [users, setUsers] = useState<{ email: string; name: string | null; image: string | null }[]>([])
@@ -221,6 +224,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
         setStreaks(tr.status === "fulfilled" ? tr.value.rows || [] : [])
         setRecords(adv.status === "fulfilled" ? adv.value.rows || [] : [])
         setExperiments(exp.status === "fulfilled" ? exp.value.rows || [] : [])
+        setContentTries(exp.status === "fulfilled" ? exp.value.contentTries || [] : [])
         setLessons(les.status === "fulfilled" ? les.value.lessons || [] : [])
         setChecks(chk.status === "fulfilled" ? chk.value.rows || [] : [])
         if (us.status === "fulfilled") { setUsers(us.value.rows || []); setMe(us.value.me || null) }
@@ -241,9 +245,9 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const signals = useMemo(
     () => {
       if (loading) return []
-      return signalsFrom({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, lessons, checks, experiments }, ctrModel)
+      return signalsFrom({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, lessons, checks, experiments, contentTries }, ctrModel)
     },
-    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments]
+    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments, contentTries]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks])
@@ -489,7 +493,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     user,
     loading, error, authError, storageError,
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
-    ctrModel, signals, tasks, visibleTasks, experiments,
+    ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
     setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, openTask, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,

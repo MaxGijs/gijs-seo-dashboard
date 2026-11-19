@@ -6,7 +6,7 @@ export type ArticleVerdict = { label: "Werkt" | "Werkt matig" | "Werkt (nog) nie
 
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0 }
 
-export function articleVerdict(idea: Pick<ContentIdea, "id" | "evals">, all: Pick<ContentIdea, "id" | "status" | "evals">[]): ArticleVerdict {
+export function articleVerdict(idea: Pick<ContentIdea, "id" | "evals">, all: (Pick<ContentIdea, "id" | "status" | "evals"> & { advice?: ContentIdea["advice"] })[]): ArticleVerdict {
   const key = idea.evals?.d90?.ga4 ? "d90" : idea.evals?.d30?.ga4 ? "d30" : null
   if (!key) return { label: "Nog te vroeg", tone: "neutral", window: null, reasons: ["Het eerste oordeel volgt na 30 dagen: dan is er genoeg bezoek om iets te zeggen."] }
   const e = idea.evals[key] as Eval, g = e.ga4!
@@ -15,7 +15,8 @@ export function articleVerdict(idea: Pick<ContentIdea, "id" | "evals">, all: Pic
   const leadsOk = g.measurement === "ok"
   const leads = (leadsOk ? g.requests || 0 : 0) + (g.contacts || 0)
   // Vergelijk met andere artikelen in dezelfde meetperiode
-  const others = all.filter(o => o.id !== idea.id && o.status === "gepubliceerd" && o.evals?.[key]?.ga4).map(o => o.evals[key]!.ga4!.views)
+  // Alleen nieuwe artikelen: een bijgewerkte pagina had al bezoek en zou het gemiddelde scheeftrekken
+  const others = all.filter(o => o.id !== idea.id && o.status === "gepubliceerd" && o.advice !== "bijwerken" && o.evals?.[key]?.ga4).map(o => o.evals[key]!.ga4!.views)
   const med = others.length >= 3 ? median(others) : null
   let score = 0
   if (leads > 0) { score += 2; reasons.push(`${leads} ${leads === 1 ? "aanvraag" : "aanvragen"} van mensen die via dit artikel binnenkwamen (${g.requests ?? 0} energiescan, ${g.contacts ?? 0} contact) in ${days} dagen.`) }

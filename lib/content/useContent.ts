@@ -23,13 +23,15 @@ export function useContentIdeas() {
 }
 
 // Waar een contentkans op het takenbord staat
-export function contentColumn(i: Pick<ContentIdea, "status" | "evals">): ColumnId | null {
+export function contentColumn(i: Pick<ContentIdea, "status" | "evals"> & { advice?: ContentIdea["advice"] }): ColumnId | null {
   const s: IdeaStatus = i.status
   if (s === "nieuw" || s === "later") return "beoordelen"
   if (s === "geaccepteerd" || s === "briefing") return "gepland"
   if (s === "concept") return "uitvoering"
   // Ingeleverd en in beoordeling, goedgekeurd (wacht op publicatie) en gepubliceerd (wordt gemeten)
   if (s === "review" || s === "goedgekeurd") return "evalueren"
+  // Bijgewerkte bestaande pagina: klaar na het eindoordeel van de voor/na-meting (56 dagen)
+  if (s === "gepubliceerd" && i.advice === "bijwerken") return i.evals?.update?.outcome ? "afgerond" : "evalueren"
   if (s === "gepubliceerd") return i.evals?.d90 ? "afgerond" : "evalueren"
   if (s === "afgewezen") return "afgerond"
   return null // verlopen: niet op het bord

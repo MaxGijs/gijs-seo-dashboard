@@ -6,11 +6,12 @@ import type { Lesson } from "./learning"
 import type { CtrModel } from "./ctr"
 import { buildSignals } from "./signals"
 import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
-import { toTries } from "./routes"
+import { toTries, type RouteTry } from "./routes"
 
 export interface TaskInputs {
   keywords: GscRow[]; prevKeywords: GscRow[]; pages: GscRow[]; streaks: Streak[]
   inventory: PageRow[]; ga4Pages: any[] | null; records: AdviceRecord[]; lessons: Lesson[]; checks: DataCheck[]; experiments: Experiment[]
+  contentTries?: RouteTry[]   // bijgewerkte pagina's uit Content (route "inhoud")
 }
 
 export function signalsFrom(d: TaskInputs, ctrModel: CtrModel): Signal[] {
@@ -19,7 +20,7 @@ export function signalsFrom(d: TaskInputs, ctrModel: CtrModel): Signal[] {
     .map(r => ({ key: r.advice_key, kind: r.snapshot!.kind, intent: r.snapshot!.intent }))
     // Teruggedraaide afwijzingslessen: die afwijzingen tellen niet meer mee voor de prioriteit
     .filter(f => !d.lessons.some(l => l.status === "teruggedraaid" && l.effect?.type === "afwijzing" && l.effect.match?.kind === f.kind && (l.effect.match?.intent ?? undefined) === (l.effect.match?.intent ? f.intent : undefined)))
-  return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: toTries(d.experiments) }, ctrModel)
+  return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: [...toTries(d.experiments), ...(d.contentTries || [])] }, ctrModel)
 }
 
 export function sortByPriority(a: Task, b: Task) {

@@ -129,6 +129,7 @@ const factorNl = (f: number) => f.toFixed(2).replace(/0$/, "").replace(".", ",")
 export interface ExperimentFact { outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | null; features: Features; label: string }
 export interface DecisionFact { kind: string; intent?: string; status: string; note?: string | null }
 export interface ContentFact { id?: string; title?: string; service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null
+  advice?: string | null   // "bijwerken" = bestaande pagina; telt niet mee in vergelijkingen tussen artikelen
   views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 30 dagen
   // Kenmerken van de eigen tekst (uit de ingeleverde PDF/Word)
   text?: { words: number; lengthBucket: "kort" | "middel" | "lang"; readable: boolean; kwIntro: boolean | null; kwCoverage: number | null; cta: boolean } | null }
@@ -229,7 +230,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       effect: { type: "content-afwijzing", factor, service: service === "-" ? null : service, origin, text: `Nieuwe kansen van deze soort krijgen een lagere score (nu ×${factorNl(factor)}).` },
     })
   }
-  const measured = input.content.filter(c => c.status === "gepubliceerd" && c.clicks30 !== null && c.clicks30 !== undefined)
+  const measured = input.content.filter(c => c.status === "gepubliceerd" && c.advice !== "bijwerken" && c.clicks30 !== null && c.clicks30 !== undefined)
   const byFormat = new Map<string, ContentFact[]>()
   for (const c of measured) if (c.format) byFormat.set(c.format, [...(byFormat.get(c.format) || []), c])
   const avgAll = measured.length ? measured.reduce((s, c) => s + (c.clicks30 || 0), 0) / measured.length : 0
@@ -258,7 +259,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
     { key: "b1", label: v => v === "ja" ? "Artikelen op B1-niveau (korte zinnen)" : "Artikelen met lange zinnen", value: c => c.text!.readable ? "ja" : "nee" },
   ]
   for (const m of METRICS) {
-    const withText = input.content.filter(c => c.status === "gepubliceerd" && c.text && m.get(c) !== null)
+    const withText = input.content.filter(c => c.status === "gepubliceerd" && c.advice !== "bijwerken" && c.text && m.get(c) !== null)
     if (withText.length < m.min) continue
     const avgT = withText.reduce((s, c) => s + (m.get(c) || 0), 0) / withText.length
     if (!avgT) continue

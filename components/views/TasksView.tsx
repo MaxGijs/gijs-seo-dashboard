@@ -12,6 +12,7 @@ import AddTaskDialog from "./AddTaskDialog"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
+import { isPageUpdate, nextMilestone } from "@/lib/content/update"
 import { Breakable, EmptyState, IntentBadge, KindLabel, MeasuringBadge, NewBadge, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
 
 // Contentkansen hebben geen eigen "sinds je vorige bezoek"-mechanisme zoals SEO-signalen;
@@ -56,6 +57,11 @@ const PRIO_RANK: Record<Priority, number> = { hoog: 0, middel: 1, laag: 2 }
 function contentMeta(i: ContentIdea, col: ColumnId) {
   if (col === "beoordelen") return { icon: <TrendingUp aria-hidden />, text: `Score ${effectiveScore(i)}` }
   if (col === "evalueren" && i.status !== "gepubliceerd") return { icon: <ClipboardCheck aria-hidden />, text: i.status === "goedgekeurd" ? "Goedgekeurd: publiceren" : "Ingeleverd: beoordelen" }
+  if (col === "evalueren" && isPageUpdate(i)) {
+    if (!i.published_at) return { icon: <CalendarClock aria-hidden />, text: "Wordt gemeten" }
+    const n = nextMilestone(i.evals?.update || { points: {} }, i.published_at)
+    return { icon: <CalendarClock aria-hidden />, text: n ? `${n.days}-dagenmeting ${dateShort(n.date)}` : "Eindoordeel volgt" }
+  }
   if (col === "evalueren") {
     const next = !i.evals?.d7 ? 7 : !i.evals?.d30 ? 30 : 90
     return { icon: <CalendarClock aria-hidden />, text: i.published_at ? `${next}-dagenmeting ${dateShort(addDays(i.published_at, next))}` : "Wordt gemeten" }
