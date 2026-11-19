@@ -104,13 +104,20 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
     } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
   }
   // Opdracht voor Claude: kritisch checken of deze (nog niet geaccepteerde) kans relevant genoeg is
+  // Alleen kopiëren (geen Claude-tabblad openen); lukt kopiëren niet, dan tonen we de prompt om zelf te kopiëren
+  const [relevanceCopied, setRelevanceCopied] = useState(false)
+  const [relevancePrompt, setRelevancePrompt] = useState<string | null>(null)
   const askRelevance = async () => {
     const prompt = `Gebruik de Gijs-koppeling. Haal met contentkans_relevantie alles op voor contentkans ${idea.id} ("${idea.title}") en beoordeel kritisch of dit relevant genoeg is om over te schrijven. Laat je oordeel eerst aan mij zien en sla het daarna op met contentkans_relevantie_opslaan.`
     try {
       await navigator.clipboard.writeText(prompt)
-      window.open("https://claude.ai/new", "_blank", "noopener")
-      toast("Opdracht gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
-    } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
+      setRelevancePrompt(null)
+      setRelevanceCopied(true)
+      setTimeout(() => setRelevanceCopied(false), 2500)
+      toast("Prompt gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
+    } catch {
+      setRelevancePrompt(prompt)
+    }
   }
   const copyBriefing = async () => {
     try {
@@ -213,15 +220,21 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                   </div>
                   <p className="field-hint">{idea.relevance_check.by} · dit neemt de beslissing niet over, jij beoordeelt nog steeds zelf.</p>
                   <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={askRelevance}><HelpCircle aria-hidden />Opnieuw vragen</button>
+                    <button className="btn btn-ghost btn-sm" onClick={askRelevance}>{relevanceCopied ? <><Check aria-hidden />Prompt gekopieerd</> : <><Copy aria-hidden />Prompt opnieuw kopiëren</>}</button>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Laat Claude kritisch checken of dit onderwerp relevant genoeg is om over te schrijven, voordat je tijd in schrijven steekt: klopt de aanleiding nog, past het bij Gijs' doelgroep, en bestaat er al een pagina over? Claude haalt via de Gijs-koppeling zelf alle gegevens op.</p>
-                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={askRelevance}><HelpCircle aria-hidden />Vraag Claude of dit relevant is</button>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Laat Claude kritisch checken of dit onderwerp relevant genoeg is om over te schrijven, voordat je tijd in schrijven steekt: klopt de aanleiding nog, past het bij Gijs' doelgroep, en bestaat er al een pagina over? Kopieer de prompt en plak hem in Claude; Claude haalt via de Gijs-koppeling zelf alle gegevens op.</p>
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={askRelevance}>{relevanceCopied ? <><Check aria-hidden />Prompt gekopieerd</> : <><Copy aria-hidden />Vraag Claude of dit relevant is</>}</button>
                   <p className="field-hint">Werkt met de Claude-koppeling (connector "Gijs"). Nog niet gekoppeld? Zie Claude-koppeling in de zijbalk.</p>
                 </>
+              )}
+              {relevancePrompt && (
+                <div style={{ marginTop: 8 }}>
+                  <p className="field-hint">Kopiëren lukte niet automatisch. Selecteer de tekst hieronder en kopieer hem zelf:</p>
+                  <textarea className="textarea mono" readOnly rows={4} value={relevancePrompt} aria-label="Prompt voor Claude" onFocus={e => e.currentTarget.select()} />
+                </div>
               )}
             </section>
           )}

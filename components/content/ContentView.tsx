@@ -336,7 +336,7 @@ export default function ContentView() {
                 ))}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <label className="subtle small" htmlFor="content-sort">Sorteer op</label>
+                <label className="subtle small" htmlFor="content-sort" style={{ whiteSpace: "nowrap" }}>Sorteer op</label>
                 <select id="content-sort" className="select" style={{ height: 34, fontSize: "var(--fs-sm)" }} value={sort} onChange={e => chooseSort(e.target.value as SortKey)}>
                   {SORT_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
@@ -348,7 +348,7 @@ export default function ContentView() {
           </div>
 
           {list.length ? (
-            <>
+            <div className="content-rows">
               <section className="content-row" aria-labelledby="row-articles">
                 <h2 className="content-row-title" id="row-articles">Artikelen<span className="chip-count">{newArticles.length}</span></h2>
                 {newArticles.length ? (
@@ -361,7 +361,7 @@ export default function ContentView() {
                   <div className="idea-list">{pageUpdates.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
                 ) : <p className="muted small">Niets om bij te werken in deze lijst.</p>}
               </section>
-            </>
+            </div>
           ) : (
             <div className="card">
               {!data.ideas.length ? (
