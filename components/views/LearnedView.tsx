@@ -156,7 +156,7 @@ function Learning({ l, affected, openTask }: { l: Lesson; affected: Task[]; open
     lines.push(<>{e.text}</>)
     const quotes = l.evidence.reasons || []
     if (quotes.length) lines.push(<>Herkend in je eigen woorden: {quotes.slice(0, 3).map((q, i) => <span key={i} className="learn-quote">“{q}”</span>)}</>)
-    if (e.type === "content-feedback") lines.push(<>Schrijf je dit vaker, dan wordt het effect sterker (×0,85 per keer, nooit lager dan ×0,5). Ze blijven wel zichtbaar.</>)
+    if (e.type === "content-feedback" && e.factor) lines.push(<>Schrijf je dit vaker, dan wordt het effect sterker (×0,85 per keer, nooit lager dan ×0,5). Ze blijven wel zichtbaar.</>)
   } else lines.push(<>{e.text}</>)
   lines.push(<span className="subtle">{ZEKERHEID[l.confidence]}{off ? " Deze les is nu uitgeschakeld en heeft geen invloed." : " Klopt dit niet? Draai de les terug; dan telt het niet meer mee."}</span>)
   return (

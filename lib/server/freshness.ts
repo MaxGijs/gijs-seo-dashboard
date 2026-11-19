@@ -8,6 +8,14 @@ import { extractFacts, type PageFacts } from "@/lib/content/freshness"
 const UA = "GijsIntelligence/1.0 (+actualiteitscontrole, alleen lezen)"
 const ORIGIN = "https://www.groeninjestraat.nl"
 
+// Kopjes en omschrijving van een pagina: genoeg om te zien welk onderwerp hij behandelt (controle "staat al op de site")
+function pageOutline(html: string) {
+  const clean = (t: string) => decodeEntities(t.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+  const desc = (html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i) || html.match(/<meta[^>]+content=["']([^"']*)["'][^>]*name=["']description["']/i) || [])[1]
+  const heads = [...html.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi)].map(m => clean(m[2])).filter(h => h.length > 2 && h.length < 200)
+  return [desc ? clean(desc) : "", ...heads].filter(Boolean).join(". ").slice(0, 3000) || null
+}
+
 function pageText(html: string) {
   const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]
   const body = (html.split(/<body[^>]*>/i)[1] || html)
@@ -15,7 +23,7 @@ function pageText(html: string) {
     .replace(/<(nav|footer|header)\b[\s\S]*?<\/\1>/gi, " ")
     .replace(/<\/(p|li|h[1-6]|div|section|td|br)>/gi, ". ")
     .replace(/<[^>]+>/g, " ")
-  return { title: title ? decodeEntities(title.replace(/<[^>]+>/g, "")).trim() : null, text: decodeEntities(body).replace(/\s+/g, " ").replace(/(\.\s*){2,}/g, ". ").trim() }
+  return { title: title ? decodeEntities(title.replace(/<[^>]+>/g, "")).trim() : null, outline: pageOutline(html), text: decodeEntities(body).replace(/\s+/g, " ").replace(/(\.\s*){2,}/g, ". ").trim() }
 }
 
 async function fetchPage(path: string) {
@@ -49,11 +57,11 @@ export async function refreshPageFacts(force = false) {
   for (let i = 0; i < list.length; i += 5) {
     await Promise.all(list.slice(i, i + 5).map(async p => {
       try {
-        const { title, text } = await fetchPage(p.path)
-        rows.push({ path: p.path, checked_at: new Date().toISOString(), title, template: p.template, facts: extractFacts(text), error: null })
+        const { title, text, outline } = await fetchPage(p.path)
+        rows.push({ path: p.path, checked_at: new Date().toISOString(), title, outline, template: p.template, facts: extractFacts(text), error: null })
       } catch (e: any) {
         failed++
-        rows.push({ path: p.path, checked_at: new Date().toISOString(), title: null, template: p.template, facts: [], error: e?.name === "AbortError" ? "time-out" : e?.message || "mislukt" })
+        rows.push({ path: p.path, checked_at: new Date().toISOString(), title: null, outline: null, template: p.template, facts: [], error: e?.name === "AbortError" ? "time-out" : e?.message || "mislukt" })
       }
     }))
   }
@@ -61,7 +69,7 @@ export async function refreshPageFacts(force = false) {
   return { gelezen: rows.length - failed, mislukt: failed, zinnen: rows.reduce((s, r) => s + r.facts.length, 0) }
 }
 
-export async function readPageFacts(): Promise<PageFacts[]> {
-  const { data } = await getSupabase().from("seo_page_facts").select("path, title, template, facts").is("error", null)
-  return (data || []) as PageFacts[]
+export async function readPageFacts(): Promise<(PageFacts & { outline: string | null })[]> {
+  const { data } = await getSupabase().from("seo_page_facts").select("path, title, template, facts, outline").is("error", null)
+  return (data || []) as (PageFacts & { outline: string | null })[]
 }

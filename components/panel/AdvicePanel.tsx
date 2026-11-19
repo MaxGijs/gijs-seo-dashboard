@@ -10,8 +10,9 @@ import {
 import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
 import { INTENT_META } from "@/lib/intent"
 import { useWorkspace } from "@/lib/workspace"
-import { baselineFrom, buildClaudePrompt, buildDiagnosis, type Diagnosis, type FindingTone } from "@/lib/diagnosis"
+import { buildClaudePrompt, buildDiagnosis, type Diagnosis, type FindingTone } from "@/lib/diagnosis"
 import { reconcile } from "@/lib/contract"
+import { experimentFor, siteBaselineOf } from "@/lib/execute"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
@@ -148,11 +149,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
   const latestExperiment: Experiment | undefined = task.experiments[0]
 
   // Sitebrede niveau bij de nulmeting: om later te corrigeren voor algemene groei (nieuwe provincies, seizoen)
-  const siteBaseline = overview.length ? {
-    impressionsPerDay: Math.round(overview.reduce((a, r) => a + r.impressions, 0) / overview.length),
-    clicksPerDay: Math.round((overview.reduce((a, r) => a + r.clicks, 0) / overview.length) * 10) / 10,
-    days: overview.length,
-  } : null
+  const siteBaseline = siteBaselineOf(overview)
 
   // GA4: conversies via de pagina waar dit advies over gaat
   const conv = (() => {
@@ -485,16 +482,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
                 <button className="btn btn-primary btn-sm" disabled={busy || blocked} onClick={() => {
                   if (!text.trim()) { setFormError("Beschrijf kort wat je hebt aangepast, zodat je later weet wat er gemeten wordt."); return }
-                  run("uitgevoerd", {
-                    experiment: {
-                      description: text.trim(),
-                      baseline: { ...baselineFrom(signal, detail, diag, rec!.targetRow), site: siteBaseline },
-                      hypothesis: `${diag.steps[0]?.title || signal.action || ""}. Verwacht: ${diag.importance.gainText.toLowerCase()}. ${diag.plan.success}`,
-                      targetPages: signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x),
-                      targetQueries: signal.query ? [signal.query] : [],
-                      predicted: { gain: signal.estimate ? Math.round(signal.estimate.gain * 10) / 10 : null, low: signal.estimate?.low ?? null, high: signal.estimate?.high ?? null, metric: diag.successMetric },
-                    },
-                  }, "Uitgevoerd. De meting is gestart.")
+                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text) }, "Uitgevoerd. De meting is gestart.")
                 }}>Opslaan en meting starten</button>
               </div>
             </div>

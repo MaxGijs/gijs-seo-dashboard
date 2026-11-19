@@ -12,7 +12,8 @@ import {
   commercialFor, consistencyIssues, CONTENT_MODEL_VERSION, ctaFor, defaultAngle, formatFor, GENERAL_TERMS, priorityFor,
   PROVINCES, regionNote, regionsIn, risksFor, SCAN_SERVICE, scoreIdea, SERVICE_TERMS, serviceLabel, servicePage, TITLE_MAX,
 } from "./model"
-import { feedbackEffects, type Learned } from "./feedback"
+import { feedbackEffects, noteOf, REASONS, type Learned } from "./feedback"
+import { coverageText, type Coverage } from "./coverage"
 
 export const dayMs = 86400000
 export const ageOf = (iso: string | null | undefined) => (iso ? Math.max(0, (Date.now() - new Date(iso).getTime()) / dayMs) : null)
@@ -181,6 +182,7 @@ export interface Draft {
   advice?: "nieuw" | "bijwerken"
   targetPage?: string | null          // bestaande pagina die het onderwerp kan dragen
   adviceReason?: string
+  coveredBy?: Coverage | null         // staat (iets vergelijkbaars) al op de site? Zie coverage.ts
   format?: string
   titleOverride?: { angle: Angle; title: string }[]
   urgency?: "hoog" | "middel" | "laag"
@@ -193,7 +195,7 @@ export interface Ctx {
   queries: KeywordRef[]
   capacity: Map<string, CapacityMode>
   places: Map<string, Place>          // "zwolle" → { name: "Zwolle", path: "/regio/overijssel/zwolle" }
-  existing: (Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title"> & Partial<Pick<ContentIdea, "summary" | "why_now" | "feedback" | "impact" | "decision_note" | "regions">>)[]
+  existing: (Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title"> & Partial<Pick<ContentIdea, "summary" | "why_now" | "feedback" | "impact" | "decision_note" | "regions" | "published_url" | "published_at" | "target_page" | "advice">>)[]
   ignoreRejections?: Set<string>      // "dienst|herkomst" van teruggedraaide lessen
   learned?: Learned                   // geleerd uit de eigen toelichtingen bij afwijzingen
 }
@@ -201,7 +203,8 @@ export interface Ctx {
 function rejectedIds(ctx: Ctx, service: string | null, origin: Origin): string[] {
   // Teruggedraaide les ("Wat hebben we geleerd?"): afwijzingen van deze soort tellen niet meer mee
   if (ctx.ignoreRejections?.has(`${service || "-"}|${origin}`)) return []
-  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin).map(e => e.id)
+  // Afgewezen omdat het al op de site staat: zegt niets over het onderwerp zelf (daar is de controle "staat al op de site" voor)
+  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin && !REASONS.dubbel.pattern.test(noteOf(e as any))).map(e => e.id)
 }
 
 // Plaatsnaam in een zoekvraag (langste match eerst, zodat "hof van twente" wint van "twente")
@@ -221,17 +224,21 @@ export function buildIdea(d: Draft, ctx: Ctx) {
   // Eerder afgewezen kansen die hierop lijken: zelfde dienst en herkomst, of volgens de eigen toelichtingen.
   // Elke afgewezen kans telt één keer, ook als hij om meerdere redenen lijkt.
   const fb = feedbackEffects(ctx.learned, { subject: d.subject, summary: d.summary, whyNow: d.whyNow, origin: d.origin, impact: d.impact, regions: d.regions, demand })
+  // Staat dit onderwerp al op de site? Dan telt dat als een vergelijkbare eerdere kans (lagere score)
+  if (d.coveredBy) fb.matches.push({ label: `staat al op de site (${d.coveredBy.path || d.coveredBy.title})`, ids: [d.coveredBy.id] })
   const similar = new Set([...rejectedIds(ctx, d.service, d.origin), ...fb.matches.flatMap(m => m.ids)])
   const scored = scoreIdea({ origin: d.origin, ageDays: d.ageDays, service: d.service, impact: d.impact, demand, keywordCount: kw.length, urgency: d.urgency, reliability: d.reliability, capacity, rejectedSimilar: similar.size, feedback: { reasons: fb.matches.map(m => m.label), actWeight: fb.actWeight } })
-  const format = d.format || formatFor(d.origin, d.impact, d.ageDays)
+  const format = d.format || (d.coveredBy?.path ? "Update bestaande pagina" : formatFor(d.origin, d.impact, d.ageDays))
   const page = servicePage(d.service)
   const pageExists = d.service && d.service !== SCAN_SERVICE ? ctx.services.includes(d.service) : true
   const options = d.titleOverride || newsTitles(d.subject, d.impact, d.service, d.regions)
   const angle = options.find(o => o.angle === defaultAngle(d.impact))?.angle || options[0].angle
-  const advice = d.advice || "nieuw"
-  const target = d.targetPage !== undefined ? d.targetPage : pageExists ? page : null
+  const cov = d.coveredBy?.path ? d.coveredBy : null
+  const advice = cov ? "bijwerken" : d.advice || "nieuw"
+  const target = cov ? cov.path : d.targetPage !== undefined ? d.targetPage : pageExists ? page : null
   const notes: string[] = []
-  if (advice === "bijwerken") notes.push(`Werk ${target} bij in plaats van een nieuwe pagina te maken${d.adviceReason ? `: ${d.adviceReason}` : ""}. Een los artikel alleen als het onderwerp daar niet past; anders gaan eigen pagina's met elkaar concurreren.`)
+  if (d.coveredBy) notes.push(`${coverageText(d.coveredBy)}${cov ? "" : " Controleer of dit nieuws daar al in staat voordat je iets nieuws maakt."}`)
+  if (advice === "bijwerken") notes.push(`Werk ${target} bij in plaats van een nieuwe pagina te maken${!cov && d.adviceReason ? `: ${d.adviceReason}` : ""}. Een los artikel alleen als het onderwerp daar niet past; anders gaan eigen pagina's met elkaar concurreren.`)
   else notes.push(d.service === SCAN_SERVICE ? "Nieuw artikel: er is geen bestaande pagina die dit actuele onderwerp dekt. Verwijs naar de subsidiecheck en de energiescan."
     : pageExists ? `Nieuw artikel voor het actuele nieuws. Controleer daarnaast of ${page} nog klopt en link vanuit het artikel naar die pagina, zodat beide niet om dezelfde zoekwoorden concurreren.` : "Nieuw artikel: er is nog geen pagina over dit onderwerp.")
   if (advice === "nieuw" && d.adviceReason) notes.push(d.adviceReason)
@@ -257,6 +264,7 @@ export function buildIdea(d: Draft, ctx: Ctx) {
     advice,
     advice_note: notes.join(" "),
     target_page: target,
+    covered_by: d.coveredBy || null,
     related_pages: [...new Set([target, pageExists ? page : null, "/subsidiecheck"].filter(Boolean) as string[])],
     keywords: kw,
     sources: d.sources,

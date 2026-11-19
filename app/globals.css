@@ -711,6 +711,9 @@ img, svg { display: block; max-width: 100%; }
 .review-list li.is-ok .check { background: var(--green-800); border-color: var(--green-800); color: var(--white); }
 .check:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .tag-pick { display: flex; gap: 6px; flex-wrap: wrap; }
+.dup-quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.dup-quick .chip svg { width: 13px; height: 13px; margin-right: 4px; vertical-align: -2px; }
+.dup-quick .field-hint { margin: 0; flex: 1; min-width: 220px; }
 .chip-sm { height: 28px; padding: 0 10px; font-size: var(--fs-xs); }
 .fb-list { display: flex; flex-direction: column; gap: 8px; }
 .fb-list li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: var(--fs-sm); }
@@ -1101,6 +1104,7 @@ img, svg { display: block; max-width: 100%; }
 .cpage-main { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 4px 8px 12px; }
 .cpage-main > * { order: 50; }
 /* Volgorde als een inleverpunt: opdracht → inleveren → controle → beoordeling → publicatie; achtergrond onderaan */
+.cpage-main > .covered { order: 0; }
 .cpage-main > [aria-label="Samenvatting"] { order: 1; }
 .cpage-main > [aria-labelledby="cp-brief"] { order: 5; }
 .cpage-main > [aria-labelledby="att-content"] { order: 10; }
@@ -1255,3 +1259,29 @@ img, svg { display: block; max-width: 100%; }
 .advice-decided .badge { display: inline-flex; align-items: center; gap: 4px; }
 .advice-decided .badge svg { width: 13px; height: 13px; }
 .advice-card.is-flash { animation: learnFlash 1.6s ease; }
+
+/* Meerdere taken tegelijk afronden */
+.col-action { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 8px 10px; border: 1px dashed var(--accent-200, #b7dfcf); border-radius: var(--radius-md); background: var(--accent-050, #eef7f3); color: var(--accent-700); font-size: var(--fs-xs, 12px); font-weight: 600; cursor: pointer; }
+.col-action:hover, .col-action:focus-visible { background: var(--accent-100, #dcefe6); border-style: solid; }
+.col-action svg { width: 14px; height: 14px; }
+.bulk-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.bulk-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow: auto; margin: 0 0 14px; padding: 0; }
+.bulk-list > li { display: flex; align-items: center; gap: 10px; justify-content: space-between; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 8px 10px; }
+.bulk-item { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; width: 100%; }
+.bulk-item input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent-700); flex-shrink: 0; }
+.bulk-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bulk-main b { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.col-elsewhere { display: block; margin-top: 4px; padding: 8px 10px; border-radius: var(--radius-md); background: var(--surface-canvas); color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.45; text-decoration: none; }
+.col-elsewhere:hover, .col-elsewhere:focus-visible { color: var(--accent-700); text-decoration: underline; }
+
+/* Nieuwe meetresultaten (Vandaag en Dashboard) */
+.measure-updates { margin-bottom: 20px; }
+.measure-updates .section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.mu-list { display: flex; flex-direction: column; }
+.mu-item { display: flex; align-items: flex-start; gap: 8px; border-top: 1px solid var(--border-subtle); }
+.mu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 4px; text-align: left; border: 0; background: none; color: inherit; text-decoration: none; cursor: pointer; }
+.mu-main:hover .mu-title, .mu-main:focus-visible .mu-title { color: var(--accent-700); }
+.mu-top { display: flex; align-items: center; gap: 8px; }
+.mu-title { font-weight: 600; color: var(--text-heading); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.mu-text { font-size: var(--fs-sm); color: var(--text-muted); }
+.mu-seen { margin-top: 8px; flex-shrink: 0; }

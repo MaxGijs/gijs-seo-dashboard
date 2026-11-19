@@ -24,6 +24,7 @@ import {
 import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
 import { buildRelevancePrompt } from "@/lib/content/relevance"
 import { briefingNotes, learnFromFeedback, previewNote } from "@/lib/content/feedback"
+import { coverageFor, coverageText, coverDocs } from "@/lib/content/coverage"
 import { ago, scoreTone } from "./ContentView"
 
 const SITE = "https://www.groeninjestraat.nl"
@@ -71,6 +72,13 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   useEffect(() => { setFinal(idea.concept_final || ""); setBriefing(idea.briefing || "") }, [idea.id, idea.concept_final, idea.briefing])
 
   // Lessen voor de briefing: vaak gekozen redenen + aandachtspunten uit eigen toelichtingen
+  // Staat dit al op de site? Bekend uit de nachtelijke controle, of anders vergeleken met gepubliceerde artikelen
+  const dupGuess = useMemo(() => {
+    if (idea.covered_by?.path) return idea.covered_by.path
+    const dates = idea.sources.map(s => s.date).filter(Boolean).sort() as string[]
+    return coverageFor({ id: idea.id, subject: idea.title, summary: idea.summary, whyNow: idea.why_now, sourceTitles: idea.sources.map(s => s.title), service: idea.service, date: dates.slice(-1)[0] || idea.created_at }, coverDocs(all, []))?.path || null
+  }, [idea, all])
+  const dupNote = (n: string) => `Staat al op de site: ${dupGuess || "/kennis/…"}. ${n.replace(/^Staat al op de site:[^\n]*?\.\s*/, "")}`.trim()
   const notePreview = useMemo(() => (mode === "reject" ? previewNote(note, idea, all) : null), [mode, note, idea, all])
   const lessons = useMemo(() => [...lessonsFrom(all), ...briefingNotes(learnFromFeedback(all))], [all])
   const style = useMemo(() => styleGuideFrom(all, idea.id), [all, idea.id])
@@ -174,6 +182,16 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
           {issues.length > 0 && (
             <div className="psec" style={{ paddingBottom: 0 }}>
               <Alert tone="error" title="Dit voorstel is geblokkeerd: de onderbouwing klopt niet">{issues.join(" ")}</Alert>
+            </div>
+          )}
+          {idea.covered_by && (idea.status === "nieuw" || idea.status === "later") && (
+            <div className="psec covered" style={{ paddingBottom: 0 }}>
+              <Alert tone="warning" title={idea.covered_by.strength === "zelfde-nieuws" ? "Dit nieuws staat al op de site" : "Dit onderwerp staat al op de site"}
+                action={<button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act({ action: "status", status: "afgewezen", tags: [], note: `Staat al op de site: ${idea.covered_by!.path || idea.covered_by!.title}. ${coverageText(idea.covered_by!)}` }, "Afgewezen: staat al op de site")}>Afwijzen: staat al op de site</button>}>
+                {coverageText(idea.covered_by).replace(/^(Hetzelfde nieuws|Dit onderwerp) staat al op de site in /, "Gevonden in ")}{" "}
+                {idea.covered_by.path && <a style={{ whiteSpace: "nowrap" }} href={`https://www.groeninjestraat.nl${idea.covered_by.path}`} target="_blank" rel="noopener noreferrer">Bekijk de pagina<ExternalLink aria-hidden style={{ width: 12, height: 12, marginLeft: 3, verticalAlign: -1 }} /></a>}
+                {idea.covered_by.strength === "onderwerp" && <> Het advies is daarom: die pagina bijwerken in plaats van een nieuw artikel.</>}
+              </Alert>
             </div>
           )}
           <section className="psec" aria-label="Samenvatting">
@@ -537,6 +555,12 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
           {(mode === "reject" || mode === "later" || mode === "feedback") && (
             <div className="inline-form">
               <label className="field-label" htmlFor="cp-reason" style={{ margin: 0 }}>{mode === "reject" ? "Waarom wijs je dit af? Schrijf het in je eigen woorden; het dashboard leert van je tekst." : mode === "later" ? "Waarom later? (optioneel)" : "Feedback op dit voorstel of concept"}</label>
+              {mode === "reject" && (
+                <div className="dup-quick">
+                  <button type="button" className={`chip chip-sm${/^Staat al op de site:/.test(note) ? " is-active" : ""}`} onClick={() => setNote(dupNote(note))}><Copy aria-hidden />Staat al op de site</button>
+                  <span className="field-hint">{dupGuess ? <>Vult <b>{dupGuess}</b> in; pas het pad aan als het om een andere pagina gaat.</> : <>Vul daarna het pad van de pagina in, bijvoorbeeld /kennis/….</>} Hetzelfde nieuws wordt dan niet opnieuw voorgesteld.</span>
+                </div>
+              )}
               <textarea id="cp-reason" className="textarea" rows={mode === "reject" ? 5 : 3} value={note} onChange={e => setNote(e.target.value)}
                 placeholder={mode === "reject" ? "Bijvoorbeeld: gaat over een rechtszaak tegen ondernemers, niet over een keuze die huiseigenaren maken. Er is ook geen echte zoekvraag naar." : "Toelichting"} />
               {mode === "reject" && notePreview && (notePreview.reasons.length > 0 || notePreview.topics.length > 0) && (

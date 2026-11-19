@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BellRing, CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck } from "lucide-react"
+import Link from "next/link"
+import { BellRing, CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck, CheckCheck } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
 import { readStorage, sortByPriority, useWorkspace, writeStorage } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
 import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
-import { addDays, dateShort, gainShort, normalize, num } from "@/lib/format"
+import { addDays, dateShort, gainShort, normalize, num, today } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
 import ReminderDialog from "@/components/reminders/ReminderDialog"
+import BulkExecuteDialog from "./BulkExecuteDialog"
 import SiteAdviceStrip from "@/components/siteadvice/SiteAdviceStrip"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
@@ -51,9 +53,12 @@ const TYPE_FILTERS: { id: TypeFilter; label: string; kinds: SignalKind[] }[] = [
 ]
 
 // Eén kaart op het bord: een SEO-advies of een contentkans
+// old: al langer dan een week in meting. Die verdwijnen van het bord (ze staan in Experimenten);
+// nieuwe meetresultaten verschijnen op Vandaag en het Dashboard.
 type Entry =
-  | { kind: "seo"; key: string; col: ColumnId; prio: Priority; dim: boolean; date: string; t: Task }
-  | { kind: "content"; key: string; col: ColumnId; prio: Priority; dim: boolean; date: string; i: ContentIdea }
+  | { kind: "seo"; key: string; col: ColumnId; prio: Priority; dim: boolean; date: string; old?: boolean; t: Task }
+  | { kind: "content"; key: string; col: ColumnId; prio: Priority; dim: boolean; date: string; old?: boolean; i: ContentIdea }
+export const BOARD_MEASURE_DAYS = 7
 const PRIO_RANK: Record<Priority, number> = { hoog: 0, middel: 1, laag: 2 }
 
 function contentMeta(i: ContentIdea, col: ColumnId) {
@@ -116,6 +121,7 @@ export default function TasksView() {
   const [dragKey, setDragKey] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [reminding, setReminding] = useState(false)
+  const [bulk, setBulk] = useState(false)
   const [overCol, setOverCol] = useState<ColumnId | null>(null)
   const setView = (v: "bord" | "lijst") => {
     setViewState(v); setViewChosen(true)
@@ -128,10 +134,16 @@ export default function TasksView() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const entries = useMemo<Entry[]>(() => {
-    const seo: Entry[] = visibleTasks.map(t => ({ kind: "seo", key: t.key, col: columnOf(t.status), prio: t.signal.priority, dim: !!t.snoozed, date: t.updatedAt || "", t }))
+    const cutoff = addDays(today(), -BOARD_MEASURE_DAYS)
+    const seo: Entry[] = visibleTasks.map(t => {
+      const col = columnOf(t.status)
+      const since = col === "evalueren" ? (t.experiments[0]?.changed_at || t.updatedAt || "").slice(0, 10) : ""
+      return { kind: "seo", key: t.key, col, prio: t.signal.priority, dim: !!t.snoozed, date: t.updatedAt || "", old: !!since && since < cutoff, t }
+    })
     const ideas: Entry[] = (content.ideas || []).flatMap(i => {
       const col = contentColumn(i)
-      return col ? [{ kind: "content" as const, key: `content:${i.id}`, col, prio: i.priority || "middel", dim: i.status === "later", date: i.updated_at, i }] : []
+      const old = col === "evalueren" && i.status === "gepubliceerd" && !!i.published_at && i.published_at.slice(0, 10) < cutoff
+      return col ? [{ kind: "content" as const, key: `content:${i.id}`, col, prio: i.priority || "middel", dim: i.status === "later", date: i.updated_at, old, i }] : []
     })
     return [...seo, ...ideas]
   }, [visibleTasks, content.ideas])
@@ -139,7 +151,8 @@ export default function TasksView() {
   const filtered = useMemo(() => {
     const kinds = TYPE_FILTERS.find(f => f.id === type)!.kinds
     const n = normalize(text)
-    return entries.filter(e =>
+    // Langer lopende metingen alleen als je er gericht naar zoekt
+    return entries.filter(e => (!e.old || !!n) &&
       (type === "alle" || (type === "content" ? e.kind === "content" : e.kind === "seo" && kinds.includes(e.t.signal.kind))) &&
       (prio === "alle" || e.prio === prio) &&
       (owner === "alle" || (() => { const o = (e.kind === "seo" ? e.t.owner : e.i.owner) || null; return owner === "niemand" ? !o : owner === "ik" ? o === me : o === owner })()) &&
@@ -227,6 +240,11 @@ export default function TasksView() {
     if (ok) toast(`Verplaatst naar ${COLUMNS.find(c => c.id === to)!.label}`)
   }
 
+  // SEO-taken in uitvoering: in één keer naar Evalueren (contentkansen volgen hun eigen inleverstap)
+  const running = useMemo(() => entries.filter(e => e.col === "uitvoering" && e.kind === "seo").map(e => (e as Extract<Entry, { kind: "seo" }>).t), [entries])
+
+  const measuringElsewhere = useMemo(() => entries.filter(e => e.old).length, [entries])
+
   const filtersActive = type !== "alle" || prio !== "alle" || text.trim() !== "" || owner !== "alle"
 
   return (
@@ -238,6 +256,7 @@ export default function TasksView() {
         </div>
         <div className="page-actions">
           <button className="btn btn-secondary btn-sm" onClick={() => setReminding(true)}><BellRing aria-hidden />Herinnering</button>
+          {running.length >= 2 && view === "lijst" && <button className="btn btn-secondary btn-sm" onClick={() => setBulk(true)}><CheckCheck aria-hidden />Meerdere afronden</button>}
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Taak toevoegen</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setLegend(l => !l)} aria-expanded={legend}><CircleHelp aria-hidden />Hoe werkt het bord?</button>
           <div className="seg" role="group" aria-label="Weergave">
@@ -309,8 +328,12 @@ export default function TasksView() {
                     const rest = items.length - open
                     return <span className="col-count" title={rest ? `${open} openstaand, ${rest} uitgesteld of al opgelost` : undefined}>{open}{rest ? <small> +{rest}</small> : null}</span>
                   })()}
+
                 </div>
                 <div className="col-body">
+                {c.id === "uitvoering" && running.length >= 2 && (
+                  <button className="col-action" onClick={() => setBulk(true)} title="Meerdere taken tegelijk op uitgevoerd zetten, met één toelichting"><CheckCheck aria-hidden />Meerdere tegelijk afronden</button>
+                )}
                 {items.length === 0 ? (
                   <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "evalueren" ? "Sleep een taak hierheen als hij is aangepast; de meting start dan" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.id === "gepland" ? "Sleep een taak hierheen om hem in te plannen" : "Sleep een taak hierheen als je ermee begint"}</p>
                 ) : visible.map(en => {
@@ -358,6 +381,9 @@ export default function TasksView() {
                     </button>
                   )
                 })}
+                {c.id === "evalueren" && measuringElsewhere > 0 && (
+                  <Link href="/experimenten" className="col-elsewhere">{measuringElsewhere} {measuringElsewhere === 1 ? "meting loopt" : "metingen lopen"} al langer dan een week. Die staan in Experimenten; nieuwe resultaten zie je op Vandaag.</Link>
+                )}
                 {items.length > COLUMN_LIMIT && (
                   <button className="col-more" onClick={() => setExpanded(e => ({ ...e, [c.id]: !showAll }))}>
                     {showAll ? "Minder tonen" : `Nog ${items.length - COLUMN_LIMIT} tonen`}
@@ -408,6 +434,7 @@ export default function TasksView() {
       <SiteAdviceStrip />
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
       {reminding && <ReminderDialog onClose={() => setReminding(false)} />}
+      {bulk && <BulkExecuteDialog tasks={running} onClose={() => setBulk(false)} />}
     </>
   )
 }

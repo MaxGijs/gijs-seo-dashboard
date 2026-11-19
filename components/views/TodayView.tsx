@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo } from "react"
 import { AlertsBlock } from "@/components/dashboard/Alerts"
 import RemindersBlock from "@/components/reminders/RemindersBlock"
+import MeasureUpdatesBlock from "@/components/measure/MeasureUpdatesBlock"
 import { ArrowRight, ArrowUpRight, CalendarClock, CheckCircle2, Eye, FlaskConical, Play, ShieldCheck, TrendingUp, ListTodo } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
@@ -56,6 +57,9 @@ export default function TodayView({ embedded = false }: { embedded?: boolean }) 
     <>
       {/* Herinneringen: wat vandaag terugkomt staat bovenaan */}
       <RemindersBlock />
+
+      {/* Nieuwe meetresultaten: lopende metingen staan na een week niet meer op het bord */}
+      <MeasureUpdatesBlock />
 
       {/* Drie tellers: wat ligt er op je bord */}
       <div className="stat-grid">

@@ -10,6 +10,7 @@ import { gscQuery, serviceSearchConsole, SITE_ORIGIN, toPath } from "./gsc"
 import { describe, overlaps, type Campaign } from "@/lib/campaigns"
 import { LAUNCH_DATES } from "@/lib/pages"
 import { learnFromFeedback } from "@/lib/content/feedback"
+import { coverageFor, coverageText, coverDocs } from "@/lib/content/coverage"
 import { baselineWindow, compare, isPageUpdate, judgeUpdate, pointWindow, UPDATE_MILESTONES, updateQueries, type SearchTotals, type UpdateMeasure, type UpdateSnapshot } from "@/lib/content/update"
 import {
   type CapacityMode, type ContentIdea, type Impact, type KeywordRef, type Reliability, type SourceRef,
@@ -171,7 +172,7 @@ export async function siteContext(): Promise<Ctx> {
     if (!data || data.length < 1000) break
   }
 
-  const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title, summary, why_now, feedback, impact, decision_note, regions")
+  const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title, summary, why_now, feedback, impact, decision_note, regions, published_url, published_at, target_page, advice")
   const { data: reverted } = await sb.from("seo_lessons").select("key, source").in("source", ["content", "feedback"]).eq("status", "teruggedraaid")
   const ignoreRejections = new Set((reverted || []).filter(r => r.source === "content").map(r => r.key.replace(/^content\|/, "")))
   // Geleerd uit eigen toelichtingen; teruggedraaide feedbacklessen tellen niet mee
@@ -252,6 +253,10 @@ export async function scanContent() {
   }
   const rejectedChecks: string[] = []
 
+  // Wat staat er al op de site? Gepubliceerde artikelen, gelezen pagina's en "staat al op de site"-afwijzingen
+  const docs = coverDocs(ctx.existing as any[], await readPageFacts().catch(() => []))
+  const alOpSite: string[] = []
+
   // 2. Relevante berichten zonder voorstel → voorstel (of als extra bron bij een vergelijkbaar voorstel)
   const since = new Date(Date.now() - MAX_AGE_DAYS * dayMs).toISOString()
   const { data: open } = await sb.from("content_news").select("*").eq("relevant", true).is("idea_id", null).gte("published_at", since).order("published_at", { ascending: true })
@@ -262,6 +267,20 @@ export async function scanContent() {
     const src = web ? { publisher: n.publisher || new URL(n.url).hostname.replace(/^www\./, ""), reliability: reliabilityOf(n.url) }
       : SOURCES.find(s => s.id === n.source_id) || { publisher: n.source_id, reliability: "overheid" as const }
     const draft = newsDraft(item, src, ctx, web ? "trend" : "actualiteit")
+    // Hetzelfde nieuws staat al op de site (of is daarom afgewezen): geen nieuwe kans, de bron gaat bij die kans
+    const cov = coverageFor({ subject: n.title, summary: n.summary, service: draft.service, date: n.published_at }, docs)
+    if (cov?.strength === "zelfde-nieuws") {
+      const host = ctx.existing.find(e => e.id === cov.id)
+      if (host) {
+        const sources = [...(host.sources || []), draft.sources[0]]
+        await sb.from("content_ideas").update({ sources }).eq("id", host.id)
+        host.sources = sources
+        await sb.from("content_news").update({ idea_id: host.id }).eq("id", n.id)
+        alOpSite.push(`${n.title} → ${cov.path || cov.title}`)
+        continue
+      }
+    }
+    if (cov?.strength === "onderwerp") draft.coveredBy = cov
     // Samenvoegen met een recent voorstel over hetzelfde
     const tk = tokens(n.title)
     const similar = ctx.existing.find(e => (e.origin === "actualiteit" || e.origin === "trend") && e.service === draft.service
@@ -284,6 +303,26 @@ export async function scanContent() {
       ctx.existing.push(ins as any)
       await sb.from("content_news").update({ idea_id: ins.id }).eq("id", n.id)
       created++
+    }
+  }
+
+  // 2b. Openstaande nieuwskansen die nog niemand heeft aangeraakt: staat hetzelfde nieuws inmiddels op de site?
+  //     Dan archiveren (met uitleg). Staat alleen het onderwerp er al: markeren, zodat het in de kans zichtbaar is.
+  const { data: openIdeas } = await sb.from("content_ideas").select("id, title, summary, why_now, sources, service, created_at, briefing, feedback, owner, score_override, covered_by")
+    .eq("status", "nieuw").in("origin", ["actualiteit", "trend"])
+  let gedekt = 0
+  for (const i of openIdeas || []) {
+    const dates = (i.sources || []).map((s: SourceRef) => s.date).filter(Boolean).sort()
+    const cov = coverageFor({ id: i.id, subject: i.title, summary: i.summary, whyNow: i.why_now, sourceTitles: (i.sources || []).map((s: SourceRef) => s.title), service: i.service, date: dates.slice(-1)[0] || i.created_at }, docs)
+    if (!cov) continue
+    const untouched = !i.briefing && !(i.feedback || []).length && !i.owner && i.score_override === null
+    if (cov.strength === "zelfde-nieuws" && untouched) {
+      await sb.from("content_ideas").update({ status: "verlopen", covered_by: cov, decision_note: `Automatisch gearchiveerd: ${coverageText(cov)}` }).eq("id", i.id)
+      ctx.existing = ctx.existing.map(e => (e.id === i.id ? { ...e, status: "verlopen" } : e))
+      alOpSite.push(`${i.title} → ${cov.path || cov.title} (gearchiveerd)`)
+      gedekt++
+    } else if (JSON.stringify(i.covered_by) !== JSON.stringify(cov)) {
+      await sb.from("content_ideas").update({ covered_by: cov }).eq("id", i.id)
     }
   }
 
@@ -324,7 +363,7 @@ export async function scanContent() {
   const failed = status.filter(s => !s.ok)
   return {
     bronnen: status.length, bronnenMislukt: failed.length, berichten: items.length, recent: recent.length,
-    relevant: classified.filter(c => c.relevant).length, herbeoordeeld: flips.length, gearchiveerd, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
+    relevant: classified.filter(c => c.relevant).length, herbeoordeeld: flips.length, gearchiveerd, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, alOpSite, alOpSiteGearchiveerd: gedekt, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
     ...(failed.length === status.length ? { fout: `Geen enkele bron bereikbaar (${failed[0]?.error})` } : {}),
     bronStatus: status, actualiteitscontrole: actueel,
   }

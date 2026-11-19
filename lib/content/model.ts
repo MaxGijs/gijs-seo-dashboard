@@ -56,6 +56,7 @@ export interface ContentIdea {
   advice: Advice | null
   advice_note: string | null
   target_page: string | null
+  covered_by?: import("./coverage").Coverage | null   // staat dit (of iets vergelijkbaars) al op de site?
   related_pages: string[]
   keywords: KeywordRef[]
   sources: SourceRef[]

@@ -6,10 +6,11 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BellRing, CalendarClock, CalendarPlus, Check, CheckCircle2, CircleAlert, ExternalLink, ListTodo, Newspaper, Play, Plus } from "lucide-react"
+import { BellRing, CalendarClock, CalendarPlus, Check, CheckCircle2, CircleAlert, ExternalLink, LineChart, ListTodo, Newspaper, Play, Plus } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
 import { useAlerts } from "@/components/dashboard/Alerts"
+import { useMeasureUpdates } from "@/lib/measureUpdates"
 import type { Experiment, Task } from "@/lib/types"
 import { KIND_META } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, gainShort, greeting, num, signedPct, today } from "@/lib/format"
@@ -36,6 +37,8 @@ export default function TodayV2() {
   const { toReview, active, evaluating } = useTaskGroups()
   const content = useContentIdeas()
   const { d: alerts } = useAlerts()
+  const updates = useMeasureUpdates(tasks, content.ideas)
+  const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [reminding, setReminding] = useState(false)
   const first = user.name?.split(" ")[0] || ""
@@ -44,6 +47,7 @@ export default function TodayV2() {
   const impressions = overview.reduce((s, r) => s + r.impressions, 0)
   const clickDelta = prevClicks ? ((clicks - prevClicks) / prevClicks) * 100 : null
   const focus = toReview.filter(t => t.signal.intent !== "merk" && !t.signal.reminder).slice(0, 5)
+  const focusHigh = focus.filter(t => t.signal.priority === "hoog").length
   const highCount = toReview.filter(t => t.signal.priority === "hoog" && !t.signal.reminder).length
   const inProgress = active.filter(t => t.status === "in_uitvoering").length
   const contentNew = (content.ideas || []).filter(i => i.status === "nieuw").length
@@ -92,6 +96,16 @@ export default function TodayV2() {
         </div>
       </header>
 
+      {/* Herinneringen voor vandaag: bovenaan en opvallend, want ze komen precies op deze dag terug */}
+      {due.length > 0 && (
+        <section aria-labelledby="v2-nu" className="mb-6 overflow-hidden rounded-panel border border-amber/35 bg-amber-soft">
+          <h2 id="v2-nu" className="flex items-center gap-2 px-5 pt-4 pb-3 text-[15px] font-semibold text-amber">
+            <BellRing className="size-4" />{due.length === 1 ? "Herinnering voor vandaag" : `${due.length} herinneringen voor vandaag`}
+          </h2>
+          <ul className="flex flex-col gap-2 px-3 pb-3">{due.map(t => <DueReminder key={t.key} t={t} />)}</ul>
+        </section>
+      )}
+
       {/* Statusstrook: vier getallen in één vlak */}
       <Card className="mb-6 grid grid-cols-2 overflow-hidden lg:grid-cols-4">
         {[
@@ -117,27 +131,30 @@ export default function TodayV2() {
                 <CardTitle id="v2-doen">Vandaag doen</CardTitle>
                 <CardDescription>Op volgorde: technische blokkades eerst, daarna de meeste verwachte winst.</CardDescription>
               </div>
+              {!loading && focusHigh > 0 && <Badge variant="accent" className="shrink-0 text-xs">{focusHigh} met hoge prioriteit</Badge>}
             </CardHeader>
             {loading ? <CardContent><div className="h-40 animate-pulse rounded-control bg-canvas" /></CardContent> : focus.length === 0 ? (
               <CardContent><p className="flex items-center gap-2 text-[13px] text-muted"><CheckCircle2 className="size-4 text-accent" />Alles is beoordeeld. Nieuwe adviezen komen elke nacht binnen.</p></CardContent>
             ) : (
               <ol className="divide-y divide-line-soft border-t border-line-soft">
-                {focus.map((t, i) => (
-                  <li key={t.key}>
-                    <button onClick={() => openTask(t.key)} className="grid w-full cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-start sm:grid-cols-[1.75rem_minmax(0,1fr)_auto] gap-x-3 px-5 py-3 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
-                      <span className="pt-0.5 text-[13px] font-semibold tabular-nums text-subtle">{i + 1}</span>
+                {focus.map((t, i) => { const high = t.signal.priority === "hoog"; return (
+                  <li key={t.key} className={cn(high && "relative bg-accent-soft/60 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-accent")} data-prio={t.signal.priority}>
+                    <button onClick={() => openTask(t.key)} className={cn("grid w-full cursor-pointer grid-cols-[1.75rem_minmax(0,1fr)] items-start sm:grid-cols-[1.75rem_minmax(0,1fr)_auto] gap-x-3 px-5 text-left outline-none transition-colors focus-visible:bg-accent-soft", high ? "py-3.5 hover:bg-accent-soft" : "py-3 hover:bg-canvas")}>
+                      <span className={cn("pt-0.5 text-[13px] font-semibold tabular-nums", high ? "text-accent" : "text-subtle")}>{i + 1}</span>
                       <span className="min-w-0">
                         <span className="block text-xs text-muted">{kindLabel(t)}</span>
-                        <span className="block truncate text-sm font-semibold text-heading">{subject(t)}</span>
+                        <span className={cn("block truncate font-semibold text-heading", high ? "text-[15px]" : "text-sm")}>{subject(t)}</span>
                         <span className="mt-0.5 block truncate text-[13px] text-muted">{t.signal.action || t.signal.title}</span>
                       </span>
                       <span className="col-start-2 mt-1 flex items-center gap-3 sm:col-start-auto sm:mt-0 sm:flex-col sm:items-end sm:gap-1 sm:pt-0.5">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink"><span className={cn("size-2 rounded-full", PRIO[t.signal.priority].dot)} />{PRIO[t.signal.priority].label}</span>
+                        {high
+                          ? <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-white">Hoge prioriteit</span>
+                          : <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink"><span className={cn("size-2 rounded-full", PRIO[t.signal.priority].dot)} />{PRIO[t.signal.priority].label}</span>}
                         <span className="text-xs whitespace-nowrap text-subtle">{gainShort(t.signal.gain)}</span>
                       </span>
                     </button>
                   </li>
-                ))}
+                ) })}
               </ol>
             )}
             <CardFooter className="justify-between text-[13px]">
@@ -177,18 +194,46 @@ export default function TodayV2() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-6">
+          {/* Nieuwe meetresultaten: lopende metingen staan na een week niet meer op het bord */}
+          {!loading && updates.items.length > 0 && (
+            <Card aria-labelledby="v2-updates" className="border-accent-line">
+              <CardHeader>
+                <div>
+                  <CardTitle id="v2-updates" className="flex items-center gap-2"><LineChart className="size-4 text-accent" />Nieuwe meetresultaten</CardTitle>
+                  <CardDescription>{updates.items.length} {updates.items.length === 1 ? "meting is" : "metingen zijn"} binnengekomen.</CardDescription>
+                </div>
+                {updates.items.length > 1 && <Button variant="ghost" size="sm" onClick={updates.dismissAll}><Check />Alles gezien</Button>}
+              </CardHeader>
+              <ul className="divide-y divide-line-soft border-t border-line-soft">
+                {updates.items.slice(0, 5).map(u => (
+                  <li key={u.key} className="flex items-start gap-1 pr-2">
+                    <button onClick={() => u.ideaId ? router.push(`/content/${u.ideaId}?van=vandaag`) : openTask(u.taskKey!)} className="min-w-0 flex-1 cursor-pointer px-5 py-2.5 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
+                      <span className="flex items-center gap-2">
+                        <Badge variant={u.final ? (u.tone === "goed" ? "accent" : u.tone === "slecht" ? "danger" : "default") : "default"}>{u.final ? "Eindoordeel" : `Na ${u.milestone} dagen`}</Badge>
+                        <span className="text-xs text-subtle">{dateShort(u.date)}</span>
+                      </span>
+                      <span className="mt-1 block truncate text-sm font-semibold text-heading">{u.title}</span>
+                      <span className="block text-xs text-muted">{u.text}</span>
+                    </button>
+                    <Button variant="ghost" size="icon" className="mt-2 shrink-0" onClick={() => updates.dismiss(u.key)} aria-label={`${u.title}: gezien`} title="Gezien"><Check /></Button>
+                  </li>
+                ))}
+              </ul>
+              {updates.items.length > 5 && <CardFooter className="text-[13px] text-muted">En nog {updates.items.length - 5}.</CardFooter>}
+            </Card>
+          )}
+
           {/* Herinneringen */}
-          <Card aria-labelledby="v2-herinneringen" className={cn(due.length > 0 && "border-amber/30")}>
+          <Card aria-labelledby="v2-herinneringen">
             <CardHeader>
               <div>
                 <CardTitle id="v2-herinneringen" className="flex items-center gap-2"><BellRing className="size-4 text-amber" />Herinneringen</CardTitle>
-                <CardDescription>{due.length ? `${due.length} voor vandaag` : "Niets voor vandaag"}{upcoming.length ? `, ${upcoming.length} gepland` : ""}</CardDescription>
+                <CardDescription>{due.length ? `${due.length} voor vandaag, staat bovenaan` : "Niets voor vandaag"}{upcoming.length ? `. ${upcoming.length} gepland` : ""}</CardDescription>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setReminding(true)} aria-label="Herinnering toevoegen"><Plus /></Button>
             </CardHeader>
-            {due.length > 0 && <ul className="divide-y divide-line-soft border-t border-line-soft">{due.map(t => <DueReminder key={t.key} t={t} />)}</ul>}
             {upcoming.length > 0 && (
-              <CardContent className={cn(due.length > 0 && "border-t border-line-soft pt-3")}>
+              <CardContent>
                 <ul className="flex flex-col gap-1.5">
                   {upcoming.slice(0, 5).map(t => (
                     <li key={t.key} className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-baseline gap-2 text-[13px]">
@@ -292,19 +337,21 @@ function DueReminder({ t }: { t: Task }) {
   }
 
   return (
-    <li className="px-5 py-3">
-      <button className="block cursor-pointer text-left text-sm font-semibold text-heading outline-none hover:text-accent focus-visible:underline" onClick={() => openTask(t.key)}>{t.signal.headline}</button>
-      <p className="text-xs text-amber">{late ? `Sinds ${dateShort(t.snoozeUntil!)}` : "Vandaag"}</p>
+    <li className="grid gap-3 rounded-control border border-amber/20 bg-card px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0">
+      <button className="block cursor-pointer text-left text-base font-semibold text-heading outline-none hover:text-accent focus-visible:underline" onClick={() => openTask(t.key)}>{t.signal.headline}</button>
+      <p className="text-xs font-semibold text-amber">{late ? `Al sinds ${dateLong(t.snoozeUntil!)}` : "Vandaag"}</p>
       {t.signal.description && <p className="mt-1 line-clamp-3 text-[13px] text-muted">{t.signal.description}</p>}
       {r.link && <a className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-accent hover:underline" href={r.link} target="_blank" rel="noopener noreferrer"><span className="truncate">{r.link.replace(/^https?:\/\/(www\.)?/, "")}</span><ExternalLink className="size-3 shrink-0" /></a>}
+      </div>
       {later ? (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <input type="date" className="h-8 rounded-control border border-line bg-card px-2 text-xs" min={today()} value={date} onChange={e => setDate(e.target.value)} aria-label="Nieuwe datum" />
           <Button size="sm" disabled={busy} onClick={reschedule}>Verzetten</Button>
           <Button size="sm" variant="ghost" onClick={() => setLater(false)}>Annuleren</Button>
         </div>
       ) : (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 md:justify-end">
           <Button size="sm" disabled={busy} onClick={toContent}><Newspaper />Contentkans</Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={toTask}><ListTodo />Taak</Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => setLater(true)}><CalendarPlus />Later</Button>

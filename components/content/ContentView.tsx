@@ -88,6 +88,7 @@ function IdeaCard({ idea, onOpen }: { idea: ContentIdea; onOpen: () => void }) {
           <Badge tone="accent">{serviceLabel(idea.service)}</Badge>
           {idea.regions.length > 0 && <Badge tone="info">{idea.regions.map(r => r[0].toUpperCase() + r.slice(1)).join(", ")}</Badge>}
           {production && <Badge tone="success" dot>{STATUS_META[idea.status].label}</Badge>}
+          {idea.covered_by && !production && <Badge tone="warning">Staat al op de site</Badge>}
         </span>
         <span className="idea-title">{idea.title}</span>
         <span className="idea-why">{idea.why_now}</span>

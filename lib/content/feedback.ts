@@ -44,9 +44,9 @@ export const REASONS: Record<ReasonCode, { label: string; pattern: RegExp; effec
   },
   dubbel: {
     label: "Bestaat al op de site",
-    pattern: /bestaat al|al een pagina|al (eerder )?(geschreven|gepubliceerd|behandeld)|overlap|dubbel/i,
-    effect: "Ter informatie: controleer bij nieuwe kansen eerst de bestaande pagina's.",
-    applies: false,
+    pattern: /bestaat al|al een (pagina|artikel)|staat al (op de (site|website)|online)|al op de (site|website)|al (eerder )?(geschreven|gepubliceerd|behandeld)|overlap|dubbel/i,
+    effect: "Nieuws dat inhoudelijk op deze kans lijkt, wordt niet opnieuw als nieuw artikel voorgesteld: hetzelfde nieuws via een andere bron wordt bij de bestaande kans gevoegd, een verwant onderwerp wordt \"bestaande pagina bijwerken\".",
+    applies: true,
   },
   onjuist: {
     label: "Feitelijk onjuist of onvoldoende onderbouwd",
@@ -82,6 +82,8 @@ const words = (t: string) => (norm(t).match(/[a-z]{6,}/g) || [])
 // Eenvoudige stam: meervoud en verbuiging eraf, zodat "faillissementen" en "faillissement" samenvallen
 export const stem = (w: string) => w.replace(/(ingen|heden|en|es|s|e)$/, "")
 const NEVER = new Set(NEVER_RAW.flatMap(t => words(t)).flatMap(w => [w, stem(w)]))
+// Algemeen woord (geen onderwerp): ook gebruikt door de controle "staat al op de site"
+export const isGeneric = (w: string) => NEVER.has(w) || NEVER.has(stem(w))
 const sentences = (t: string) => t.split(/(?<=[.!?])\s+|\n+/).map(s => s.trim()).filter(Boolean)
 
 export interface ReadNote { reasons: { code: ReasonCode; quote: string }[]; topics: { stem: string; word: string; quote: string }[] }
@@ -181,7 +183,7 @@ export function feedbackLessons(l: Learned): Lesson[] {
       conclusion: `Je schreef dit ${r.n}× bij een afwijzing. Herkend in: “${r.quotes[0].quote}”`,
       evidence: { n: r.n, reasons: r.quotes.map(q => q.quote), items: r.quotes.map(q => ({ id: q.id, title: q.title })) },
       confidence: conf(r.n),
-      effect: meta.applies ? { type: "content-feedback", factor: f, text: `${meta.effect} Nu ×${nlF(f)}.` } : { type: "info", text: meta.effect },
+      effect: code === "dubbel" ? { type: "content-feedback", text: meta.effect } : meta.applies ? { type: "content-feedback", factor: f, text: `${meta.effect} Nu ×${nlF(f)}.` } : { type: "info", text: meta.effect },
     })
   }
   for (const [st, t] of l.topics) {

@@ -145,6 +145,7 @@ const factorNl = (f: number) => f.toFixed(2).replace(/0$/, "").replace(".", ",")
 export interface ExperimentFact { outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | null; features: Features; label: string }
 export interface DecisionFact { kind: string; intent?: string; status: string; note?: string | null }
 export interface ContentFact { id?: string; title?: string; service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null
+  alreadyOnSite?: boolean  // afgewezen omdat het al op de site staat: zegt niets over het onderwerp zelf
   advice?: string | null   // "bijwerken" = bestaande pagina; telt niet mee in vergelijkingen tussen artikelen
   views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 30 dagen
   // Kenmerken van de eigen tekst (uit de ingeleverde PDF/Word)
@@ -228,7 +229,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
   }
 
   // 3. Content: afwijzingen per dienst en herkomst, en (later) resultaten per format
-  const cRej = input.content.filter(c => c.status === "afgewezen")
+  const cRej = input.content.filter(c => c.status === "afgewezen" && !c.alreadyOnSite)
   const cGroups = new Map<string, ContentFact[]>()
   for (const c of cRej) cGroups.set(`${c.service || "-"}|${c.origin}`, [...(cGroups.get(`${c.service || "-"}|${c.origin}`) || []), c])
   for (const [k, list] of cGroups) {
