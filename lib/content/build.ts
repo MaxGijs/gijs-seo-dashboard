@@ -12,6 +12,7 @@ import {
   commercialFor, consistencyIssues, CONTENT_MODEL_VERSION, ctaFor, defaultAngle, formatFor, GENERAL_TERMS, priorityFor,
   PROVINCES, regionNote, regionsIn, risksFor, SCAN_SERVICE, scoreIdea, SERVICE_TERMS, serviceLabel, servicePage, TITLE_MAX,
 } from "./model"
+import { feedbackEffects, type Learned } from "./feedback"
 
 export const dayMs = 86400000
 export const ageOf = (iso: string | null | undefined) => (iso ? Math.max(0, (Date.now() - new Date(iso).getTime()) / dayMs) : null)
@@ -192,14 +193,15 @@ export interface Ctx {
   queries: KeywordRef[]
   capacity: Map<string, CapacityMode>
   places: Map<string, Place>          // "zwolle" → { name: "Zwolle", path: "/regio/overijssel/zwolle" }
-  existing: Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title">[]
+  existing: (Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title"> & Partial<Pick<ContentIdea, "summary" | "why_now" | "feedback" | "impact" | "decision_note" | "regions">>)[]
   ignoreRejections?: Set<string>      // "dienst|herkomst" van teruggedraaide lessen
+  learned?: Learned                   // geleerd uit de eigen toelichtingen bij afwijzingen
 }
 
-function rejectedCount(ctx: Ctx, service: string | null, origin: Origin) {
+function rejectedIds(ctx: Ctx, service: string | null, origin: Origin): string[] {
   // Teruggedraaide les ("Wat hebben we geleerd?"): afwijzingen van deze soort tellen niet meer mee
-  if (ctx.ignoreRejections?.has(`${service || "-"}|${origin}`)) return 0
-  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin).length
+  if (ctx.ignoreRejections?.has(`${service || "-"}|${origin}`)) return []
+  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin).map(e => e.id)
 }
 
 // Plaatsnaam in een zoekvraag (langste match eerst, zodat "hof van twente" wint van "twente")
@@ -216,7 +218,11 @@ export function buildIdea(d: Draft, ctx: Ctx) {
   const capacity = (d.service && ctx.capacity.get(d.service)) || "normaal"
   const kw = d.keywords
   const demand = sumImp(kw)
-  const scored = scoreIdea({ origin: d.origin, ageDays: d.ageDays, service: d.service, impact: d.impact, demand, keywordCount: kw.length, urgency: d.urgency, reliability: d.reliability, capacity, rejectedSimilar: rejectedCount(ctx, d.service, d.origin) })
+  // Eerder afgewezen kansen die hierop lijken: zelfde dienst en herkomst, of volgens de eigen toelichtingen.
+  // Elke afgewezen kans telt één keer, ook als hij om meerdere redenen lijkt.
+  const fb = feedbackEffects(ctx.learned, { subject: d.subject, summary: d.summary, whyNow: d.whyNow, origin: d.origin, impact: d.impact, regions: d.regions, demand })
+  const similar = new Set([...rejectedIds(ctx, d.service, d.origin), ...fb.matches.flatMap(m => m.ids)])
+  const scored = scoreIdea({ origin: d.origin, ageDays: d.ageDays, service: d.service, impact: d.impact, demand, keywordCount: kw.length, urgency: d.urgency, reliability: d.reliability, capacity, rejectedSimilar: similar.size, feedback: { reasons: fb.matches.map(m => m.label), actWeight: fb.actWeight } })
   const format = d.format || formatFor(d.origin, d.impact, d.ageDays)
   const page = servicePage(d.service)
   const pageExists = d.service && d.service !== SCAN_SERVICE ? ctx.services.includes(d.service) : true

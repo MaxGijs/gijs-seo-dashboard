@@ -2,6 +2,7 @@
 // en op verzoek vanaf de pagina "Wat hebben we geleerd?".
 
 import { getSupabase } from "./guard"
+import { feedbackLessons, learnFromFeedback } from "@/lib/content/feedback"
 import { computeLessons, featuresOf, type ContentFact, type DecisionFact, type ExperimentFact, type Lesson } from "@/lib/learning"
 
 export async function recomputeLessons(by = "systeem") {
@@ -9,7 +10,7 @@ export async function recomputeLessons(by = "systeem") {
   const [{ data: exps }, { data: statuses }, { data: ideas }, { data: existing }] = await Promise.all([
     sb.from("seo_experiments").select("advice_key, description, outcome, query, page, baseline"),
     sb.from("seo_advice_status").select("advice_key, status, note, snapshot"),
-    sb.from("content_ideas").select("id, title, service, origin, status, feedback, format, evals, text_check, advice"),
+    sb.from("content_ideas").select("id, title, service, origin, status, feedback, format, evals, text_check, advice, summary, why_now, impact, decision_note"),
     sb.from("seo_lessons").select("*"),
   ])
   const snap = new Map((statuses || []).map(s => [s.advice_key, s.snapshot]))
@@ -35,7 +36,8 @@ export async function recomputeLessons(by = "systeem") {
   }
   const content: ContentFact[] = (ideas || []).map(i => ({ id: i.id, title: i.title, service: i.service, origin: i.origin, status: i.status, advice: i.advice, tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, views30: i.evals?.d30?.ga4?.views ?? null, leads30: i.evals?.d30?.ga4 ? (i.evals.d30.ga4.measurement === "ok" ? i.evals.d30.ga4.requests ?? 0 : 0) + (i.evals.d30.ga4.contacts ?? 0) : null, engagement30: i.evals?.d30?.ga4?.engagementSec ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
 
-  const drafts = computeLessons({ experiments, decisions, content })
+  // Plus: lessen uit wat medewerkers zelf schrijven bij een afwijzing
+  const drafts = [...computeLessons({ experiments, decisions, content }), ...feedbackLessons(learnFromFeedback((ideas || []) as any[]))]
   const old = new Map<string, any>((existing || []).map(l => [l.key, l]))
   const now = new Date().toISOString()
   const log: { lesson_key: string; action: string; detail: string; by: string }[] = []
@@ -80,14 +82,27 @@ export async function readLessons() {
 
 // Waarom is iets afgewezen? Live uit de beslissingen, zodat de uitleg altijd klopt (ook zonder herberekening)
 export async function attachRejections(sb: ReturnType<typeof getSupabase>, lessons: Lesson[]) {
-  const needContent = lessons.some(l => l.key.startsWith("content|") && l.effect?.type === "content-afwijzing")
+  const needContent = lessons.some(l => (l.key.startsWith("content|") && l.effect?.type === "content-afwijzing") || l.key.startsWith("feedback|"))
   const needSeo = lessons.some(l => l.key.startsWith("afwijzing|"))
   const [{ data: ideas }, { data: statuses }] = await Promise.all([
     needContent ? sb.from("content_ideas").select("id, title, service, origin, status, feedback, decision_note, updated_at").eq("status", "afgewezen") : Promise.resolve({ data: [] as any[] }),
     needSeo ? sb.from("seo_advice_status").select("advice_key, advice_title, status, note, snapshot, updated_at").in("status", ["afgewezen", "onvoldoende_bewijs"]) : Promise.resolve({ data: [] as any[] }),
   ])
+  const toRejection = (i: any) => {
+    const fb: any[] = (i.feedback || []).filter((f: any) => f && f.tag)
+    const last = fb[fb.length - 1]
+    return {
+      title: i.title, href: `/content/${i.id}?van=geleerd`,
+      reasons: [...new Set(fb.map(f => f.tag).filter((t: string) => t !== "opmerking"))] as string[],
+      note: fb.map(f => f.note).filter(Boolean).pop() || i.decision_note || null,
+      by: last?.by || null, at: last?.at || i.updated_at || null,
+    }
+  }
   for (const l of lessons) {
-    if (l.key.startsWith("content|") && l.effect?.type === "content-afwijzing") {
+    if (l.key.startsWith("feedback|")) {
+      const ids = new Set((l.evidence.items || []).map(x => x.id))
+      l.rejections = (ideas || []).filter(i => ids.has(i.id)).map(toRejection)
+    } else if (l.key.startsWith("content|") && l.effect?.type === "content-afwijzing") {
       const [, service, origin] = l.key.split("|")
       l.rejections = (ideas || []).filter(i => (i.service || "-") === service && i.origin === origin)
         .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))

@@ -13,7 +13,7 @@ import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
 interface LogRow { id: number; lesson_key: string; at: string; action: string; detail: string | null; by: string | null }
 interface Data { lessons: Lesson[]; log: LogRow[]; stats: { lopend: number; afgerond: number; afgewezen: number; gepubliceerd: number } | null }
 
-const SOURCE_LABEL: Record<Lesson["source"], string> = { meting: "Uit metingen", afwijzing: "Uit afwijzingen", content: "Uit content" }
+const SOURCE_LABEL: Record<Lesson["source"], string> = { meting: "Uit metingen", afwijzing: "Uit afwijzingen", content: "Uit content", feedback: "Uit je feedback" }
 const ACTION_LABEL: Record<string, string> = { nieuw: "Nieuwe les", bijgewerkt: "Bijgewerkt", vervallen: "Vervallen", "weer-geldig": "Weer geldig", teruggedraaid: "Teruggedraaid", hersteld: "Hersteld" }
 
 export default function LearnedView() {
@@ -152,6 +152,11 @@ function Learning({ l, affected, openTask }: { l: Lesson; affected: Task[]; open
   } else if (e.type === "prioriteit") {
     lines.push(<>{describeMatch(e.match || {})} {(e.factor || 1) > 1 ? "krijgen iets voorrang" : "zakken iets in de prioriteit"}: <b>×{nlFactor(e.factor || 1)}</b>. Het effect blijft tussen ×0,7 en ×1,3 en groeit pas als volgende metingen dit bevestigen.</>)
     if (!off && affected.length) lines.push(<>Dit raakt nu {affected.length} {affected.length === 1 ? "advies" : "adviezen"} in Te beoordelen.</>)
+  } else if (e.type === "content-feedback" || l.source === "feedback") {
+    lines.push(<>{e.text}</>)
+    const quotes = l.evidence.reasons || []
+    if (quotes.length) lines.push(<>Herkend in je eigen woorden: {quotes.slice(0, 3).map((q, i) => <span key={i} className="learn-quote">“{q}”</span>)}</>)
+    if (e.type === "content-feedback") lines.push(<>Schrijf je dit vaker, dan wordt het effect sterker (×0,85 per keer, nooit lager dan ×0,5). Ze blijven wel zichtbaar.</>)
   } else lines.push(<>{e.text}</>)
   lines.push(<span className="subtle">{ZEKERHEID[l.confidence]}{off ? " Deze les is nu uitgeschakeld en heeft geen invloed." : " Klopt dit niet? Draai de les terug; dan telt het niet meer mee."}</span>)
   return (

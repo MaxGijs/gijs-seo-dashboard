@@ -309,7 +309,9 @@ export interface ScoreInput {
   urgency?: "hoog" | "middel" | "laag" // alleen bij eigen ideeën: de urgentie die de medewerker aangeeft
   reliability: Reliability
   capacity: CapacityMode
-  rejectedSimilar: number     // eerder afgewezen kansen voor dezelfde dienst en herkomst
+  rejectedSimilar: number     // aantal verschillende eerder afgewezen kansen die op deze lijken (zelfde dienst en herkomst, of volgens je feedback)
+  // Geleerd uit de eigen toelichtingen bij afwijzingen (lib/content/feedback.ts)
+  feedback?: { reasons: string[]; actWeight: number }
 }
 
 export function scoreIdea(i: ScoreInput): { score: number; parts: ScorePart[]; factors: string[] } {
@@ -324,6 +326,11 @@ export function scoreIdea(i: ScoreInput): { score: number; parts: ScorePart[]; f
   else {
     act = i.urgency === "hoog" ? 22 : i.urgency === "laag" ? 6 : 12
     actWhy = `Aanleiding aangedragen door een medewerker${i.urgency ? ` met urgentie ${i.urgency}` : ""}.`
+  }
+  const actW = i.feedback?.actWeight ?? 1
+  if (actW < 1 && (i.origin === "actualiteit" || i.origin === "trend")) {
+    act = Math.round(act * actW)
+    actWhy += ` Telt minder zwaar (×${actW.toFixed(2).replace(/0$/, "").replace(".", ",")}): je gaf eerder in je feedback aan dat actualiteit bij nieuws zonder zoekvraag te zwaar telt.`
   }
   parts.push({ label: "Actualiteit", points: act, max: 25, why: actWhy, basis: (i.origin === "actualiteit" || i.origin === "trend") && i.ageDays !== null ? "gemeten" : i.origin === "zoekdata" ? "afgeleid" : "aangenomen" })
 
@@ -351,10 +358,12 @@ export function scoreIdea(i: ScoreInput): { score: number; parts: ScorePart[]; f
   const factors: string[] = []
   const cap = CAPACITY_META[i.capacity]
   if (cap.factor !== 1) { score *= cap.factor; factors.push(`Capaciteit: ${cap.label.toLowerCase()} (×${cap.factor.toLocaleString("nl-NL")})`) }
+  // Leren van afwijzingen: elke afgewezen kans telt één keer (×0,85), nooit lager dan ×0,5
   if (i.rejectedSimilar > 0) {
     const f = Math.max(0.5, Math.pow(0.85, i.rejectedSimilar))
     score *= f
-    factors.push(`${i.rejectedSimilar}× eerder afgewezen voor deze dienst (×${f.toFixed(2).replace(".", ",")})`)
+    const why = i.feedback?.reasons.length ? `; uit je feedback: ${i.feedback.reasons.join(", ")}` : " voor deze dienst"
+    factors.push(`Lijkt op ${i.rejectedSimilar} eerder afgewezen ${i.rejectedSimilar === 1 ? "kans" : "kansen"}${why} (×${f.toFixed(2).replace(".", ",")})`)
   }
   return { score: Math.round(score), parts, factors }
 }

@@ -23,6 +23,7 @@ import {
 } from "@/lib/content/model"
 import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
 import { buildRelevancePrompt } from "@/lib/content/relevance"
+import { briefingNotes, learnFromFeedback, previewNote } from "@/lib/content/feedback"
 import { ago, scoreTone } from "./ContentView"
 
 const SITE = "https://www.groeninjestraat.nl"
@@ -69,7 +70,9 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   }, [onClose, isPage])
   useEffect(() => { setFinal(idea.concept_final || ""); setBriefing(idea.briefing || "") }, [idea.id, idea.concept_final, idea.briefing])
 
-  const lessons = useMemo(() => lessonsFrom(all), [all])
+  // Lessen voor de briefing: vaak gekozen redenen + aandachtspunten uit eigen toelichtingen
+  const notePreview = useMemo(() => (mode === "reject" ? previewNote(note, idea, all) : null), [mode, note, idea, all])
+  const lessons = useMemo(() => [...lessonsFrom(all), ...briefingNotes(learnFromFeedback(all))], [all])
   const style = useMemo(() => styleGuideFrom(all, idea.id), [all, idea.id])
   const score = effectiveScore(idea)
   const step = STATUS_META[idea.status].step
@@ -533,9 +536,21 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
           )}
           {(mode === "reject" || mode === "later" || mode === "feedback") && (
             <div className="inline-form">
-              <p className="field-label" style={{ margin: 0 }}>{mode === "reject" ? "Waarom afwijzen? Het dashboard leert hiervan." : mode === "later" ? "Waarom later? (optioneel)" : "Feedback op dit voorstel of concept"}</p>
+              <label className="field-label" htmlFor="cp-reason" style={{ margin: 0 }}>{mode === "reject" ? "Waarom wijs je dit af? Schrijf het in je eigen woorden; het dashboard leert van je tekst." : mode === "later" ? "Waarom later? (optioneel)" : "Feedback op dit voorstel of concept"}</label>
+              <textarea id="cp-reason" className="textarea" rows={mode === "reject" ? 5 : 3} value={note} onChange={e => setNote(e.target.value)}
+                placeholder={mode === "reject" ? "Bijvoorbeeld: gaat over een rechtszaak tegen ondernemers, niet over een keuze die huiseigenaren maken. Er is ook geen echte zoekvraag naar." : "Toelichting"} />
+              {mode === "reject" && notePreview && (notePreview.reasons.length > 0 || notePreview.topics.length > 0) && (
+                <div className="note-preview" aria-live="polite">
+                  <span className="subtle small">Het dashboard herkent hierin:</span>
+                  {notePreview.reasons.map(r => <span key={r.code} className={`badge tone-${r.applies ? "info" : "neutral"}`}>{r.label}</span>)}
+                  {notePreview.topics.map(t => <span key={t} className="badge tone-warning">Onderwerp “{t}”</span>)}
+                </div>
+              )}
+              {mode === "reject" && note.trim().length > 15 && notePreview && !notePreview.reasons.length && !notePreview.topics.length && (
+                <p className="field-hint">Het dashboard herkent hier (nog) geen vaste reden in. Je toelichting wordt wel bewaard en meegegeven bij volgende relevantie-checks.</p>
+              )}
+              <p className="field-hint" style={{ marginTop: 6 }}>Of kies een snelle reden (optioneel):</p>
               <Tags value={tags} onChange={setTags} />
-              <textarea className="textarea" rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Toelichting (optioneel)" />
               <div className="inline-form-actions">
                 <button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Annuleren</button>
                 <button className={`btn btn-sm ${mode === "reject" ? "btn-danger" : "btn-primary"}`} disabled={busy || (mode !== "later" && !tags.length && !note.trim())}

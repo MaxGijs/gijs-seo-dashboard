@@ -24,7 +24,7 @@ export interface Features {
 export type LessonMatch = Partial<Features>
 
 export interface LessonEffect {
-  type: "prioriteit" | "afwijzing" | "content-afwijzing" | "info"
+  type: "prioriteit" | "afwijzing" | "content-afwijzing" | "content-feedback" | "info"
   factor?: number
   match?: LessonMatch
   service?: string | null
@@ -44,10 +44,10 @@ export interface LessonRejection {
 
 export interface Lesson {
   key: string
-  source: "meting" | "afwijzing" | "content"
+  source: "meting" | "afwijzing" | "content" | "feedback"
   title: string
   conclusion: string
-  evidence: { n: number; success?: number; fail?: number; rate?: number; baseline?: number; examples?: string[]; reasons?: string[]; items?: { id: string; title: string }[] }
+  evidence: { n: number; success?: number; fail?: number; rate?: number; baseline?: number; examples?: string[]; reasons?: string[]; items?: { id: string; title: string }[] }  // reasons bij feedback: de herkende zinnen
   confidence: "laag" | "middel" | "hoog"
   effect: LessonEffect | null
   // Alleen bij het lezen (niet opgeslagen): welke afwijzingen zitten erachter, met reden en notitie

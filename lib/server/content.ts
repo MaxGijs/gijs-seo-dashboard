@@ -9,6 +9,7 @@ import { type Item, parseMilieuCentraal, parseRss } from "@/lib/content/parse"
 import { gscQuery, serviceSearchConsole, SITE_ORIGIN, toPath } from "./gsc"
 import { describe, overlaps, type Campaign } from "@/lib/campaigns"
 import { LAUNCH_DATES } from "@/lib/pages"
+import { learnFromFeedback } from "@/lib/content/feedback"
 import { baselineWindow, compare, isPageUpdate, judgeUpdate, pointWindow, UPDATE_MILESTONES, updateQueries, type SearchTotals, type UpdateMeasure, type UpdateSnapshot } from "@/lib/content/update"
 import {
   type CapacityMode, type ContentIdea, type Impact, type KeywordRef, type Reliability, type SourceRef,
@@ -170,10 +171,13 @@ export async function siteContext(): Promise<Ctx> {
     if (!data || data.length < 1000) break
   }
 
-  const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title")
-  const { data: reverted } = await sb.from("seo_lessons").select("key").eq("source", "content").eq("status", "teruggedraaid")
-  const ignoreRejections = new Set((reverted || []).map(r => r.key.replace(/^content\|/, "")))
-  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"], ignoreRejections }
+  const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title, summary, why_now, feedback, impact, decision_note, regions")
+  const { data: reverted } = await sb.from("seo_lessons").select("key, source").in("source", ["content", "feedback"]).eq("status", "teruggedraaid")
+  const ignoreRejections = new Set((reverted || []).filter(r => r.source === "content").map(r => r.key.replace(/^content\|/, "")))
+  // Geleerd uit eigen toelichtingen; teruggedraaide feedbacklessen tellen niet mee
+  const ignoreFeedback = new Set((reverted || []).filter(r => r.source === "feedback").map(r => r.key.replace(/^feedback\|/, "")))
+  const learned = learnFromFeedback((existing || []) as any[], ignoreFeedback)
+  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"], ignoreRejections, learned }
 }
 
 // ── Scan ────────────────────────────────────────────────────────────────────

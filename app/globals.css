@@ -872,6 +872,9 @@ img, svg { display: block; max-width: 100%; }
 .learn-block-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--green-800); margin-bottom: 4px; }
 .learn-effect .learn-block-title { margin-bottom: 2px; }
 .learn-lines { display: flex; flex-direction: column; gap: 4px; }
+.note-preview { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; min-width: 0; }
+.note-preview .badge { white-space: normal; max-width: 100%; height: auto; line-height: 1.35; padding-top: 3px; padding-bottom: 3px; }
+.learn-quote { display: block; margin-top: 3px; padding-left: 8px; border-left: 2px solid var(--accent-200); color: var(--grey-800); font-style: italic; }
 .learn-why { border: 1px solid #f2d6d1; background: #fdf6f5; border-radius: var(--radius-sm); padding: 8px 10px; }
 .learn-why .learn-block-title svg { width: 15px; height: 15px; color: #c2412e; }
 .learn-rej { display: flex; flex-direction: column; gap: 8px; }

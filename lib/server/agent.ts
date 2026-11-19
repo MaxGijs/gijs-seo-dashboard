@@ -24,6 +24,7 @@ import { addDays, today } from "@/lib/format"
 import { readAlerts } from "@/lib/server/alerts"
 import { PATCH as contentPATCH } from "@/app/api/content/[id]/route"
 import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
+import { briefingNotes, learnFromFeedback } from "@/lib/content/feedback"
 import { GET as campGET, POST as campPOST } from "@/app/api/campaigns/route"
 import { CAMPAIGN_KINDS, describe, type Campaign } from "@/lib/campaigns"
 import type { AdviceDetail, AdviceRecord, Experiment, GscRow, Priority, Signal, Status, Task } from "@/lib/types"
@@ -346,7 +347,7 @@ export const TOOLS: Tool[] = [
       const ideas: any[] = c.ideas || []
       const idea = findIdea(ideas, a.kans)
       const style = styleGuideFrom(ideas, idea.id)
-      const briefing = buildBriefing(idea, lessonsFrom(ideas), style)
+      const briefing = buildBriefing(idea, [...lessonsFrom(ideas), ...briefingNotes(learnFromFeedback(ideas))], style)
       return {
         kans: { id: idea.id, titel: idea.title, status: idea.status, advies: idea.advice === "bijwerken" ? `Bestaande pagina ${idea.target_page} bijwerken` : idea.advice === "nieuw" ? "Nieuw artikel" : idea.advice, pagina: `https://gijs-dashboard.vercel.app/content/${idea.id}` },
         briefing,
