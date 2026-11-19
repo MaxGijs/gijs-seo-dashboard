@@ -22,6 +22,7 @@ import {
   REVIEW_ROLES, requiredReviews, serviceLabel, STATUS_META, consistencyIssues, type Basis,
 } from "@/lib/content/model"
 import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefing"
+import { buildRelevancePrompt } from "@/lib/content/relevance"
 import { ago, scoreTone } from "./ContentView"
 
 const SITE = "https://www.groeninjestraat.nl"
@@ -105,21 +106,33 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
       toast("Opdracht gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
     } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
   }
-  // Opdracht voor Claude: kritisch checken of deze (nog niet geaccepteerde) kans relevant genoeg is
-  // Alleen kopiëren (geen Claude-tabblad openen); lukt kopiëren niet, dan tonen we de prompt om zelf te kopiëren
+  // Relevantie-check: net als de briefing een volledige prompt met alle gegevens van de kans.
+  // Alleen kopiëren (geen Claude-tabblad, geen koppeling nodig); het oordeel leg je daarna hier vast.
+  type RelVerdict = NonNullable<ContentIdea["relevance_check"]>["verdict"]
+  const [relevanceText, setRelevanceText] = useState<string | null>(null)
   const [relevanceCopied, setRelevanceCopied] = useState(false)
-  const [relevancePrompt, setRelevancePrompt] = useState<string | null>(null)
-  const askRelevance = async () => {
-    const prompt = `Gebruik de Gijs-koppeling. Haal met contentkans_relevantie alles op voor contentkans ${idea.id} ("${idea.title}") en beoordeel kritisch of dit relevant genoeg is om over te schrijven. Laat je oordeel eerst aan mij zien en sla het daarna op met contentkans_relevantie_opslaan.`
+  const [relVerdict, setRelVerdict] = useState<RelVerdict | null>(null)
+  const [relReason, setRelReason] = useState("")
+  const askRelevance = () => { setRelevanceText(buildRelevancePrompt(idea, all)); setRelVerdict(null); setRelReason("") }
+  const copyRelevance = async () => {
+    if (!relevanceText) return
     try {
-      await navigator.clipboard.writeText(prompt)
-      setRelevancePrompt(null)
+      await navigator.clipboard.writeText(relevanceText)
       setRelevanceCopied(true)
       setTimeout(() => setRelevanceCopied(false), 2500)
-      toast("Prompt gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
-    } catch {
-      setRelevancePrompt(prompt)
-    }
+      toast("Prompt gekopieerd. Plak hem in Claude en leg het oordeel hieronder vast.")
+    } catch { toast("Kopiëren lukte niet; selecteer de tekst in het vak en kopieer hem zelf.", "error") }
+  }
+  // Plakt iemand het hele antwoord van Claude, dan halen we het oordeel uit de regel "OORDEEL: …"
+  const onRelReason = (text: string) => {
+    setRelReason(text)
+    const m = text.match(/OORDEEL\s*:\s*\**\s*(niet[ _-]?relevant|twijfel|relevant)/i)
+    if (m && !relVerdict) setRelVerdict(/niet/i.test(m[1]) ? "niet_relevant" : /twijfel/i.test(m[1]) ? "twijfel" : "relevant")
+  }
+  const saveRelevance = async () => {
+    if (!relVerdict || !relReason.trim()) return
+    const ok = await act({ action: "relevantie", verdict: relVerdict, reasoning: relReason.trim() }, "Oordeel van Claude vastgelegd")
+    if (ok) { setRelevanceText(null); setRelVerdict(null); setRelReason("") }
   }
   const copyBriefing = async () => {
     try {
@@ -214,29 +227,44 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
           {["nieuw", "later", "verlopen"].includes(idea.status) && (
             <section className="psec" aria-labelledby="cp-relevance">
               <h3 className="psec-title" id="cp-relevance"><HelpCircle aria-hidden />Relevantie-check door Claude{idea.relevance_check?.at && <span className="subtle">{new Date(idea.relevance_check.at).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}</h3>
-              {idea.relevance_check ? (
+              {idea.relevance_check && !relevanceText && (
                 <>
                   <div className={`verdict-box tone-${RELEVANCE_META[idea.relevance_check.verdict].tone}`}>
                     <p className="verdict-label"><b>{RELEVANCE_META[idea.relevance_check.verdict].label}</b></p>
-                    <p>{idea.relevance_check.reasoning}</p>
+                    <p style={{ whiteSpace: "pre-line" }}>{idea.relevance_check.reasoning}</p>
                   </div>
-                  <p className="field-hint">{idea.relevance_check.by} · dit neemt de beslissing niet over, jij beoordeelt nog steeds zelf.</p>
+                  <p className="field-hint">Vastgelegd door {idea.relevance_check.by} · dit neemt de beslissing niet over, jij beoordeelt nog steeds zelf.</p>
                   <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={askRelevance}>{relevanceCopied ? <><Check aria-hidden />Prompt gekopieerd</> : <><Copy aria-hidden />Prompt opnieuw kopiëren</>}</button>
+                    <button className="btn btn-ghost btn-sm" onClick={askRelevance}><HelpCircle aria-hidden />Opnieuw laten beoordelen</button>
                   </div>
-                </>
-              ) : (
-                <>
-                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Laat Claude kritisch checken of dit onderwerp relevant genoeg is om over te schrijven, voordat je tijd in schrijven steekt: klopt de aanleiding nog, past het bij Gijs' doelgroep, en bestaat er al een pagina over? Kopieer de prompt en plak hem in Claude; Claude haalt via de Gijs-koppeling zelf alle gegevens op.</p>
-                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={askRelevance}>{relevanceCopied ? <><Check aria-hidden />Prompt gekopieerd</> : <><Copy aria-hidden />Vraag Claude of dit relevant is</>}</button>
-                  <p className="field-hint">Werkt met de Claude-koppeling (connector "Gijs"). Nog niet gekoppeld? Zie Claude-koppeling in de zijbalk.</p>
                 </>
               )}
-              {relevancePrompt && (
-                <div style={{ marginTop: 8 }}>
-                  <p className="field-hint">Kopiëren lukte niet automatisch. Selecteer de tekst hieronder en kopieer hem zelf:</p>
-                  <textarea className="textarea mono" readOnly rows={4} value={relevancePrompt} aria-label="Prompt voor Claude" onFocus={e => e.currentTarget.select()} />
-                </div>
+              {!idea.relevance_check && !relevanceText && (
+                <>
+                  <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Laat Claude kritisch checken of dit onderwerp het schrijven waard is, voordat je er tijd in steekt: klopt de aanleiding nog, past het bij Gijs, is er echte zoekvraag en bestaat er al een pagina over? Je krijgt een volledige prompt met alle gegevens van deze kans om in Claude te plakken.</p>
+                  <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={askRelevance}><HelpCircle aria-hidden />Vraag Claude of dit relevant is</button>
+                </>
+              )}
+              {relevanceText && (
+                <>
+                  <textarea className="textarea mono" rows={12} value={relevanceText} onChange={e => setRelevanceText(e.target.value)} aria-label="Prompt voor de relevantie-check" />
+                  <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                    <button className="btn btn-primary btn-sm" onClick={copyRelevance}>{relevanceCopied ? <><Check aria-hidden />Gekopieerd</> : <><Copy aria-hidden />Kopiëren</>}</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setRelevanceText(null)}>Sluiten</button>
+                  </div>
+                  <div className="inline-form" style={{ marginTop: 14 }}>
+                    <p className="field-label" id="rel-verdict-label">Oordeel van Claude vastleggen</p>
+                    <div className="tag-pick" role="radiogroup" aria-labelledby="rel-verdict-label">
+                      {(Object.keys(RELEVANCE_META) as RelVerdict[]).map(v => (
+                        <button key={v} type="button" role="radio" aria-checked={relVerdict === v} className={`chip${relVerdict === v ? " is-active" : ""}`} onClick={() => setRelVerdict(v)}>{v === "relevant" ? "Relevant" : v === "twijfel" ? "Twijfel" : "Niet relevant"}</button>
+                      ))}
+                    </div>
+                    <textarea className="textarea" rows={5} style={{ marginTop: 8 }} value={relReason} onChange={e => onRelReason(e.target.value)} placeholder="Plak hier het antwoord van Claude (het oordeel wordt dan vanzelf herkend)" aria-label="Antwoord van Claude" />
+                    <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
+                      <button className="btn btn-secondary btn-sm" disabled={busy || !relVerdict || !relReason.trim()} onClick={saveRelevance}>Oordeel opslaan</button>
+                    </div>
+                  </div>
+                </>
               )}
             </section>
           )}
