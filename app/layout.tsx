@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
+// De nieuwe bouwstenen (shadcn/ui + Tailwind) lezen dezelfde tokens; zie docs/DESIGN.md
+import "./ui-v2.css"
 
 export const metadata: Metadata = {
   title: "Gijs Intelligence · SEO-werkruimte",

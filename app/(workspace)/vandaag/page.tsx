@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import TodayView from "@/components/views/TodayView"
+import TodayV2 from "@/components/v2/TodayV2"
 
 export const metadata: Metadata = { title: "Vandaag · Gijs Intelligence" }
 
 export default function Page() {
-  return <TodayView />
+  return <TodayV2 />
 }

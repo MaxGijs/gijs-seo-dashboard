@@ -55,7 +55,7 @@ export function PriorityMeter({ priority, showLabel = true }: { priority: Priori
   )
 }
 
-export function EmptyState({ icon, title, text, action, compact = false }: { icon: ReactNode; title: string; text?: ReactNode; action?: ReactNode; compact?: boolean }) {
+export function EmptyState({ icon, title, text, action, compact = true }: { icon: ReactNode; title: string; text?: ReactNode; action?: ReactNode; compact?: boolean }) {
   return (
     <div className={`empty${compact ? " empty-compact" : ""}`}>
       <span className="empty-icon" aria-hidden>{icon}</span>
@@ -70,8 +70,8 @@ export function Skeleton({ height = 16, width = "100%", radius }: { height?: num
   return <div className="skel" style={{ height, width, borderRadius: radius }} aria-hidden />
 }
 
-export function Alert({ tone = "info", title, children, action }: { tone?: "info" | "warning" | "error"; title: string; children?: ReactNode; action?: ReactNode }) {
-  const Icon = tone === "error" ? AlertCircle : tone === "warning" ? AlertCircle : Info
+export function Alert({ tone = "info", title, children, action }: { tone?: "info" | "warning" | "error" | "success"; title: string; children?: ReactNode; action?: ReactNode }) {
+  const Icon = tone === "error" ? AlertCircle : tone === "warning" ? AlertCircle : tone === "success" ? CheckCircle2 : Info
   return (
     <div className={`alert alert-${tone}`} role={tone === "error" ? "alert" : "status"}>
       <Icon aria-hidden />
@@ -145,4 +145,52 @@ const INTENT_LABEL = { lokaal: "Lokaal", commercieel: "Commercieel", informatief
 const INTENT_TONE = { lokaal: "accent", commercieel: "info", informatief: "neutral", merk: "neutral" } as const
 export function IntentBadge({ intent }: { intent: keyof typeof INTENT_LABEL }) {
   return <span className={`badge tone-${INTENT_TONE[intent]}`} title="Zoekintentie">{INTENT_LABEL[intent]}</span>
+}
+
+// ── Paginakop ────────────────────────────────────────────────────────────────
+// Elke pagina beantwoordt hier drie vragen (zie docs/DESIGN.md):
+// wat zie ik (titel + conclusie), is het goed (status met stip), wat doe ik nu (één primaire actie).
+export type StatusTone = "good" | "attention" | "problem" | "info"
+
+export function StatusLine({ tone, children }: { tone: StatusTone; children: ReactNode }) {
+  return <p className={`page-status is-${tone}`}><span className="page-status-dot" aria-hidden />{children}</p>
+}
+
+export function PageHeader({ title, status, sub, actions, children }: {
+  title: ReactNode
+  status?: { tone: StatusTone; text: ReactNode } | null
+  sub?: ReactNode
+  actions?: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <div className="page-head">
+      <div className="page-head-main">
+        <h1 className="page-title">{title}</h1>
+        {status && <StatusLine tone={status.tone}>{status.text}</StatusLine>}
+        {sub && <p className="page-sub">{sub}</p>}
+        {children}
+      </div>
+      {actions && <div className="page-actions">{actions}</div>}
+    </div>
+  )
+}
+
+// Verdieping: één blok tegelijk via tabs, zodat er geen muur van kaarten ontstaat
+export function SectionTabs<T extends string>({ label, tabs, value, onChange }: { label: string; tabs: { id: T; label: ReactNode; count?: number | null }[]; value: T; onChange: (id: T) => void }) {
+  return (
+    <div className="section-tabs" role="tablist" aria-label={label}>
+      {tabs.map(t => (
+        <button key={t.id} role="tab" type="button" id={`tab-${t.id}`} aria-selected={value === t.id} aria-controls={`tabpanel-${t.id}`}
+          className={`section-tab${value === t.id ? " is-active" : ""}`} onClick={() => onChange(t.id)}
+          onKeyDown={e => {
+            if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return
+            const i = tabs.findIndex(x => x.id === value), n = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]
+            onChange(n.id); document.getElementById(`tab-${n.id}`)?.focus()
+          }}>
+          {t.label}{t.count != null && <span className="chip-count">{t.count}</span>}
+        </button>
+      ))}
+    </div>
+  )
 }

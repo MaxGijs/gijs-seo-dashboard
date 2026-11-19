@@ -13,7 +13,8 @@ export function decisionOf(rec: { status: string; snooze_until: string | null } 
   return rec.status === "afgewezen" ? "afgewezen" : "ingepland"
 }
 
-export default function AdviceActions({ a, compact = false }: { a: SiteAdvice; compact?: boolean }) {
+// Eén primaire knop per scherm: alleen het belangrijkste advies krijgt een gevulde knop
+export default function AdviceActions({ a, compact = false, primary = false }: { a: SiteAdvice; compact?: boolean; primary?: boolean }) {
   const { tasks, siteDecisions, decideSiteAdvice } = useWorkspace()
   const [mode, setMode] = useState<null | "plan" | "reject">(null)
   const [note, setNote] = useState("")
@@ -69,8 +70,8 @@ export default function AdviceActions({ a, compact = false }: { a: SiteAdvice; c
   return (
     <div className="advice-btns">
       {a.kind === "route-stoppen"
-        ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => decide("gezien")}><Check aria-hidden />Gezien</button>
-        : <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => setMode("plan")} title={plan.summary}><CalendarPlus aria-hidden />Inplannen</button>}
+        ? <button className={`btn ${primary ? "btn-primary" : "btn-secondary"} btn-sm`} disabled={busy} onClick={() => decide("gezien")}><Check aria-hidden />Gezien</button>
+        : <button className={`btn ${primary ? "btn-primary" : "btn-secondary"} btn-sm`} disabled={busy} onClick={() => setMode("plan")} title={plan.summary}><CalendarPlus aria-hidden />Inplannen</button>}
       <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => decide("later")}><CalendarClock aria-hidden />Later</button>
       <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setMode("reject")}><X aria-hidden />Afwijzen</button>
     </div>

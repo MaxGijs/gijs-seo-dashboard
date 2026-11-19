@@ -1,10 +1,11 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ArrowDown, ArrowUp, CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
+import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
+import { Alert, Badge, EmptyState, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
 import { num, pct } from "@/lib/format"
 import {
   type CapacityMode, type ContentIdea, type IdeaStatus, type Origin, ANGLE_META, CAPACITY_META, effectiveScore, IMPACT_META,
@@ -85,10 +86,11 @@ function IdeaCard({ idea, onOpen }: { idea: ContentIdea; onOpen: () => void }) {
         <span className="idea-tags">
           <span className="idea-origin">{ORIGIN_ICON[idea.origin]}{ORIGIN_META[idea.origin].label}</span>
           {idea.impact && idea.impact !== "overig" && <Badge tone="neutral">{IMPACT_META[idea.impact].label}</Badge>}
-          <Badge tone="accent">{serviceLabel(idea.service)}</Badge>
+          <Badge tone="neutral">{serviceLabel(idea.service)}</Badge>
           {idea.regions.length > 0 && <Badge tone="info">{idea.regions.map(r => r[0].toUpperCase() + r.slice(1)).join(", ")}</Badge>}
           {production && <Badge tone="success" dot>{STATUS_META[idea.status].label}</Badge>}
-          {idea.covered_by && !production && <Badge tone="warning">Staat al op de site</Badge>}
+          {idea.covered_by && !production && idea.status !== "verlopen" && <Badge tone="warning">Staat al op de site</Badge>}
+          {idea.status === "verlopen" && <Badge tone="neutral" title={idea.decision_note || undefined}>Automatisch gearchiveerd</Badge>}
         </span>
         <span className="idea-title">{idea.title}</span>
         <span className="idea-why">{idea.why_now}</span>
@@ -295,28 +297,34 @@ export default function ContentView() {
         return sortDir === "desc" ? -base : base
       })
   }, [data, tab, origin, sort, sortDir])
+  const pageStatus = useMemo(() => {
+    if (!data) return null
+    const open = data.ideas.filter(i => i.status === "nieuw"), prod = data.ideas.filter(i => STATUS_META[i.status].step > 0 && i.status !== "gepubliceerd")
+    const best = open.length ? Math.max(...open.map(effectiveScore)) : 0
+    const late = prod.filter(i => i.due_date && i.due_date < new Date().toISOString().slice(0, 10)).length
+    const text = [
+      open.length ? `${open.length} ${open.length === 1 ? "kans" : "kansen"} te beoordelen${best >= 70 ? `, de beste scoort ${best}` : ""}` : "Niets te beoordelen",
+      prod.length ? `${prod.length} in productie${late ? `, ${late} te laat` : ""}` : "",
+    ].filter(Boolean).join(". ")
+    return { tone: (late ? "problem" : best >= 70 ? "attention" : "good") as StatusTone, text: `${text}.` }
+  }, [data])
   // Twee rijen: nieuwe artikelen apart van het bijwerken van bestaande pagina's
   const newArticles = useMemo(() => list.filter(i => i.advice !== "bijwerken"), [list])
   const pageUpdates = useMemo(() => list.filter(i => i.advice === "bijwerken"), [list])
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Contentkansen</h1>
-          <p className="page-sub">Wat moeten we schrijven, en waarom nu? Het dashboard stelt voor, een medewerker beslist en publiceert.</p>
-        </div>
-        <div className="page-actions">
-          {data?.lastScan && <span className="subtle" style={{ fontSize: "var(--fs-xs)" }}>Laatste scan {ago(data.lastScan.run_at)}</span>}
-          <button className="btn btn-secondary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Idee toevoegen</button>
-          <button className="btn btn-primary btn-sm" onClick={scan} disabled={scanning || !data}>
+      <PageHeader title="Contentkansen" status={pageStatus}
+        sub={<>Het dashboard stelt voor; een medewerker beslist, schrijft en publiceert. Er wordt nooit automatisch gepubliceerd.{data?.lastScan ? ` Laatste scan ${ago(data.lastScan.run_at)}.` : ""}</>}
+        actions={<>
+          <button className="btn btn-secondary btn-sm" onClick={scan} disabled={scanning || !data}>
             <RefreshCw aria-hidden style={scanning ? { animation: "spin 1s linear infinite" } : undefined} />{scanning ? "Bronnen lezen…" : "Nu zoeken naar kansen"}
           </button>
-        </div>
-      </div>
+          <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Idee toevoegen</button>
+        </>} />
 
       {error && <div style={{ marginBottom: 20 }}><Alert tone="error" title="Contentkansen konden niet worden geladen" action={<button className="btn btn-secondary btn-sm" onClick={load}>Opnieuw</button>}>{error}</Alert></div>}
-      {data?.lastScan && !data.lastScan.ok && <div style={{ marginBottom: 20 }}><Alert tone="warning" title="De laatste scan is mislukt">{data.lastScan.error}</Alert></div>}
+      {data?.lastScan && !data.lastScan.ok && <p className="data-notice-line is-problem"><AlertCircle aria-hidden />De laatste scan is mislukt, dus er kunnen nieuwe kansen ontbreken. <Link href="/data">Bekijk Datastatus</Link></p>}
 
       {!data && !error ? (
         <div className="idea-list">{[0, 1, 2].map(i => <div key={i} className="card card-pad"><Skeleton height={18} width="60%" /><div style={{ height: 10 }} /><Skeleton height={14} /></div>)}</div>
@@ -367,7 +375,7 @@ export default function ContentView() {
             <div className="card">
               {!data.ideas.length ? (
                 <EmptyState icon={<Sparkles />} title="Nog geen contentkansen" text="Laat het dashboard de bronnen lezen: Rijksoverheid, Milieu Centraal, je eigen zoekdata en de seizoenskalender. Dit gebeurt daarna elke nacht automatisch."
-                  action={<button className="btn btn-primary btn-sm" onClick={scan} disabled={scanning}>{scanning ? "Bronnen lezen…" : "Nu zoeken naar kansen"}</button>} />
+                  action={<button className="btn btn-secondary btn-sm" onClick={scan} disabled={scanning}>{scanning ? "Bronnen lezen…" : "Nu zoeken naar kansen"}</button>} />
               ) : (
                 <EmptyState compact icon={<TrendingUp />} title={tab === "beoordelen" ? "Alles beoordeeld" : "Niets in deze lijst"} text={tab === "beoordelen" ? "Nieuwe kansen verschijnen hier zodra er een aanleiding is. Er is geen vast publicatietempo." : undefined} />
               )}

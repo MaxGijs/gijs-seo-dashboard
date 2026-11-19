@@ -1,10 +1,6 @@
-import type { Metadata } from "next"
-import "@/app/ui-v2.css"
-import TodayV2 from "@/components/v2/TodayV2"
+import { redirect } from "next/navigation"
 
-export const metadata: Metadata = { title: "Vandaag (nieuwe opmaak) · Gijs Intelligence" }
-
-// Proefversie van de nieuwe opmaak, naast de huidige /vandaag
+// De proefversie is nu de standaard
 export default function Page() {
-  return <TodayV2 />
+  redirect("/vandaag")
 }

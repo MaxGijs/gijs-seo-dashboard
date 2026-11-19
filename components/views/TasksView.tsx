@@ -17,7 +17,7 @@ import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
 import { isPageUpdate, nextMilestone } from "@/lib/content/update"
-import { Breakable, EmptyState, IntentBadge, KindLabel, MeasuringBadge, NewBadge, PriorityMeter, RejectedBadge, Skeleton, StatusBadge } from "@/components/ui"
+import { Breakable, EmptyState, IntentBadge, KindLabel, MeasuringBadge, NewBadge, PageHeader, PriorityMeter, RejectedBadge, Skeleton, StatusBadge, type StatusTone } from "@/components/ui"
 
 // Contentkansen hebben geen eigen "sinds je vorige bezoek"-mechanisme zoals SEO-signalen;
 // dat bouwen we hier apart op, met dezelfde opslag-aanpak (lib/workspace.tsx).
@@ -245,26 +245,29 @@ export default function TasksView() {
 
   const measuringElsewhere = useMemo(() => entries.filter(e => e.old).length, [entries])
 
+  // Statusregel: wat ligt er, en vraagt iets aandacht?
+  const boardStatus = useMemo(() => {
+    if (loading) return null
+    const review = entries.filter(e => e.col === "beoordelen" && !e.dim), high = review.filter(e => e.prio === "hoog").length
+    const doing = entries.filter(e => e.col === "uitvoering").length, planned = entries.filter(e => e.col === "gepland").length
+    const parts = [
+      review.length ? `${review.length} te beoordelen${high ? `, waarvan ${high} met hoge prioriteit` : ""}` : "Niets te beoordelen",
+      planned ? `${planned} gepland` : "", doing ? `${doing} in uitvoering` : "",
+    ].filter(Boolean)
+    return { tone: (high ? "attention" : "good") as StatusTone, text: `${parts.join(", ")}.` }
+  }, [entries, loading])
+
   const filtersActive = type !== "alle" || prio !== "alle" || text.trim() !== "" || owner !== "alle"
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Mijn taken</h1>
-          <p className="page-sub">Elk SEO-advies en elke contentkans van signaal tot resultaat. Open een kaart om te beslissen wat ermee gebeurt, of sleep hem naar een andere kolom.</p>
-        </div>
-        <div className="page-actions">
+      <PageHeader title="Mijn taken" status={boardStatus}
+        sub="Elk SEO-advies en elke contentkans van signaal tot resultaat. Open een kaart om te beslissen, of sleep hem naar een andere kolom."
+        actions={<>
           <button className="btn btn-secondary btn-sm" onClick={() => setReminding(true)}><BellRing aria-hidden />Herinnering</button>
           {running.length >= 2 && view === "lijst" && <button className="btn btn-secondary btn-sm" onClick={() => setBulk(true)}><CheckCheck aria-hidden />Meerdere afronden</button>}
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Taak toevoegen</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setLegend(l => !l)} aria-expanded={legend}><CircleHelp aria-hidden />Hoe werkt het bord?</button>
-          <div className="seg" role="group" aria-label="Weergave">
-            <button className={view === "bord" ? "is-active" : ""} onClick={() => setView("bord")} aria-pressed={view === "bord"}><KanbanSquare aria-hidden />Bord</button>
-            <button className={view === "lijst" ? "is-active" : ""} onClick={() => setView("lijst")} aria-pressed={view === "lijst"}><List aria-hidden />Lijst</button>
-          </div>
-        </div>
-      </div>
+        </>} />
 
       {legend && <BoardLegend onClose={() => setLegend(false)} />}
 
@@ -276,6 +279,13 @@ export default function TasksView() {
               {f.label}<span className="chip-count">{typeCounts[f.id]}</span>
             </button>
           ))}
+        </div>
+        <div className="toolbar-left toolbar-view">
+          <div className="seg" role="group" aria-label="Weergave">
+            <button className={view === "bord" ? "is-active" : ""} onClick={() => setView("bord")} aria-pressed={view === "bord"}><KanbanSquare aria-hidden />Bord</button>
+            <button className={view === "lijst" ? "is-active" : ""} onClick={() => setView("lijst")} aria-pressed={view === "lijst"}><List aria-hidden />Lijst</button>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => setLegend(l => !l)} aria-expanded={legend}><CircleHelp aria-hidden />Hoe werkt het bord?</button>
         </div>
         <div className="toolbar-left">
           <label className="sr-only" htmlFor="prio-filter">Prioriteit</label>

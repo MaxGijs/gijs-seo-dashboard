@@ -8,7 +8,7 @@ import { describeMatch, type Lesson, type LessonRejection } from "@/lib/learning
 import { columnOf } from "@/lib/workflow"
 import type { Task } from "@/lib/types"
 import { dateShort } from "@/lib/format"
-import { Alert, Badge, EmptyState, Skeleton } from "@/components/ui"
+import { Alert, Badge, EmptyState, PageHeader, Skeleton } from "@/components/ui"
 
 interface LogRow { id: number; lesson_key: string; at: string; action: string; detail: string | null; by: string | null }
 interface Data { lessons: Lesson[]; log: LogRow[]; stats: { lopend: number; afgerond: number; afgewezen: number; gepubliceerd: number } | null }
@@ -58,14 +58,12 @@ export default function LearnedView() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Wat hebben we geleerd?</h1>
-          <p className="page-sub">Conclusies uit afgeronde metingen en jullie beslissingen, en wat het systeem daardoor zelf anders doet. Alles is terug te draaien.</p>
-          <p className="page-sub small"><Rule /></p>
-        </div>
-        <button className="btn btn-secondary btn-sm" disabled={!!busy} onClick={() => act({ action: "recompute" }, "Lessen opnieuw berekend")}><RotateCcw aria-hidden />Nu opnieuw berekenen</button>
-      </div>
+      <PageHeader title="Lessen"
+        status={!data ? null : !active.length ? { tone: "info", text: "Nog geen lessen. Elke afgeronde meting en elke afwijzing telt direct mee." } : { tone: "info", text: `${applied.length} ${applied.length === 1 ? "les past" : "lessen passen"} nu zelf iets aan${watching.length ? `, ${watching.length} ${watching.length === 1 ? "wordt" : "worden"} nog in de gaten gehouden` : ""}. Alles is terug te draaien.` }}
+        sub="Wat hebben we geleerd? Conclusies uit afgeronde metingen en jullie beslissingen, en wat het systeem daardoor zelf anders doet."
+        actions={<button className="btn btn-secondary btn-sm" disabled={!!busy} onClick={() => act({ action: "recompute" }, "Lessen opnieuw berekend")}><RotateCcw aria-hidden />Nu opnieuw berekenen</button>}>
+        <details className="page-more"><summary>Hoe het systeem leert</summary><p className="page-sub small"><Rule /></p></details>
+      </PageHeader>
 
       {err && <Alert tone="error" title="Lessen konden niet worden geladen">{err}</Alert>}
 
@@ -208,6 +206,7 @@ function LessonCard({ l, tasks, openTask, busy, onRevert, onRestore }: { l: Less
       </div>
       <h3 className="learn-title">{l.title}</h3>
       <p><b>Bewijs:</b> {l.conclusion}</p>
+      <Reliability l={l} />
       {rejections && rejections.length > 0 && <Rejections items={rejections} openTask={openTask} />}
       {rejections && rejections.length === 0 && (l.source === "afwijzing" || l.effect?.type === "content-afwijzing") && <p className="subtle small">De afgewezen {l.source === "afwijzing" ? "adviezen zijn" : "kansen zijn"} inmiddels weer opgepakt of verwijderd; druk op "Nu opnieuw berekenen" om de les bij te werken.</p>}
       <Learning l={l} affected={affected} openTask={openTask} />
@@ -219,6 +218,25 @@ function LessonCard({ l, tasks, openTask, busy, onRevert, onRestore }: { l: Less
         {onRestore && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={onRestore}><RotateCcw aria-hidden />Weer toepassen</button>}
       </div>
     </article>
+  )
+}
+
+// Betrouwbaarheid: hoeveel bewijs, eerdere resultaten en hoe zeker (docs/DESIGN.md)
+const UNCERTAINTY: Record<Lesson["confidence"], string> = {
+  laag: "Nog weinig bewijs; de les kan nog omslaan.",
+  middel: "Redelijk bewijs; de volgende uitkomsten kunnen het effect nog verschuiven.",
+  hoog: "Bevestigd door meerdere uitkomsten.",
+}
+function Reliability({ l }: { l: Lesson }) {
+  const e = l.evidence
+  const unit = l.source === "meting" || l.source === "content" ? (e.n === 1 ? "meting" : "metingen") : l.source === "afwijzing" ? (e.n === 1 ? "afwijzing" : "afwijzingen") : (e.n === 1 ? "toelichting" : "toelichtingen")
+  const results = e.success !== undefined || e.fail !== undefined ? `${e.success || 0} geslaagd, ${e.fail || 0} niet geslaagd` : null
+  return (
+    <dl className="trust-line">
+      <div><dt>Bewijs</dt><dd>{e.n} {unit}</dd></div>
+      {results && <div><dt>Eerdere resultaten</dt><dd>{results}{e.rate !== undefined && e.baseline !== undefined ? ` (${Math.round(e.rate * 100)}% tegen gemiddeld ${Math.round(e.baseline * 100)}%)` : ""}</dd></div>}
+      <div><dt>Zekerheid</dt><dd>{l.confidence[0].toUpperCase() + l.confidence.slice(1)}: {UNCERTAINTY[l.confidence]}</dd></div>
+    </dl>
   )
 }
 

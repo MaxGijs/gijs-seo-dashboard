@@ -358,7 +358,7 @@ export async function scanContent() {
   // 4. Onbehandelde actualiteiten die te oud zijn → verlopen
   const old = ctx.existing.filter(e => e.status === "nieuw" && (e.origin === "actualiteit" || e.origin === "trend")
     && Math.max(...(e.sources || []).map((s: SourceRef) => (s.date ? new Date(s.date).getTime() : 0))) < Date.now() - MAX_AGE_DAYS * dayMs)
-  if (old.length) await sb.from("content_ideas").update({ status: "verlopen" }).in("id", old.map(o => o.id))
+  if (old.length) await sb.from("content_ideas").update({ status: "verlopen", decision_note: `Automatisch gearchiveerd: het nieuws is ouder dan ${MAX_AGE_DAYS} dagen en de kans is niet opgepakt.` }).in("id", old.map(o => o.id))
 
   const failed = status.filter(s => !s.ok)
   return {

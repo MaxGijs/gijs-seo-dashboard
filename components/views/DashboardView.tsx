@@ -4,19 +4,20 @@ import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   AlertCircle, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Award, CircleHelp, ExternalLink, Filter, Gauge,
-  LineChart, MapPin, MousePointerClick, Eye, Users, Target, TrendingDown, TrendingUp, Minus, X, Lightbulb, Radio, Hourglass, BookOpenCheck, FileBarChart, Swords,
+  LineChart, MapPin, MousePointerClick, Eye, Users, Target, TrendingDown, TrendingUp, Minus, X, Lightbulb, Radio, Hourglass, BookOpenCheck, FileBarChart, Swords, BellRing,
 } from "lucide-react"
-import { useWorkspace } from "@/lib/workspace"
+import { useTaskGroups, useWorkspace } from "@/lib/workspace"
+import { useContentIdeas } from "@/lib/content/useContent"
+import { useMeasureUpdates } from "@/lib/measureUpdates"
 import {
   type Compare, type DashboardData, type DashboardQuery, type KeywordItem, type Metric, type PresetPeriod, type TrendItem, type TrendSet,
   COMPARE_LABEL, delta, deltaPct, PERIOD_LABEL, queryString, TREND_MIN_IMPRESSIONS,
 } from "@/lib/dashboard"
 import { SERVICE_TERMS } from "@/lib/content/model"
 import { LAUNCH_DATES, prettySlug } from "@/lib/pages"
-import { dateShort, num, pct, pos } from "@/lib/format"
-import { Alert, EmptyState, Skeleton } from "@/components/ui"
-import TodayView from "./TodayView"
-import { AlertsBlock, CwvBlock } from "@/components/dashboard/Alerts"
+import { dateShort, gainShort, num, pct, pos } from "@/lib/format"
+import { Alert, EmptyState, PageHeader, PriorityMeter, SectionTabs, Skeleton, type StatusTone } from "@/components/ui"
+import { CwvBlock, useAlerts } from "@/components/dashboard/Alerts"
 import type { Report } from "./ReportsView"
 
 const STORE_KEY = "gijs.dashboard.filters"
@@ -102,94 +103,219 @@ export default function DashboardView() {
 
   const loading = state === "loading" || !q
   const compareLabel = q ? COMPARE_LABEL[q.compare] : COMPARE_LABEL.prev
+  const c = data?.conclusion
+  // Status: groen = goed, oranje = aandacht, grijs = informatief (docs/DESIGN.md)
+  const status = !c ? null : { tone: (c.attention || c.tone === "daling" ? "attention" : c.tone === "geen-vergelijking" ? "info" : "good") as StatusTone, text: c.headline }
 
   return (
     <>
-      <div className="page-head dash-head">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-sub">
-            {data ? <>Periode {dateShort(data.range.start)} – {dateShort(data.range.end)}{data.compareRange ? <>, vergeleken met {dateShort(data.compareRange.start)} – {dateShort(data.compareRange.end)}</> : null}. Search Console loopt ±2 dagen achter.</> : "Hoe presteert de website en wat moeten we doen?"}
-          </p>
-        </div>
-      </div>
-
-      {q && <FilterBar q={q} onChange={update} />}
+      {/* 1. Conclusie */}
+      <PageHeader title="Dashboard" status={status}
+        sub={c ? c.body : "Hoe presteert de website en wat moeten we doen?"}
+        actions={<Link href="/vandaag" className="btn btn-primary btn-sm">Naar Vandaag</Link>} />
+      {q && <FilterBar q={q} onChange={update} range={data ? <>Periode {dateShort(data.range.start)} – {dateShort(data.range.end)}{data.compareRange ? <>, vergeleken met {dateShort(data.compareRange.start)} – {dateShort(data.compareRange.end)}</> : null}. Search Console loopt ±2 dagen achter.</> : null} />}
 
       {state === "error" && !data ? (
         <Alert tone="error" title="Het dashboard kon niet worden geladen" action={q ? <button className="btn btn-secondary btn-sm" onClick={() => load(q)}>Opnieuw</button> : undefined}>{err}</Alert>
       ) : (
         <div className={`dash${loading && data ? " is-refreshing" : ""}`} aria-busy={loading}>
-          {data?.warnings.filter(w => w.severity === "error").map(w => <WarningBanner key={w.id} w={w} />)}
-
-          <Conclusion data={data} loading={loading && !data} />
-
-          <AlertsBlock />
-
-          <div className="dash-cards">
-            <Card id="page1" icon={<Award />} label="Zoekwoorden op pagina 1" loading={!data} onOpen={setOpen}
+          {/* 2. Belangrijkste cijfers: zes in één vlak */}
+          <section className="card metric-strip" aria-label="Belangrijkste cijfers">
+            <Kpi id="page1" label="Zoekwoorden op pagina 1" loading={!data} onOpen={setOpen}
               value={data?.cards.page1.value != null ? num(data.cards.page1.value) : "—"}
               delta={data && <DeltaLine m={data.cards.page1} compareLabel={compareLabel} kind="small" />}
-              foot={data?.cards.page1.top3 != null ? `${data.cards.page1.top3} in de top 3 · merk apart` : undefined} highlight />
-            <Card id="bijna" icon={<Target />} label="Bijna op pagina 1" hint="positie 11–20" loading={!data} onOpen={setOpen}
+              foot={data?.cards.page1.top3 != null ? `${data.cards.page1.top3} in de top 3, merk apart` : undefined} />
+            <Kpi id="bijna" label="Bijna op pagina 1" hint="positie 11–20" loading={!data} onOpen={setOpen}
               value={data?.cards.bijna.value != null ? num(data.cards.bijna.value) : "—"}
               delta={data && <DeltaLine m={data.cards.bijna} compareLabel={compareLabel} kind="small" />}
               foot="De snelste kansen" />
-            <Card id="clicks" icon={<MousePointerClick />} label="Google-klikken" loading={!data} onOpen={setOpen}
+            <Kpi id="clicks" label="Google-klikken" loading={!data} onOpen={setOpen}
               value={data?.cards.clicks.value != null ? num(data.cards.clicks.value) : "—"}
               delta={data && <DeltaLine m={data.cards.clicks} compareLabel={compareLabel} />}
               foot={data?.cards.ctr.value != null ? `CTR ${pct(data.cards.ctr.value)}` : undefined} />
-            <Card id="impressions" icon={<Eye />} label="Google-vertoningen" loading={!data} onOpen={setOpen}
+            <Kpi id="impressions" label="Google-vertoningen" loading={!data} onOpen={setOpen}
               value={data?.cards.impressions.value != null ? num(data.cards.impressions.value) : "—"}
               delta={data && <DeltaLine m={data.cards.impressions} compareLabel={compareLabel} />}
               foot={data?.cards.position.value != null ? <>Gem. positie {pos(data.cards.position.value)}{data.cards.position.prev != null ? <> (was {pos(data.cards.position.prev)})</> : null}</> : undefined} />
-            <Card id="sessions" icon={<Users />} label="Sessies" hint="alle kanalen" loading={!data} onOpen={setOpen}
+            <Kpi id="sessions" label="Sessies" hint="alle kanalen" loading={!data} onOpen={setOpen}
               value={data?.cards.sessions.value != null ? num(data.cards.sessions.value) : "—"}
               delta={data && <DeltaLine m={data.cards.sessions} compareLabel={compareLabel} />}
-              foot={data?.errors.ga4 ? "GA4 niet bereikbaar" : data?.cards.users.value != null ? `${num(data.cards.users.value)} bezoekers · ${num(data.cards.pageviews.value)} paginaweergaven` : undefined} />
-            <Card id="requests" icon={<Gauge />} label="Energiescanaanvragen" loading={!data} onOpen={setOpen}
+              foot={data?.errors.ga4 ? "GA4 niet bereikbaar" : data?.cards.users.value != null ? `${num(data.cards.users.value)} bezoekers, ${num(data.cards.pageviews.value)} paginaweergaven` : undefined} />
+            <Kpi id="requests" label="Energiescanaanvragen" loading={!data} onOpen={setOpen}
               value={data?.cards.requests.value != null ? num(data.cards.requests.value) : "—"}
               delta={data && (data.cards.requests.value === null ? <span className="dash-delta is-warn"><AlertTriangle aria-hidden />{data.measurement.status === "geen-event" ? "Nog niet gemeten" : "Meting niet beschikbaar"}</span> : <DeltaLine m={data.cards.requests} compareLabel={compareLabel} />)}
               foot={data ? requestFoot(data) : undefined} warn={!!data && data.measurement.status !== "ok"} />
-          </div>
+          </section>
+          {data && <DataNotice data={data} />}
 
+          {/* 3. Eén waarschuwing (de rest uitklapbaar) */}
+          <TopWarning data={data} />
+
+          {/* 4. Eén grafiek */}
           <TimeChart data={data} loading={!data} />
 
-          <GoogleDevelopment data={data} loading={!data} />
+          {/* 5. De drie belangrijkste acties */}
+          <TopActions stalled={data?.stalled || []} />
 
-          <KeywordRanking data={data} />
-
-          <div className="dash-grid">
-            <Drivers data={data} />
-            <TopPages data={data} />
-            <Channels data={data} />
-            <Local data={data} />
-          </div>
-
-          <CwvBlock />
-
-          <div className="dash-grid">
-            <Competitors data={data} />
-            <LearnedBlock />
-          </div>
-          <div className="dash-grid">
-            <ReportBlock />
-          </div>
-
-          {data && (data.notes.length > 0 || data.warnings.some(w => w.severity === "warning")) && <Quality data={data} />}
+          {/* 6. Verdieping: één onderwerp tegelijk */}
+          <Deeper data={data} />
         </div>
       )}
-
-      {data && data.stalled?.length > 0 && (
-        <div className="dash-stalled" role="status">
-          {data.stalled.map(st => <Link key={st.id} href={st.href} className="slim-note"><Hourglass aria-hidden /><span>{st.text}</span></Link>)}
-        </div>
-      )}
-
-      <TodayView embedded />
 
       {open && data && <MetricPanel id={open} data={data} compareLabel={compareLabel} onClose={() => setOpen(null)} />}
     </>
+  )
+}
+
+// Technische problemen staan op Datastatus; hier alleen één regel als de cijfers erdoor onvolledig zijn
+function DataNotice({ data }: { data: DashboardData }) {
+  const tech = data.warnings.filter(w => ["gsc", "ga4", "sync", "fresh"].includes(w.id))
+  const filter = data.notes.find(n => n.id === "filter"), campaign = data.notes.find(n => n.id === "campagne")
+  if (!tech.length && !filter && !campaign) return null
+  return (
+    <div className="data-notice">
+      {tech.length > 0 && <p className={tech.some(w => w.severity === "error") ? "is-problem" : "is-attention"}><AlertCircle aria-hidden />Cijfers mogelijk onvolledig: {tech[0].what.replace(/\.$/, "")}{tech.length > 1 ? ` (en ${tech.length - 1} andere)` : ""}. <Link href="/data">Bekijk Datastatus</Link></p>}
+      {filter && <p><Filter aria-hidden />{filter.text}</p>}
+      {campaign && <p><Radio aria-hidden />{campaign.title}: extra bezoek in die periode komt mogelijk niet uit Google.</p>}
+    </div>
+  )
+}
+
+const ALERT_RANK: Record<string, number> = { "site-daling": 0, "indexering-daling": 1, "pagina1-kwijt": 2, "pagina-daling": 3, snelheid: 4 }
+
+// De belangrijkste melding prominent; de andere achter "nog N meldingen"
+function TopWarning({ data }: { data: DashboardData | null }) {
+  const { d } = useAlerts()
+  const { openSubject } = useWorkspace()
+  const [more, setMore] = useState(false)
+  type Item = { key: string; severity: "error" | "warning"; title: string; detail: string; since?: string; go?: () => void; href?: string }
+  const items: Item[] = [
+    ...(d?.alerts || []).filter(a => !a.resolved_at).map(a => ({
+      key: a.key, severity: a.severity, title: a.title, detail: a.detail, since: a.first_seen,
+      go: a.type === "pagina1-kwijt" && a.subject ? () => openSubject({ query: a.subject! }) : (a.type === "pagina-daling" || a.type === "snelheid") && a.subject ? () => openSubject({ page: a.subject! }) : undefined,
+      rank: ALERT_RANK[a.type] ?? 9,
+    })).sort((a, b) => (a.severity === b.severity ? a.rank - b.rank : a.severity === "error" ? -1 : 1)),
+    ...(data?.warnings || []).filter(w => w.id === "sitemap").map(w => ({ key: w.id, severity: w.severity, title: w.what, detail: `${w.effect} ${w.action}`, href: w.href })),
+  ].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1))
+  if (!items.length) return null
+  const [top, ...rest] = items
+  const action = (it: Item) => it.go ? <button className="btn btn-secondary btn-sm" onClick={it.go}>Bekijk</button> : it.href ? <Link className="btn btn-secondary btn-sm" href={it.href}>Bekijk</Link> : null
+  return (
+    <section className="page-block dash-warn" aria-label="Waarschuwing">
+      <div className={`warn-main is-${top.severity === "error" ? "problem" : "attention"}`} role={top.severity === "error" ? "alert" : "status"}>
+        <AlertTriangle aria-hidden />
+        <div className="warn-body">
+          <strong>{top.title}</strong>
+          <p>{top.detail}{top.since ? ` Sinds ${dateShort(top.since)}.` : ""}</p>
+        </div>
+        {action(top)}
+      </div>
+      {rest.length > 0 && (
+        <>
+          <button className="link-btn small warn-more" aria-expanded={more} onClick={() => setMore(m => !m)}>{more ? "Minder tonen" : `Nog ${rest.length} ${rest.length === 1 ? "melding" : "meldingen"}`}</button>
+          {more && (
+            <ul className="warn-list">
+              {rest.map(it => (
+                <li key={it.key} className={`is-${it.severity === "error" ? "problem" : "attention"}`}>
+                  <span className="warn-dot" aria-hidden />
+                  <span className="warn-text"><b>{it.title}</b><span>{it.detail}</span></span>
+                  {action(it)}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+// De drie belangrijkste acties, in dezelfde volgorde als Vandaag
+function TopActions({ stalled }: { stalled: DashboardData["stalled"] }) {
+  const { loading, tasks, openTask } = useWorkspace()
+  const { toReview } = useTaskGroups()
+  const content = useContentIdeas()
+  const updates = useMeasureUpdates(tasks, content.ideas)
+  const top = toReview.filter(t => t.signal.intent !== "merk" && !t.signal.reminder).slice(0, 3)
+  const due = tasks.filter(t => t.signal.reminder && t.status === "uitgesteld" && !t.snoozed).length
+  if (loading) return <section className="card card-pad page-block"><Skeleton height={18} width="40%" /><div style={{ height: 12 }} /><Skeleton height={60} /></section>
+  return (
+    <section className="card page-block dash-actions" aria-labelledby="actions-title">
+      <div className="card-head">
+        <div>
+          <h2 className="card-title" id="actions-title">Wat nu te doen</h2>
+          <p className="card-sub">De drie adviezen met de meeste verwachte winst. Technische blokkades gaan voor.</p>
+        </div>
+        <Link href="/taken" className="btn btn-ghost btn-sm">Alle taken</Link>
+      </div>
+      {top.length === 0 ? <p className="card-body muted small">Alles is beoordeeld. Nieuwe adviezen komen elke nacht binnen.</p> : (
+        <ol className="action-list">
+          {top.map((t, i) => (
+            <li key={t.key}>
+              <button className={`action-row${t.signal.priority === "hoog" ? " is-high" : ""}`} onClick={() => openTask(t.key)}>
+                <span className="action-n">{i + 1}</span>
+                <span className="action-main">
+                  <b className="truncate">{t.signal.query ? `"${t.signal.query}"` : t.signal.headline}</b>
+                  <span className="truncate">{t.signal.action || t.signal.title}</span>
+                </span>
+                <span className="action-meta">{t.signal.priority === "hoog" ? <span className="badge tone-success">Hoge prioriteit</span> : <PriorityMeter priority={t.signal.priority} />}<small>{gainShort(t.signal.gain)}</small></span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {(due > 0 || updates.items.length > 0 || stalled.length > 0) && (
+        <div className="card-foot inline-links">
+          {due > 0 && <Link href="/vandaag"><BellRing aria-hidden />{due} {due === 1 ? "herinnering" : "herinneringen"} voor vandaag</Link>}
+          {updates.items.length > 0 && <Link href="/vandaag"><LineChart aria-hidden />{updates.items.length} nieuwe {updates.items.length === 1 ? "meetresultaat" : "meetresultaten"}</Link>}
+          {stalled.slice(0, 2).map(st => <Link key={st.id} href={st.href}><Hourglass aria-hidden />{st.text}</Link>)}
+        </div>
+      )}
+    </section>
+  )
+}
+
+type DeepTab = "ontwikkeling" | "zoekwoorden" | "paginas" | "snelheid" | "concurrentie"
+
+// Verdieping: alles wat er verder is, één onderwerp tegelijk
+function Deeper({ data }: { data: DashboardData | null }) {
+  const [tab, setTab] = useState<DeepTab>("ontwikkeling")
+  const tabs: { id: DeepTab; label: string }[] = [
+    { id: "ontwikkeling", label: "Ontwikkeling in Google" },
+    { id: "zoekwoorden", label: "Beste en slechtste zoekwoorden" },
+    { id: "paginas", label: "Pagina's, kanalen en regio's" },
+    { id: "snelheid", label: "Laadsnelheid" },
+    ...(data?.competitors?.domains.length ? [{ id: "concurrentie" as const, label: "Concurrentie" }] : []),
+  ]
+  return (
+    <section className="page-block dash-deeper" aria-labelledby="deeper-title">
+      <h2 className="page-block-title" id="deeper-title">Verdieping</h2>
+      <p className="page-block-sub">Waar de cijfers vandaan komen. Kies een onderwerp.</p>
+      <SectionTabs label="Verdieping" tabs={tabs} value={tab} onChange={setTab} />
+      <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === "ontwikkeling" && <GoogleDevelopment data={data} loading={!data} />}
+        {tab === "zoekwoorden" && <KeywordRanking data={data} />}
+        {tab === "paginas" && <div className="dash-grid"><Drivers data={data} /><TopPages data={data} /><Channels data={data} /><Local data={data} /></div>}
+        {tab === "snelheid" && <CwvBlock />}
+        {tab === "concurrentie" && <Competitors data={data} />}
+      </div>
+      <DeepLinks />
+    </section>
+  )
+}
+
+// Rapport en lessen alleen als er iets is
+function DeepLinks() {
+  const { lessons } = useWorkspace()
+  const [r, setR] = useState<Report | null>(null)
+  useEffect(() => { fetch("/api/reports", { cache: "no-store" }).then(x => x.ok ? x.json() : { rows: [] }).then(j => setR(j.rows?.[0] || null)).catch(() => setR(null)) }, [])
+  const active = lessons.filter(l => l.status === "actief")
+  if (!r && !active.length) return null
+  return (
+    <div className="inline-links deep-links">
+      {r && <Link href="/rapporten"><FileBarChart aria-hidden />Vrijdagrapport t/m {dateShort(r.week_end)}: {r.summary.headline}</Link>}
+      {active.length > 0 && <Link href="/geleerd"><BookOpenCheck aria-hidden />{active.length} {active.length === 1 ? "les" : "lessen"} uit metingen en beslissingen</Link>}
+    </div>
   )
 }
 
@@ -201,7 +327,7 @@ function requestFoot(d: DashboardData): string {
 
 // ── Filterbalk ──────────────────────────────────────────────────────────────
 
-function FilterBar({ q, onChange }: { q: DashboardQuery; onChange: (p: Partial<DashboardQuery>) => void }) {
+function FilterBar({ q, onChange, range }: { q: DashboardQuery; onChange: (p: Partial<DashboardQuery>) => void; range?: ReactNode }) {
   const [more, setMore] = useState(!!(q.regio || q.dienst))
   const [start, setStart] = useState(q.start || "")
   const [end, setEnd] = useState(q.end || "")
@@ -226,8 +352,9 @@ function FilterBar({ q, onChange }: { q: DashboardQuery; onChange: (p: Partial<D
           </select>
         </label>
         <button className={`chip${more || active.length ? " is-active" : ""}`} onClick={() => setMore(m => !m)} aria-expanded={more}>
-          <Filter aria-hidden />Meer filters{active.length ? ` · ${active.join(", ")}` : ""}
+          <Filter aria-hidden />Meer filters{active.length ? `: ${active.join(", ")}` : ""}
         </button>
+        {range && <span className="dash-range">{range}</span>}
       </div>
       {q.period === "custom" && (
         <div className="dash-filters-row">
@@ -261,45 +388,17 @@ function FilterBar({ q, onChange }: { q: DashboardQuery; onChange: (p: Partial<D
 
 // ── Waarschuwing en conclusie ───────────────────────────────────────────────
 
-function WarningBanner({ w }: { w: DashboardData["warnings"][number] }) {
-  return (
-    <div className={`dash-warning is-${w.severity}`} role="alert">
-      <AlertCircle aria-hidden />
-      <div className="dash-warning-body">
-        <strong>{w.what}</strong>
-        <p><b>Gevolg:</b> {w.effect} <b>Actie:</b> {w.action} <b>Urgentie:</b> {w.urgency}</p>
-      </div>
-      {w.href && <Link href={w.href} className="btn btn-secondary btn-sm">Bekijk oplossing</Link>}
-    </div>
-  )
-}
-
-function Conclusion({ data, loading }: { data: DashboardData | null; loading: boolean }) {
-  if (loading || !data) return <div className="dash-conclusion"><Skeleton height={26} width="45%" /><div style={{ height: 10 }} /><Skeleton height={14} width="80%" /></div>
-  const c = data.conclusion
-  const Icon = c.tone === "groei" ? TrendingUp : c.tone === "daling" ? TrendingDown : LineChart
-  return (
-    <section className={`dash-conclusion tone-${c.tone}${c.attention ? " has-attention" : ""}`} aria-labelledby="conclusie">
-      <span className="dash-conclusion-icon" aria-hidden><Icon /></span>
-      <div>
-        <h2 id="conclusie" className="dash-conclusion-title">{c.headline}</h2>
-        <p className="dash-conclusion-body">{c.body}</p>
-      </div>
-    </section>
-  )
-}
-
 // ── Kaarten ─────────────────────────────────────────────────────────────────
 
-function Card({ id, icon, label, hint, value, delta: d, foot, loading, onOpen, highlight, warn }: {
-  id: CardId; icon: ReactNode; label: string; hint?: string; value: string; delta: ReactNode; foot?: ReactNode; loading: boolean; onOpen: (id: CardId) => void; highlight?: boolean; warn?: boolean
+function Kpi({ id, label, hint, value, delta: d, foot, loading, onOpen, warn }: {
+  id: CardId; label: string; hint?: string; value: string; delta: ReactNode; foot?: ReactNode; loading: boolean; onOpen: (id: CardId) => void; warn?: boolean
 }) {
   return (
-    <button className={`dash-card interactive${highlight ? " is-highlight" : ""}${warn ? " is-warn" : ""}`} onClick={() => onOpen(id)} disabled={loading} aria-label={`${label}: details bekijken`}>
-      <span className="dash-card-top"><span className="dash-card-icon" aria-hidden>{icon}</span><span className="dash-card-label">{label}{hint && <small>{hint}</small>}</span></span>
-      <span className="dash-card-value">{loading ? <Skeleton height={34} width={80} /> : value}</span>
-      <span className="dash-card-delta">{loading ? <Skeleton height={14} width="70%" /> : d}</span>
-      {foot && !loading && <span className="dash-card-foot">{foot}</span>}
+    <button className={`metric${warn ? " is-warn" : ""}`} onClick={() => onOpen(id)} disabled={loading} aria-label={`${label}: details bekijken`}>
+      <span className="metric-label">{label}{hint && <small> ({hint})</small>}</span>
+      <span className="metric-value">{loading ? <Skeleton height={30} width={70} /> : value}</span>
+      <span className="metric-delta">{loading ? <Skeleton height={14} width="70%" /> : d}</span>
+      {foot && !loading && <span className="metric-foot">{foot}</span>}
     </button>
   )
 }
@@ -380,8 +479,8 @@ function TimeChart({ data, loading }: { data: DashboardData | null; loading: boo
                 const x0 = i0 < 0 ? x(pts.length - 1) : x(a), x1 = Math.max(x(b), x0 + 2)
                 return (
                   <g key={c.id} className="dash-campaign">
-                    <rect x={x0} y={padT} width={x1 - x0} height={ih} fill="var(--warning-100, #fdf3d7)" opacity={0.55} />
-                    <line x1={x0} x2={x0} y1={padT} y2={padT + ih} stroke="#c9961a" strokeDasharray="4 3" />
+                    <rect x={x0} y={padT} width={x1 - x0} height={ih} fill="var(--warning-bg)" opacity={0.55} />
+                    <line x1={x0} x2={x0} y1={padT} y2={padT + ih} stroke="var(--warning-dot)" strokeDasharray="4 3" />
                     <text x={x0 + 4} y={padT + 11} className="dash-axis dash-campaign-label">{c.name}</text>
                   </g>
                 )
@@ -645,24 +744,6 @@ function Diff({ v }: { v: number }) {
   return <span className={v > 0 ? "txt-up" : v < 0 ? "txt-down" : "subtle"}>{signedNum(v)}</span>
 }
 
-function Quality({ data }: { data: DashboardData }) {
-  return (
-    <section className="card dash-quality" aria-labelledby="quality-title">
-      <div className="card-head"><div><h2 className="card-title" id="quality-title"><CircleHelp aria-hidden />Wat nog niet betrouwbaar wordt gemeten</h2><p className="card-sub">En hoe je dat oplost</p></div><Link href="/data" className="section-link">Datastatus<ArrowRight aria-hidden /></Link></div>
-      <div className="card-body">
-        <ul className="dash-notes">
-          {data.warnings.filter(w => w.severity === "warning").map(w => (
-            <li key={w.id}><AlertTriangle aria-hidden className="txt-warn" /><div><b>{w.what}</b><p>{w.effect}</p><p className="dash-advice"><b>Zo los je dit op:</b> {w.action}</p></div></li>
-          ))}
-          {data.notes.map(n => (
-            <li key={n.id}><CircleHelp aria-hidden /><div><b>{n.title}</b><p>{n.text}</p><p className="dash-advice"><b>Zo los je dit op:</b> {n.advice}</p></div></li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  )
-}
-
 // ── Zijpaneel per cijfer ────────────────────────────────────────────────────
 
 const PANEL_TITLE: Record<CardId, string> = {
@@ -798,40 +879,6 @@ function MiniSeries({ data, k }: { data: DashboardData; k: "clicks" | "impressio
 }
 
 // ── Leren en rapport ────────────────────────────────────────────────────────
-
-function LearnedBlock() {
-  const { lessons } = useWorkspace()
-  const active = lessons.filter(l => l.status === "actief")
-  const applied = active.filter(l => l.effect && l.effect.type !== "info")
-  return (
-    <section className="card" aria-labelledby="learn-title">
-      <div className="card-head"><div><h2 className="card-title" id="learn-title"><BookOpenCheck aria-hidden />Wat hebben we geleerd?</h2><p className="card-sub">{applied.length ? `${applied.length} ${applied.length === 1 ? "les wordt" : "lessen worden"} automatisch toegepast` : "Uit afgeronde metingen en beslissingen"}</p></div><Link href="/geleerd" className="section-link">Alles<ArrowRight aria-hidden /></Link></div>
-      <div className="card-body">
-        {active.length === 0 ? <p className="muted small">Nog niets. Elk afgerond resultaat en elke afwijzing telt direct mee; een eindoordeel volgt 28 dagen (techniek) tot 56 dagen (posities) na een uitgevoerde taak.</p> : (
-          <ul className="dash-drivers">{active.slice(0, 3).map(l => <li key={l.key} className="tone-up"><BookOpenCheck aria-hidden /><span><b>{l.title}.</b> {l.effect?.text}</span></li>)}</ul>
-        )}
-      </div>
-    </section>
-  )
-}
-
-function ReportBlock() {
-  const [r, setR] = useState<Report | null | undefined>(undefined)
-  useEffect(() => { fetch("/api/reports", { cache: "no-store" }).then(x => x.ok ? x.json() : { rows: [] }).then(j => setR(j.rows?.[0] || null)).catch(() => setR(null)) }, [])
-  return (
-    <section className="card" aria-labelledby="report-title">
-      <div className="card-head"><div><h2 className="card-title" id="report-title"><FileBarChart aria-hidden />Vrijdagrapport</h2><p className="card-sub">{r ? `Week t/m ${dateShort(r.week_end)}` : "Elke vrijdagmiddag vastgelegd"}</p></div><Link href="/rapporten" className="section-link">Alle weken<ArrowRight aria-hidden /></Link></div>
-      <div className="card-body">
-        {r === undefined ? <Skeleton height={60} /> : r === null ? <p className="muted small">Het eerste rapport verschijnt vrijdagmiddag. Op de rapportpagina kun je er nu al een laten maken.</p> : (
-          <>
-            <p><b>{r.summary.headline}</b></p>
-            <p className="muted small" style={{ marginTop: 4 }}>{r.summary.next.length ? `Volgende week: ${r.summary.next.slice(0, 2).join(" · ")}` : r.summary.conclusion}</p>
-          </>
-        )}
-      </div>
-    </section>
-  )
-}
 
 function Competitors({ data }: { data: DashboardData | null }) {
   const c = data?.competitors

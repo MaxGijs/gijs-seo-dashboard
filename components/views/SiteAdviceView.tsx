@@ -7,8 +7,9 @@ import { useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
 import { buildSiteAdvice, siteState, type AdviceKind, type SiteAdvice } from "@/lib/siteadvice"
 import { toTries } from "@/lib/routes"
-import { Badge, EmptyState, PriorityMeter, Skeleton } from "@/components/ui"
+import { Badge, EmptyState, PageHeader, PriorityMeter, Skeleton } from "@/components/ui"
 import AdviceActions from "@/components/siteadvice/AdviceActions"
+import { effortForSite } from "@/lib/effort"
 
 const KIND_LABEL: Record<AdviceKind, string> = {
   groep: "Patroon in je taken", "route-uitrollen": "Bewezen aanpak uitrollen", "route-stoppen": "Stoppen met wat niet werkt",
@@ -33,12 +34,9 @@ export default function SiteAdviceView() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Siteadvies</h1>
-          <p className="page-sub">Wat het dashboard adviseert voor de hele site, niet per losse pagina. Automatisch berekend uit alle data, metingen, lessen en jullie beslissingen, telkens als je deze pagina opent.</p>
-        </div>
-      </div>
+      <PageHeader title="Siteadvies"
+        status={loading ? null : !advice.length ? { tone: "good", text: "Geen advies voor de hele site op dit moment." } : { tone: advice.some(x => x.priority === "hoog") ? "attention" : "info", text: `${advice.length} ${advice.length === 1 ? "advies" : "adviezen"} voor de hele site. Het belangrijkste: ${advice[0].title.replace(/\.$/, "")}.` }}
+        sub="Adviezen voor de hele site, niet per losse pagina. Automatisch berekend uit alle data, metingen, lessen en jullie beslissingen. Losse adviezen per zoekwoord of pagina staan bij SEO-kansen." />
 
       {loading ? <Skeleton height={120} /> : (
         <div className="learn-stats">
@@ -73,8 +71,7 @@ function AdviceCard({ a, rank, openTask, taskTitle, ideaTitle }: { a: SiteAdvice
         <div className="learn-card-top">
           {a.priority && <PriorityMeter priority={a.priority} />}
           <Badge tone="neutral">{KIND_LABEL[a.kind]}</Badge>
-          <Badge tone={a.confidence === "hoog" ? "success" : a.confidence === "middel" ? "info" : "neutral"} title={a.confidenceWhy}>Zekerheid {a.confidence}</Badge>
-          {a.gain ? <span className="advice-gain" title={a.gainNote}><TrendingUp aria-hidden />± {num(a.gain)} klikken per 28 dagen</span> : null}
+          <Badge tone={a.confidence === "hoog" ? "success" : "neutral"} title={a.confidenceWhy}>Zekerheid {a.confidence}</Badge>
         </div>
         <h2 className="learn-title">{a.title}</h2>
         <p>{a.summary}</p>
@@ -88,8 +85,14 @@ function AdviceCard({ a, rank, openTask, taskTitle, ideaTitle }: { a: SiteAdvice
             <ol className="advice-ol">{a.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
           </div>
         </div>
-        {a.gainNote && a.gain ? <p className="field-hint">Verwacht effect: {a.gainNote} {a.confidenceWhy}</p> : <p className="field-hint">{a.confidenceWhy}</p>}
-        <AdviceActions a={a} />
+        <dl className="advice-facts">
+          <div><dt>Verwachte impact</dt><dd>{a.gain ? `± ${num(a.gain)} klikken per 28 dagen` : "Randvoorwaarde, niet in klikken uit te drukken"}</dd></div>
+          <div><dt>Inspanning</dt><dd title={effortForSite(a).why}>{effortForSite(a).label}</dd></div>
+          <div><dt>Prioriteit</dt><dd>{a.priority ? a.priority[0].toUpperCase() + a.priority.slice(1) : "—"}</dd></div>
+          <div><dt>Betrouwbaarheid</dt><dd>Zekerheid {a.confidence}</dd></div>
+        </dl>
+        <p className="field-hint">{a.gainNote && a.gain ? `Aanname achter de schatting: ${a.gainNote} ` : ""}{a.confidenceWhy}</p>
+        <AdviceActions a={a} primary={rank === 1} />
         {items > 0 && (
           <div>
             <button className="link-btn" aria-expanded={open} onClick={() => setOpen(x => !x)}>{open ? "Verberg" : "Toon"} waar dit over gaat ({items})</button>

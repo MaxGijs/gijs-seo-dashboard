@@ -9,7 +9,7 @@ export function CardHeader({ className, ...props }: React.ComponentProps<"div">)
   return <div data-slot="card-header" className={cn("flex items-start justify-between gap-3 px-5 pt-4 pb-3", className)} {...props} />
 }
 export function CardTitle({ className, ...props }: React.ComponentProps<"h2">) {
-  return <h2 data-slot="card-title" className={cn("text-[15px] font-semibold leading-snug tracking-normal text-heading", className)} {...props} />
+  return <h2 data-slot="card-title" className={cn("text-[15px] font-bold leading-snug tracking-normal text-heading", className)} {...props} />
 }
 export function CardDescription({ className, ...props }: React.ComponentProps<"p">) {
   return <p data-slot="card-description" className={cn("mt-0.5 text-xs leading-relaxed text-muted", className)} {...props} />

@@ -9,12 +9,12 @@ import { useContentIdeas } from "@/lib/content/useContent"
 import { ArticleResults } from "@/components/content/ContentPanel"
 import type { Experiment } from "@/lib/types"
 import { addDays, dateLong, dateShort, num, pct, pos } from "@/lib/format"
-import { Badge, EmptyState, KindLabel, Skeleton } from "@/components/ui"
+import { Badge, EmptyState, KindLabel, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
 
 type Filter = "alle" | "lopend" | "succesvol" | "niet_succesvol" | "onduidelijk"
 
 function outcomeBadge(e: Experiment) {
-  if (!e.outcome) return <Badge tone="accent" dot>Wordt gemeten</Badge>
+  if (!e.outcome) return <Badge tone="info" dot>Wordt gemeten</Badge>
   if (e.outcome === "succesvol") return <Badge tone="success" dot>Succesvol</Badge>
   if (e.outcome === "niet_succesvol") return <Badge tone="error" dot>Niet succesvol</Badge>
   return <Badge tone="neutral" dot>Geen duidelijk effect</Badge>
@@ -154,12 +154,12 @@ export default function ExperimentsView() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Experimenten</h1>
-          <p className="page-sub">{tab === "content" ? "Gepubliceerde content en wat het oplevert. Het dashboard meet automatisch na 7, 30 en 90 dagen." : "Wat je hebt aangepast en wat het opleverde. Het dashboard meet automatisch na 14, 28 en 56 dagen."}</p>
-        </div>
-      </div>
+      <PageHeader title="Experimenten"
+        status={loading ? null : !counts.alle ? { tone: "info", text: "Nog geen metingen. Ze starten zodra je een taak als uitgevoerd markeert." } : {
+          tone: (counts.niet_succesvol > counts.succesvol ? "attention" : counts.succesvol ? "good" : "info") as StatusTone,
+          text: `${counts.lopend} lopend, ${counts.succesvol} geslaagd, ${counts.niet_succesvol} niet geslaagd${counts.onduidelijk ? `, ${counts.onduidelijk} zonder duidelijk effect` : ""}.`,
+        }}
+        sub={tab === "content" ? "Gepubliceerde content en wat het oplevert. Het dashboard meet automatisch na 7, 30 en 90 dagen." : "Wat je hebt aangepast en wat het opleverde. Het dashboard meet automatisch na 14, 28 en 56 dagen."} />
 
       <div className="seg" role="tablist" aria-label="Soort experiment">
         <button role="tab" aria-selected={tab === "seo"} className={tab === "seo" ? "is-active" : ""} onClick={() => router.replace("/experimenten")}>SEO-experimenten</button>

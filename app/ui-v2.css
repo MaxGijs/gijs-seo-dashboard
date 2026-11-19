@@ -28,8 +28,8 @@
   --color-amber-soft: var(--warning-bg);
   --color-danger: var(--error);
   --color-danger-soft: var(--error-bg);
-  --radius-panel: 14px;
-  --radius-control: 8px;
+  --radius-panel: var(--radius-lg);
+  --radius-control: var(--radius-md);
 }
 
 /* Kleine reset alleen binnen de nieuwe opmaak (geen Tailwind-preflight, zodat de rest van het dashboard ongewijzigd blijft).

@@ -19,6 +19,7 @@ import { Button, buttonVariants } from "./ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card"
 import { Badge } from "./ui/badge"
 import ReminderDialog from "@/components/reminders/ReminderDialog"
+import { PageHeader } from "@/components/ui"
 import AddTaskDialog from "@/components/views/AddTaskDialog"
 
 function nextMeasurement(e: Experiment) {
@@ -80,21 +81,14 @@ export default function TodayV2() {
 
   return (
     <div className="v2 font-sans text-ink">
-      {/* Kop: begroeting en de dag in één zin */}
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 max-w-3xl">
-          <p className="text-[13px] text-muted">{greeting()}{first ? `, ${first}` : ""}. Het is {dateLong(today())}.</p>
-          <h1 className="mt-1 text-2xl font-semibold leading-tight tracking-tight text-heading sm:text-[28px]">{loading ? " " : summary}</h1>
-          {!loading && overview.length > 0 && (
-            <p className="mt-2 text-[13px] text-muted">Laatste 28 dagen: <span className="font-semibold text-ink">{num(clicks)}</span> klikken{clickDelta !== null && <> ({signedPct(clickDelta)})</>} en <span className="font-semibold text-ink">{num(impressions)}</span> vertoningen in Google.</p>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Kop: wat zie ik, is het goed, wat doe ik nu (zie docs/DESIGN.md) */}
+      <PageHeader title="Vandaag"
+        status={loading ? null : { tone: due.length || highCount || openAlerts.length ? "attention" : "good", text: summary }}
+        sub={<>{greeting()}{first ? `, ${first}` : ""}. Het is {dateLong(today())}.{!loading && overview.length > 0 && <> Laatste 28 dagen: <b>{num(clicks)}</b> klikken{clickDelta !== null && <> ({signedPct(clickDelta)})</>} en <b>{num(impressions)}</b> vertoningen in Google.</>}</>}
+        actions={<>
           <Button variant="outline" size="sm" onClick={() => setReminding(true)}><BellRing />Herinnering</Button>
           <Button size="sm" onClick={() => setAdding(true)}><Plus />Taak toevoegen</Button>
-          <Link href="/vandaag" className={buttonVariants({ variant: "ghost", size: "sm" })}>Terug naar de huidige opmaak</Link>
-        </div>
-      </header>
+        </>} />
 
       {/* Herinneringen voor vandaag: bovenaan en opvallend, want ze komen precies op deze dag terug */}
       {due.length > 0 && (
@@ -102,7 +96,7 @@ export default function TodayV2() {
           <h2 id="v2-nu" className="flex items-center gap-2 px-5 pt-4 pb-3 text-[15px] font-semibold text-amber">
             <BellRing className="size-4" />{due.length === 1 ? "Herinnering voor vandaag" : `${due.length} herinneringen voor vandaag`}
           </h2>
-          <ul className="flex flex-col gap-2 px-3 pb-3">{due.map(t => <DueReminder key={t.key} t={t} />)}</ul>
+          <ul className="flex flex-col gap-2 px-3 pb-3">{due.map(t => <DueReminder key={t.key} t={t} owner={t.owner ? who(t.owner) : null} />)}</ul>
         </section>
       )}
 
@@ -116,7 +110,7 @@ export default function TodayV2() {
         ].map((s, i) => (
           <Link key={s.label} href={s.href} className={cn("group block px-5 py-4 outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft", i % 2 === 1 && "border-l border-line-soft", i >= 2 && "border-t border-line-soft lg:border-t-0", i === 2 && "lg:border-l")}>
             <span className="block text-xs font-semibold text-muted">{s.label}</span>
-            <span className="mt-1 block text-[26px] font-semibold leading-none tabular-nums text-heading">{loading ? "–" : num(s.value)}</span>
+            <span className="mt-1 block text-[26px] font-bold leading-none tabular-nums text-heading">{loading ? "–" : num(s.value)}</span>
             <span className="mt-2 block text-xs text-subtle lg:truncate">{loading ? " " : s.foot}</span>
           </Link>
         ))}
@@ -234,7 +228,7 @@ export default function TodayV2() {
             </CardHeader>
             {upcoming.length > 0 && (
               <CardContent>
-                <ul className="flex flex-col gap-1.5">
+                <ul className="rem-upcoming flex flex-col gap-1.5">
                   {upcoming.slice(0, 5).map(t => (
                     <li key={t.key} className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-baseline gap-2 text-[13px]">
                       <span className="font-semibold tabular-nums text-heading">{dateShort(t.snoozeUntil!)}</span>
@@ -302,7 +296,7 @@ export default function TodayV2() {
 }
 
 // Herinnering die vandaag (of eerder) terugkomt, met dezelfde acties als op de huidige pagina
-function DueReminder({ t }: { t: Task }) {
+function DueReminder({ t, owner }: { t: Task; owner: string | null }) {
   const { removeTask, setStatus, snoozeReminder, openTask, toast } = useWorkspace()
   const router = useRouter()
   const [later, setLater] = useState(false)
@@ -337,10 +331,10 @@ function DueReminder({ t }: { t: Task }) {
   }
 
   return (
-    <li className="grid gap-3 rounded-control border border-amber/20 bg-card px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <li className="rem-card grid gap-3 rounded-control border border-amber/20 bg-card px-4 py-3.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
       <button className="block cursor-pointer text-left text-base font-semibold text-heading outline-none hover:text-accent focus-visible:underline" onClick={() => openTask(t.key)}>{t.signal.headline}</button>
-      <p className="text-xs font-semibold text-amber">{late ? `Al sinds ${dateLong(t.snoozeUntil!)}` : "Vandaag"}</p>
+      <p className="text-xs font-semibold text-amber">{late ? `Al sinds ${dateLong(t.snoozeUntil!)}` : "Vandaag"}{owner ? <span className="font-normal text-muted">, voor {owner}</span> : null}</p>
       {t.signal.description && <p className="mt-1 line-clamp-3 text-[13px] text-muted">{t.signal.description}</p>}
       {r.link && <a className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-accent hover:underline" href={r.link} target="_blank" rel="noopener noreferrer"><span className="truncate">{r.link.replace(/^https?:\/\/(www\.)?/, "")}</span><ExternalLink className="size-3 shrink-0" /></a>}
       </div>
@@ -352,8 +346,8 @@ function DueReminder({ t }: { t: Task }) {
         </div>
       ) : (
         <div className="flex flex-wrap gap-1.5 md:justify-end">
-          <Button size="sm" disabled={busy} onClick={toContent}><Newspaper />Contentkans</Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={toTask}><ListTodo />Taak</Button>
+          <Button size="sm" disabled={busy} onClick={toContent}><Newspaper />Maak contentkans</Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={toTask}><ListTodo />Maak taak</Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => setLater(true)}><CalendarPlus />Later</Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => removeTask(t, "Herinnering afgerond")}><Check />Gedaan</Button>
         </div>

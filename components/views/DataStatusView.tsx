@@ -1,8 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import type { DashboardData } from "@/lib/dashboard"
 import { CheckCircle2, Database, RefreshCw, XCircle } from "lucide-react"
-import { Alert, Badge, Skeleton } from "@/components/ui"
+import { Alert, Badge, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
 import { dateShort, num } from "@/lib/format"
 
 interface Job { job: string; dataAt?: string | null; last: { run_at: string; ok: boolean; duration_ms: number | null; details: any; error: string | null } | null; lastOk: string | null; failures7d: number }
@@ -91,13 +92,15 @@ export default function DataStatusView() {
   const inv = data?.inventory
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Datastatus</h1>
-          <p className="page-sub">Welke gegevens het dashboard gebruikt, wanneer ze voor het laatst zijn bijgewerkt en wat er misging. Adviezen zijn zo betrouwbaar als deze bronnen.</p>
-        </div>
-        <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}><RefreshCw aria-hidden />Vernieuwen</button>
-      </div>
+      <PageHeader title="Datastatus"
+        status={!data ? null : (() => {
+          const st = data.jobs.map(jobState), failed = st.filter(x => x.tone === "error").length, old = st.filter(x => x.tone === "warning").length
+          return failed || old
+            ? { tone: (failed ? "problem" : "attention") as StatusTone, text: [failed ? `${failed} ${failed === 1 ? "synchronisatie mislukte" : "synchronisaties mislukten"}` : "", old ? `${old} ${old === 1 ? "bron is" : "bronnen zijn"} verouderd` : ""].filter(Boolean).join(", ") + ". Cijfers en adviezen kunnen daardoor onvolledig zijn." }
+            : { tone: "good" as StatusTone, text: "Alle bronnen zijn bijgewerkt." }
+        })()}
+        sub="Welke gegevens het dashboard gebruikt, wanneer ze voor het laatst zijn bijgewerkt en wat er misging. Technische fouten, quota en koppelingen staan hier, niet op de andere pagina's."
+        actions={<button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}><RefreshCw aria-hidden />Vernieuwen</button>} />
 
       {error && <Alert tone="error" title="Datastatus niet opgehaald">{error}</Alert>}
 
@@ -125,6 +128,8 @@ export default function DataStatusView() {
         </div>
         {data && data.jobs.some(j => !j.last && j.dataAt) && <p className="field-hint" style={{ padding: "0 20px 16px" }}>Het logboek bestaat sinds 16 november. Voor taken zonder logregel is het laatste moment afgeleid uit de opgeslagen data; vanaf de volgende nachtelijke run staat hier het echte resultaat.</p>}
       </section>
+
+      <DataQuality />
 
       <div className="ds-grid">
         <section className="card card-pad" aria-labelledby="ds-gsc">
@@ -164,7 +169,7 @@ export default function DataStatusView() {
               <p className="ds-ok"><CheckCircle2 aria-hidden />Gekoppeld: {num(ga4.keyEvents)} conversies bij {num(ga4.sessions || 0)} sessies (28 dagen). Conversies per pagina wegen mee in de prioriteit.</p>
             ) : (
               <>
-                <p className="ds-bad" style={{ color: "var(--warning, #9a6700)" }}><XCircle aria-hidden />Gekoppeld, maar 0 conversies bij {num(ga4.sessions || 0)} sessies (28 dagen)</p>
+                <p className="ds-bad" style={{ color: "var(--warning)" }}><XCircle aria-hidden />Gekoppeld, maar 0 conversies bij {num(ga4.sessions || 0)} sessies (28 dagen)</p>
                 <p className="field-hint">De verbinding werkt, maar er zijn nog geen key events. Markeer in GA4 (Beheer → Gebeurtenissen) de gebeurtenissen voor energiescan, adviesgesprek en aanvraag als <b>key event</b>. Tot die tijd wegen conversies niet mee en is de commerciële waarde in contentkansen een aanname.</p>
               </>
             )
@@ -202,5 +207,30 @@ export default function DataStatusView() {
         </section>
       )}
     </>
+  )
+}
+
+// Wat nog niet betrouwbaar wordt gemeten (stond eerder op het dashboard). Zelfde gegevens als het
+// dashboard met de standaardperiode van 28 dagen.
+function DataQuality() {
+  const [d, setD] = useState<DashboardData | null>(null)
+  useEffect(() => { fetch("/api/dashboard?period=28&compare=prev", { cache: "no-store" }).then(r => (r.ok ? r.json() : null)).then(setD).catch(() => setD(null)) }, [])
+  if (!d) return null
+  const items = [
+    ...d.warnings.map(w => ({ key: w.id, tone: w.severity, title: w.what, text: w.effect, advice: w.action })),
+    ...d.notes.filter(n => n.id !== "filter" && n.id !== "campagne").map(n => ({ key: n.id, tone: "info" as const, title: n.title, text: n.text, advice: n.advice })),
+  ]
+  if (!items.length) return null
+  return (
+    <section className="card" aria-labelledby="ds-quality" style={{ marginBottom: 20 }}>
+      <div className="card-head"><div><h2 className="card-title" id="ds-quality">Wat nog niet betrouwbaar wordt gemeten</h2><p className="card-sub">En hoe je dat oplost. Laatste 28 dagen.</p></div></div>
+      <div className="card-body">
+        <ul className="dash-notes">
+          {items.map(i => (
+            <li key={i.key}><span className={`warn-dot ${i.tone === "error" ? "is-problem" : i.tone === "warning" ? "" : "is-info"}`} aria-hidden /><div><b>{i.title}</b><p>{i.text}</p><p className="dash-advice"><b>Zo los je dit op:</b> {i.advice}</p></div></li>
+          ))}
+        </ul>
+      </div>
+    </section>
   )
 }

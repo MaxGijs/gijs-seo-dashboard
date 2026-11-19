@@ -5,7 +5,7 @@ import { Mail, Pencil, Plus, Trash2 } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { dateShort, num, today } from "@/lib/format"
 import { AFTER_EFFECT_DAYS, CAMPAIGN_KINDS, effectEnd, kindLabel, type Campaign } from "@/lib/campaigns"
-import { Alert, EmptyState, Skeleton } from "@/components/ui"
+import { Alert, EmptyState, PageHeader, Skeleton } from "@/components/ui"
 
 const EMPTY = { id: "", name: "", kind: "brief", start_date: "", end_date: "", regions: "", amount: "", landing_page: "", note: "" }
 
@@ -45,13 +45,13 @@ export default function CampaignsView() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Offline campagnes</h1>
-          <p className="page-sub">Brieven, flyers, advertenties en informatieavonden. Ze zorgen voor bezoek en aanvragen die niet uit Google komen. Leg ze hier vast, dan houdt het dashboard er rekening mee: ze staan als gele band in de grafiek en een meting die erdoor beïnvloed kan zijn, krijgt geen oordeel.</p>
-        </div>
-        {!form && <button className="btn btn-primary btn-sm" onClick={() => setForm({ ...EMPTY, start_date: t })}><Plus aria-hidden />Campagne toevoegen</button>}
-      </div>
+      <PageHeader title="Offline campagnes"
+        status={!rows ? null : (() => {
+          const live = rows.filter(c => c.start_date <= t && (!c.end_date || c.end_date >= t)).length, soon = rows.filter(c => c.start_date > t).length
+          return { tone: "info", text: rows.length ? `${live ? `${live} ${live === 1 ? "campagne loopt" : "campagnes lopen"} nu` : "Er loopt nu geen campagne"}${soon ? `, ${soon} gepland` : ""}.` : "Nog geen campagnes vastgelegd." }
+        })()}
+        sub="Brieven, flyers, advertenties en informatieavonden zorgen voor bezoek dat niet uit Google komt. Leg ze vast, dan houdt het dashboard er rekening mee: een gele band in de grafiek, en metingen in die periode krijgen geen oordeel."
+        actions={!form ? <button className="btn btn-primary btn-sm" onClick={() => setForm({ ...EMPTY, start_date: t })}><Plus aria-hidden />Campagne toevoegen</button> : undefined} />
       {err && <Alert tone="error" title="Campagnes konden niet worden geladen">{err}</Alert>}
 
       {form && (
@@ -85,7 +85,7 @@ export default function CampaignsView() {
       )}
 
       {!rows ? <Skeleton height={160} /> : rows.length === 0 ? (
-        !form && <div className="card"><EmptyState icon={<Mail />} title="Nog geen campagnes vastgelegd" text="Stuur je brieven of flyers rond? Leg ze hier vast, dan haalt het dashboard dat effect niet door elkaar met SEO." action={<button className="btn btn-primary btn-sm" onClick={() => setForm({ ...EMPTY, start_date: t })}>Campagne toevoegen</button>} /></div>
+        !form && <div className="card"><EmptyState icon={<Mail />} title="Nog geen campagnes vastgelegd" text="Stuur je brieven of flyers rond? Leg ze hier vast, dan haalt het dashboard dat effect niet door elkaar met SEO." action={<button className="btn btn-secondary btn-sm" onClick={() => setForm({ ...EMPTY, start_date: t })}>Campagne toevoegen</button>} /></div>
       ) : (
         <div className="card"><div className="table-wrap"><table className="table">
           <thead><tr><th>Campagne</th><th>Soort</th><th>Periode (met na-effect)</th><th>Gebied</th><th className="num">Aantal</th><th /></tr></thead>

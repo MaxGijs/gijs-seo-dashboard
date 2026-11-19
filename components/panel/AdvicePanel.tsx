@@ -259,7 +259,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                     <tr><th scope="row">Bewijskracht</th><td>{capitalizeFirst(signal.evidence)}</td></tr>
                   </> : <tr><th scope="row">Gemeten op</th><td>{raw.goal === "conversie" ? "Energiescanaanvragen (GA4)" : "Niet automatisch"}</td></tr>}
                   <tr><th scope="row">Inspanning · risico</th><td>{capitalizeFirst(diag.effort)} · {diag.risk}</td></tr>
-                  {signal.priorityRank ? <tr><th scope="row">Prioriteit</th><td>#{signal.priorityRank} van {signals.length}</td></tr> : null}
+                  <tr><th scope="row">Prioriteit</th><td>{capitalizeFirst(signal.priority)}{signal.priorityRank ? ` (#${signal.priorityRank} van ${signals.length})` : ""}</td></tr>
                 </tbody>
               </table>
             </div>

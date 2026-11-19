@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { CalendarRange, FileText, RotateCcw } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { dateLong, dateShort, num } from "@/lib/format"
-import { Alert, EmptyState, Skeleton } from "@/components/ui"
+import { Alert, EmptyState, PageHeader, Skeleton } from "@/components/ui"
 
 export interface ReportSummary {
   headline: string; conclusion: string
@@ -55,13 +55,10 @@ export default function ReportsView() {
   const report = rows?.find(r => r.week_end === sel) || null
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Vrijdagrapport</h1>
-          <p className="page-sub">Elke vrijdagmiddag automatisch vastgelegd, ook als er weinig verandert. Zo zie je hoe de website zich week na week ontwikkelt.</p>
-        </div>
-        <button className="btn btn-secondary btn-sm" disabled={busy} onClick={make}><RotateCcw className={busy ? "spin" : ""} aria-hidden />{busy ? "Bezig…" : "Rapport van deze week nu maken"}</button>
-      </div>
+      <PageHeader title="Vrijdagrapport"
+        status={!rows ? null : rows.length ? { tone: "info", text: `Laatste rapport t/m ${dateShort(rows[0].week_end)}: ${rows[0].summary.headline.replace(/\.$/, "")}.` } : { tone: "info", text: "Nog geen rapport. Het eerste verschijnt vrijdagmiddag." }}
+        sub="Elke vrijdagmiddag automatisch vastgelegd, ook als er weinig verandert. Zo zie je hoe de website zich week na week ontwikkelt."
+        actions={<button className="btn btn-secondary btn-sm" disabled={busy} onClick={make}><RotateCcw className={busy ? "spin" : ""} aria-hidden />{busy ? "Bezig…" : "Rapport van deze week nu maken"}</button>} />
       {err && <Alert tone="error" title="Rapporten konden niet worden geladen">{err}</Alert>}
       {!rows ? <Skeleton height={200} /> : rows.length === 0 ? (
         <div className="card"><EmptyState icon={<FileText />} title="Nog geen rapporten" text="Het eerste rapport verschijnt vrijdagmiddag. Je kunt er nu ook alvast één laten maken." action={<button className="btn btn-primary btn-sm" disabled={busy} onClick={make}>Nu maken</button>} /></div>

@@ -8,7 +8,7 @@ import { useWorkspace, type AnalyticsData } from "@/lib/workspace"
 import type { GscRow } from "@/lib/types"
 import { toPath } from "@/lib/signals"
 import { dateShort, normalize, num, pct, pos, signedPct } from "@/lib/format"
-import { Alert, EmptyState, posClass, Skeleton } from "@/components/ui"
+import { Alert, EmptyState, PageHeader, posClass, Skeleton, type StatusTone } from "@/components/ui"
 
 const PERIODS = [7, 28, 90]
 
@@ -46,13 +46,7 @@ export default function AnalysesView() {
   if (tab === "audit") {
     return (
       <>
-        <div className="page-head">
-          <div>
-            <h1 className="page-title">SEO-analyses</h1>
-            <p className="page-sub">Alle pagina&apos;s uit de sitemap naast Search Console: kent Google ze, toont Google ze, en wat is de volgende stap?</p>
-          </div>
-          <ViewTabs tab="audit" />
-        </div>
+        <PageHeader title="SEO-analyses" sub="Alle pagina's uit de sitemap naast Search Console: kent Google ze, toont Google ze, en wat is de volgende stap?" actions={<ViewTabs tab="audit" />} />
         <PageAuditView />
       </>
     )
@@ -83,45 +77,43 @@ function OverviewAnalyses({ tabs }: { tabs: ReactNode }) {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">SEO-analyses</h1>
-          <p className="page-sub">
-            Google Search Console{data?.range && state === "ready" ? `, ${dateShort(data.range.startDate)} t/m ${dateShort(data.range.endDate)}` : ""}. Klik op een zoekwoord of pagina voor de volledige diagnose.
-          </p>
-        </div>
-        <div className="page-actions">
+      <PageHeader title="SEO-analyses"
+        status={loading || !data ? null : (() => {
+          const d = prev.clicks ? (cur.clicks - prev.clicks) / prev.clicks : null
+          return { tone: (d === null ? "info" : d < -0.1 ? "attention" : "good") as StatusTone, text: `${num(cur.clicks)} klikken en ${num(cur.impressions)} vertoningen in ${period} dagen${d !== null ? ` (klikken ${d >= 0 ? "+" : "−"}${Math.abs(Math.round(d * 100))}% t.o.v. de periode ervoor)` : ""}.` }
+        })()}
+        sub={<>Google Search Console{data?.range && state === "ready" ? `, ${dateShort(data.range.startDate)} t/m ${dateShort(data.range.endDate)}` : ""}. Klik op een zoekwoord of pagina voor de volledige diagnose.</>}
+        actions={<>
           <div className="seg" role="group" aria-label="Periode">
             {PERIODS.map(p => (
               <button key={p} className={period === p ? "is-active" : ""} onClick={() => setPeriod(p)} aria-pressed={period === p}>{p} dagen</button>
             ))}
           </div>
           {tabs}
-        </div>
-      </div>
+        </>} />
 
       {state === "error" && <div style={{ marginBottom: 16 }}><Alert tone="error" title="Analyses konden niet worden geladen">{err}</Alert></div>}
 
       <div className="kpi-grid">
         <div className="card kpi">
           <p className="kpi-label">Clicks</p>
-          <p className="kpi-value">{loading ? <Skeleton height={32} width={80} /> : num(cur.clicks)}</p>
+          <div className="kpi-value">{loading ? <Skeleton height={32} width={80} /> : num(cur.clicks)}</div>
           {!loading && <DeltaText cur={cur.clicks} prev={prev.clicks} />}
         </div>
         <div className="card kpi">
           <p className="kpi-label">Vertoningen</p>
-          <p className="kpi-value">{loading ? <Skeleton height={32} width={80} /> : num(cur.impressions)}</p>
+          <div className="kpi-value">{loading ? <Skeleton height={32} width={80} /> : num(cur.impressions)}</div>
           {!loading && <DeltaText cur={cur.impressions} prev={prev.impressions} />}
         </div>
         <div className="card kpi">
           <p className="kpi-label">Gem. positie</p>
-          <p className="kpi-value">{loading ? <Skeleton height={32} width={80} /> : pos(cur.position)}</p>
+          <div className="kpi-value">{loading ? <Skeleton height={32} width={80} /> : pos(cur.position)}</div>
           {!loading && <DeltaText cur={cur.position} prev={prev.position} absolute />}
           {!loading && <p className="kpi-note">Gewogen naar vertoningen. Stijgt vaak als je op méér zoekwoorden verschijnt.</p>}
         </div>
         <div className="card kpi">
           <p className="kpi-label">Conversies (GA4)</p>
-          {loading ? <p className="kpi-value"><Skeleton height={32} width={80} /></p> : data?.ga4Error ? (
+          {loading ? <div className="kpi-value"><Skeleton height={32} width={80} /></div> : data?.ga4Error ? (
             <>
               <p className="kpi-value subtle">—</p>
               <p className="kpi-note">
@@ -132,7 +124,7 @@ function OverviewAnalyses({ tabs }: { tabs: ReactNode }) {
             </>
           ) : (
             <>
-              <p className="kpi-value">{num(data?.ga4?.keyEvents ?? 0)}</p>
+              <div className="kpi-value">{num(data?.ga4?.keyEvents ?? 0)}</div>
               <DeltaText cur={data?.ga4?.keyEvents ?? null} prev={data?.ga4Prev?.keyEvents ?? null} />
               <p className="kpi-note">{num(data?.ga4?.sessions ?? 0)} sessies, alle kanalen</p>
             </>

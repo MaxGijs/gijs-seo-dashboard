@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Copy, Link2, MessageSquare, Trash2 } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { dateShort } from "@/lib/format"
-import { Alert, Skeleton } from "@/components/ui"
+import { Alert, PageHeader, Skeleton } from "@/components/ui"
 
 interface Row { id: string; hint: string; created_at: string; last_used_at: string | null; revoked_at: string | null }
 interface Log { at: string; tool: string; ok: boolean; detail: string | null }
@@ -52,12 +52,9 @@ export default function ConnectorView() {
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Claude-koppeling</h1>
-          <p className="page-sub">Praat in de Claude-app met het dashboard: vraag wat er vandaag moet gebeuren, voeg taken toe, plan ze in of meld ze als uitgevoerd. Loopt via je eigen Claude-abonnement, zonder extra kosten.</p>
-        </div>
-      </div>
+      <PageHeader title="Claude-koppeling"
+        status={!rows ? null : active.length ? { tone: "good", text: `${active.length} ${active.length === 1 ? "actieve koppeling" : "actieve koppelingen"}.` } : { tone: "info", text: "Nog geen actieve koppeling." }}
+        sub="Praat in de Claude-app met het dashboard: vraag wat er vandaag moet gebeuren, voeg taken toe, plan ze in of meld ze als uitgevoerd. Loopt via je eigen Claude-abonnement, zonder extra kosten." />
       {err && <Alert tone="error" title="Koppelingen konden niet worden geladen">{err}</Alert>}
 
       <div className="connector-grid">

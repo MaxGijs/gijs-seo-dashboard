@@ -25,6 +25,7 @@ import { buildBriefing, lessonsFrom, styleGuideFrom } from "@/lib/content/briefi
 import { buildRelevancePrompt } from "@/lib/content/relevance"
 import { briefingNotes, learnFromFeedback, previewNote } from "@/lib/content/feedback"
 import { coverageFor, coverageText, coverDocs } from "@/lib/content/coverage"
+import { effortForIdea } from "@/lib/effort"
 import { ago, scoreTone } from "./ContentView"
 
 const SITE = "https://www.groeninjestraat.nl"
@@ -161,7 +162,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
     <div className="panel-head">
           <div className="panel-head-top">
             <div className="panel-tags">
-              <Badge tone="accent">{ORIGIN_META[idea.origin].label}</Badge>
+              <Badge tone="neutral">{ORIGIN_META[idea.origin].label}</Badge>
               {idea.impact && idea.impact !== "overig" && <Badge tone="neutral">{IMPACT_META[idea.impact].label}</Badge>}
               <Badge tone={step < 0 ? "neutral" : "success"} dot>{STATUS_META[idea.status].label}</Badge>
               <OwnerSelect value={idea.owner} onChange={o => act({ action: "owner", owner: o }, o ? "Toegewezen" : "Toewijzing verwijderd")} />
@@ -184,6 +185,15 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
               <Alert tone="error" title="Dit voorstel is geblokkeerd: de onderbouwing klopt niet">{issues.join(" ")}</Alert>
             </div>
           )}
+          {/* Wat het systeem zelf deed, en hoe je het terugdraait */}
+          {idea.status === "verlopen" && (
+            <div className="psec covered" style={{ paddingBottom: 0 }}>
+              <Alert tone="info" title="Het systeem heeft deze kans gearchiveerd"
+                action={<button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act({ action: "status", status: "nieuw" }, "Teruggezet naar Te beoordelen")}>Terugzetten</button>}>
+                {(idea.decision_note || "Automatisch gearchiveerd: het nieuws is te oud en de kans is niet opgepakt.").replace(/^Automatisch gearchiveerd:\s*/, "Reden: ")} Veranderd: de status ging van Te beoordelen naar Archief; verder is er niets aangepast. Terugzetten zet de kans weer bij Te beoordelen.
+              </Alert>
+            </div>
+          )}
           {idea.covered_by && (idea.status === "nieuw" || idea.status === "later") && (
             <div className="psec covered" style={{ paddingBottom: 0 }}>
               <Alert tone="warning" title={idea.covered_by.strength === "zelfde-nieuws" ? "Dit nieuws staat al op de site" : "Dit onderwerp staat al op de site"}
@@ -203,6 +213,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                 <tbody>
                   <tr><th scope="row">Score</th><td><span className={`score-inline score-${scoreTone(score)}`}>{score}</span>{idea.score_override !== null && <span className="subtle"> (berekend {idea.score})</span>}</td></tr>
                   <tr><th scope="row">Prioriteit</th><td>{idea.priority ? idea.priority[0].toUpperCase() + idea.priority.slice(1) : "—"}</td></tr>
+                  <tr><th scope="row">Inspanning</th><td title={effortForIdea(idea).why}>{effortForIdea(idea).label}</td></tr>
                   <tr><th scope="row">Invalshoek</th><td>{idea.angle ? ANGLE_META[idea.angle].label : "—"}</td></tr>
                   <tr><th scope="row">Commercieel</th><td>{idea.commercial_value?.split(":")[0]}</td></tr>
                   <tr><th scope="row">Bereik en autoriteit</th><td>{idea.reach_value}</td></tr>

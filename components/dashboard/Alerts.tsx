@@ -22,37 +22,6 @@ export function useAlerts() {
 }
 
 // Meldingen bovenaan het dashboard: alleen zichtbaar als er iets open staat
-export function AlertsBlock() {
-  const { d } = useAlerts()
-  const { openSubject } = useWorkspace()
-  const open = (d?.alerts || []).filter(a => !a.resolved_at)
-  const solved = (d?.alerts || []).filter(a => a.resolved_at).slice(0, 3)
-  if (!d || (!open.length && !solved.length)) return null
-  const go = (a: AlertRow) => a.type === "pagina1-kwijt" && a.subject ? openSubject({ query: a.subject }) : (a.type === "pagina-daling" || a.type === "snelheid") && a.subject ? openSubject({ page: a.subject }) : undefined
-  return (
-    <section className="card dash-alerts" aria-labelledby="alerts-title">
-      <div className="card-head"><div>
-        <h2 className="card-title" id="alerts-title"><BellRing aria-hidden />Meldingen{open.length ? <span className="badge tone-error" style={{ marginLeft: 6 }}>{open.length}</span> : null}</h2>
-        <p className="card-sub">Elke ochtend bepaald: wat in een week duidelijk is misgegaan. Een melding verdwijnt vanzelf als het weer goed gaat.</p>
-      </div></div>
-      <div className="card-body">
-        {open.length === 0 ? <p className="muted small"><CheckCircle2 size={14} style={{ verticalAlign: -2 }} aria-hidden /> Geen open meldingen.</p> : (
-          <ul className="alert-list">
-            {open.map(a => (
-              <li key={a.key}><button className={`alert-row is-${a.severity}`} onClick={() => go(a)} disabled={!["pagina1-kwijt", "pagina-daling", "snelheid"].includes(a.type)}>
-                <span className="alert-dot" aria-hidden />
-                <span className="alert-main"><b>{a.title}</b><span>{a.detail}</span></span>
-                <span className="alert-since">sinds {dateShort(a.first_seen)}</span>
-              </button></li>
-            ))}
-          </ul>
-        )}
-        {solved.length > 0 && <p className="subtle small" style={{ marginTop: 10 }}>Opgelost: {solved.map(a => `${a.title} (${dateShort(a.resolved_at!)})`).join(" · ")}</p>}
-      </div>
-    </section>
-  )
-}
-
 const fmtS = (ms: number | null | undefined) => (ms === null || ms === undefined ? "—" : `${(ms / 1000).toFixed(1).replace(".", ",")} s`)
 const tone = (v: number | null | undefined, [good, bad]: readonly [number, number]) => v === null || v === undefined ? "" : v <= good ? "txt-up" : v > bad ? "txt-down" : "txt-warn"
 
