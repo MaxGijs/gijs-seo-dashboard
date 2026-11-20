@@ -52,7 +52,9 @@ export async function recomputeLessons(by = "systeem") {
     } else {
       // Een teruggedraaide les blijft teruggedraaid, ook als het bewijs groeit
       const status = prev.status === "teruggedraaid" ? "teruggedraaid" : "actief"
-      upserts.push({ ...row, status })
+      // first_seen altijd meesturen: bij een gemengde upsert (nieuw + bestaand) vult de database
+      // ontbrekende velden anders met null, en first_seen mag niet leeg zijn
+      upserts.push({ ...row, status, first_seen: prev.first_seen || now })
       if (prev.status === "vervallen") log.push({ lesson_key: d.key, action: "weer-geldig", detail: d.conclusion, by })
       else if (prev.effect?.factor !== d.effect?.factor || prev.confidence !== d.confidence) log.push({ lesson_key: d.key, action: "bijgewerkt", detail: `${d.conclusion} ${d.effect?.text || ""}`, by })
     }
