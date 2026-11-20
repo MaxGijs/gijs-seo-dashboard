@@ -38,6 +38,7 @@ export const STATUS_META: Record<Status, { label: string; tone: Tone }> = {
   niet_succesvol: { label: "Niet succesvol", tone: "error" },
   afgewezen: { label: "Afgewezen", tone: "neutral" },
   onvoldoende_bewijs: { label: "Onvoldoende bewijs", tone: "neutral" },
+  samengevoegd: { label: "Samengevoegd", tone: "neutral" },
 }
 
 export const KIND_META: Record<SignalKind, { label: string; tone: Tone }> = {
@@ -122,7 +123,9 @@ export function mergeTasks(signals: Signal[], records: AdviceRecord[], experimen
   }
 
   for (const s of signals) {
-    tasks.push(make(s, recMap.get(s.key), true))
+    // Actuele cijfers, maar de koppeling aan een hoofdkaart komt uit de opgeslagen kaart
+    const rec = recMap.get(s.key)
+    tasks.push(make(rec?.status === "samengevoegd" ? { ...s, mergedInto: rec.snapshot?.mergedInto, mergedFrom: rec.snapshot?.mergedFrom } : s, rec, true))
     seen.add(s.key)
   }
   for (const r of records) {
@@ -132,12 +135,23 @@ export function mergeTasks(signals: Signal[], records: AdviceRecord[], experimen
     // Eigen taken zijn altijd actueel: ze komen niet uit de data maar van jou
     tasks.push(make(signal, r, signal.kind === "eigen"))
   }
+  // Samengevoegde kaarten hangen onder hun hoofdkaart. Bestaat die niet meer (bv. verwijderd),
+  // dan komt de kaart weer los terug met zijn oude status.
+  const byKey = new Map(tasks.map(x => [x.key, x]))
+  for (const x of tasks) {
+    if (x.status !== "samengevoegd") continue
+    const main = x.signal.mergedInto ? byKey.get(x.signal.mergedInto) : undefined
+    if (main && main.status !== "samengevoegd") main.merged = [...(main.merged || []), x]
+    else { x.status = x.signal.mergedFrom || "nieuw"; x.snoozed = false }
+  }
   return tasks
 }
 
 // Taken die in "Te beoordelen" horen maar niet meer actueel zijn en nooit zijn aangeraakt,
 // tonen we niet: dan zou het bord vollopen met verouderde signalen.
 export function isVisible(task: Task) {
+  // Samengevoegde kaarten staan alleen in hun hoofdkaart
+  if (task.status === "samengevoegd") return false
   if (task.current) return true
   return task.status !== "nieuw"
 }

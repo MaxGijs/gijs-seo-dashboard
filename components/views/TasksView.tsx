@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { BellRing, CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck, CheckCheck } from "lucide-react"
+import { BellRing, CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, List, Newspaper, Play, ShieldCheck, TrendingUp, Inbox, SearchX, UserRound, StickyNote, CircleHelp, ClipboardCheck, CheckCheck, Check, Layers } from "lucide-react"
 import { ownerName } from "@/components/OwnerSelect"
 import { readStorage, sortByPriority, useWorkspace, writeStorage } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
@@ -12,6 +12,7 @@ import { addDays, dateShort, gainShort, normalize, num, today } from "@/lib/form
 import AddTaskDialog from "./AddTaskDialog"
 import ReminderDialog from "@/components/reminders/ReminderDialog"
 import BulkExecuteDialog from "./BulkExecuteDialog"
+import MergeDialog from "./MergeDialog"
 import SiteAdviceStrip from "@/components/siteadvice/SiteAdviceStrip"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
@@ -122,6 +123,11 @@ export default function TasksView() {
   const [adding, setAdding] = useState(false)
   const [reminding, setReminding] = useState(false)
   const [bulk, setBulk] = useState(false)
+  // Samenvoegen: kies kaarten die bij elkaar horen
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [merging, setMerging] = useState(false)
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()) }
   const [overCol, setOverCol] = useState<ColumnId | null>(null)
   const setView = (v: "bord" | "lijst") => {
     setViewState(v); setViewChosen(true)
@@ -244,6 +250,10 @@ export default function TasksView() {
   const running = useMemo(() => entries.filter(e => e.col === "uitvoering" && e.kind === "seo").map(e => (e as Extract<Entry, { kind: "seo" }>).t), [entries])
 
   const measuringElsewhere = useMemo(() => entries.filter(e => e.old).length, [entries])
+  // Alleen SEO- en eigen taken die nog niet uitgevoerd zijn; contentkansen volgen hun eigen schrijfstap
+  const canPick = (en: Entry) => en.kind === "seo" && ["beoordelen", "gepland", "uitvoering"].includes(en.col) && !en.t.signal.reminder
+  const togglePick = (key: string) => setPicked(p => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n })
+  const pickedTasks = useMemo(() => entries.filter(e => e.kind === "seo" && picked.has(e.key)).map(e => (e as Extract<Entry, { kind: "seo" }>).t), [entries, picked])
 
   // Statusregel: wat ligt er, en vraagt iets aandacht?
   const boardStatus = useMemo(() => {
@@ -285,6 +295,7 @@ export default function TasksView() {
             <button className={view === "bord" ? "is-active" : ""} onClick={() => setView("bord")} aria-pressed={view === "bord"}><KanbanSquare aria-hidden />Bord</button>
             <button className={view === "lijst" ? "is-active" : ""} onClick={() => setView("lijst")} aria-pressed={view === "lijst"}><List aria-hidden />Lijst</button>
           </div>
+          <button className={`btn btn-sm ${selecting ? "btn-secondary is-on" : "btn-ghost"}`} aria-pressed={selecting} onClick={() => (selecting ? stopSelecting() : setSelecting(true))}><Layers aria-hidden />{selecting ? "Stop samenvoegen" : "Samenvoegen"}</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setLegend(l => !l)} aria-expanded={legend}><CircleHelp aria-hidden />Hoe werkt het bord?</button>
         </div>
         <div className="toolbar-left">
@@ -357,7 +368,7 @@ export default function TasksView() {
                     const i = en.i, meta = contentMeta(i, c.id), isNew = c.id === "beoordelen" && newContentIds.has(i.id)
                     const isMeasuring = c.id === "evalueren" && i.status === "gepubliceerd"
                     return (
-                      <button key={en.key} className={`tcard interactive tcard-content${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : isMeasuring ? " is-measuring" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => setOpenIdea(i.id)} {...dragProps}>
+                      <button key={en.key} className={`tcard interactive tcard-content${selecting ? " is-unpickable" : ""}${en.dim ? " is-dim" : ""}${i.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : isMeasuring ? " is-measuring" : ""}${dragKey === en.key ? " is-dragged" : ""}`} onClick={() => !selecting && setOpenIdea(i.id)} {...(selecting ? { disabled: true, title: "Contentkansen kun je niet samenvoegen met taken" } : dragProps)}>
                         <span className="tcard-top">
                           <span className="kind-label tone-info"><Newspaper aria-hidden />Content · {ORIGIN_META[i.origin].label}</span>
                           {i.status === "afgewezen" ? <RejectedBadge /> : isNew ? <NewBadge /> : isMeasuring ? <MeasuringBadge /> : c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
@@ -373,8 +384,11 @@ export default function TasksView() {
                   const meta = cardMeta(t)
                   const isNew = c.id === "beoordelen" && newSinceLastVisit.has(t.key)
                   const isMeasuring = c.id === "evalueren"
+                  const pickable = canPick(en), isPicked = picked.has(t.key)
                   return (
-                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : isMeasuring ? " is-measuring" : ""}${dragKey === t.key ? " is-dragged" : ""}`} onClick={() => openTask(t.key)} {...dragProps}>
+                    <button key={t.key} className={`tcard interactive${t.snoozed ? " is-dim" : ""}${t.status === "afgewezen" ? " is-rejected" : isNew ? " is-new" : isMeasuring ? " is-measuring" : ""}${dragKey === t.key ? " is-dragged" : ""}${selecting ? (pickable ? " is-pickable" : " is-unpickable") : ""}${isPicked ? " is-picked" : ""}`}
+                      onClick={() => (selecting ? pickable && togglePick(t.key) : openTask(t.key))} {...(selecting ? { "aria-pressed": isPicked, disabled: !pickable } : dragProps)}>
+                      {selecting && pickable && <span className="tcard-check" aria-hidden>{isPicked ? <Check /> : null}</span>}
                       <span className="tcard-top">
                         <KindLabel signal={t.signal} />
                         {isNew ? <NewBadge /> : isMeasuring ? <MeasuringBadge /> : c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
@@ -384,6 +398,7 @@ export default function TasksView() {
                       {t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
+                        {t.merged?.length ? <span className="merged-chip" title={t.merged.map(m => m.signal.query || m.signal.headline).join(", ")}><Layers aria-hidden />+{t.merged.length}</span> : null}
                         {t.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span> : null}
                         {t.status === "onderzoeken" ? <span>In onderzoek</span>
                           : !t.current && c.id !== "afgerond" ? <span title="Niet meer in de actuele signalen">Niet actueel</span> : null}
@@ -392,7 +407,7 @@ export default function TasksView() {
                   )
                 })}
                 {c.id === "evalueren" && measuringElsewhere > 0 && (
-                  <Link href="/experimenten" className="col-elsewhere">{measuringElsewhere} {measuringElsewhere === 1 ? "meting loopt" : "metingen lopen"} al langer dan een week. Die staan in Experimenten; nieuwe resultaten zie je op Vandaag.</Link>
+                  <Link href="/experimenten" className="col-elsewhere" draggable={false}>{measuringElsewhere} {measuringElsewhere === 1 ? "meting loopt" : "metingen lopen"} al langer dan een week. Die staan in Experimenten; nieuwe resultaten zie je op Vandaag.</Link>
                 )}
                 {items.length > COLUMN_LIMIT && (
                   <button className="col-more" onClick={() => setExpanded(e => ({ ...e, [c.id]: !showAll }))}>
@@ -409,11 +424,12 @@ export default function TasksView() {
           <div className="table-wrap">
             <table className="table">
               <thead>
-                <tr><th>Onderwerp</th><th>Type</th><th>Status</th><th>Prioriteit</th><th>Verwachte winst</th><th className="num">Vertoningen</th><th>Bewijs</th><th aria-label="Openen" /></tr>
+                <tr>{selecting && <th aria-label="Kiezen" />}<th>Onderwerp</th><th>Type</th><th>Status</th><th>Prioriteit</th><th>Verwachte winst</th><th className="num">Vertoningen</th><th>Bewijs</th><th aria-label="Openen" /></tr>
               </thead>
               <tbody>
                 {COLUMNS.flatMap(c => columns[c.id]).map(en => en.kind === "content" ? (
-                  <tr key={en.key} className="is-clickable" onClick={() => setOpenIdea(en.i.id)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") setOpenIdea(en.i.id) }}>
+                  <tr key={en.key} className={selecting ? "is-unpickable" : "is-clickable"} onClick={() => !selecting && setOpenIdea(en.i.id)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter" && !selecting) setOpenIdea(en.i.id) }}>
+                    {selecting && <td />}
                     <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{en.i.title}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{en.i.format} · {serviceLabel(en.i.service)}</span></td>
                     <td className="nowrap">Content<div style={{ marginTop: 4 }}><span className="badge tone-neutral">{ORIGIN_META[en.i.origin].label}</span></div></td>
                     <td>{en.i.status === "afgewezen" ? <RejectedBadge /> : <span className="badge tone-info badge-dot">{CONTENT_STEP[en.i.status] || en.i.status}</span>}{en.i.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(en.i.owner, users, me)}</span></div>}</td>
@@ -424,8 +440,10 @@ export default function TasksView() {
                     <td className="cell-arrow"><ChevronRight aria-hidden /></td>
                   </tr>
                 ) : (() => { const t = en.t; return (
-                  <tr key={t.key} className="is-clickable" onClick={() => openTask(t.key)} tabIndex={0} onKeyDown={e => { if (e.key === "Enter") openTask(t.key) }}>
-                    <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span>{t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}</td>
+                  <tr key={t.key} className={selecting ? (canPick(en) ? `is-clickable${picked.has(t.key) ? " is-picked" : ""}` : "is-unpickable") : "is-clickable"}
+                    onClick={() => (selecting ? canPick(en) && togglePick(t.key) : openTask(t.key))} tabIndex={0} onKeyDown={e => { if (e.key === "Enter" || (selecting && e.key === " ")) { e.preventDefault(); selecting ? canPick(en) && togglePick(t.key) : openTask(t.key) } }}>
+                    {selecting && <td className="cell-check">{canPick(en) && <input type="checkbox" checked={picked.has(t.key)} onChange={() => togglePick(t.key)} onClick={e => e.stopPropagation()} aria-label={`${t.signal.query || t.signal.headline} kiezen`} />}</td>}
+                    <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}{t.merged?.length ? <span className="merged-chip" style={{ marginLeft: 6 }}><Layers aria-hidden />+{t.merged.length}</span> : null}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span>{t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}</td>
                     <td className="nowrap">{KIND_META[t.signal.kind].label}{t.signal.intent && <div style={{ marginTop: 4 }}><IntentBadge intent={t.signal.intent} /></div>}</td>
                     <td><StatusBadge task={t} />{t.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span></div>}</td>
                     <td>{t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : <span className="subtle">—</span>}</td>
@@ -445,6 +463,14 @@ export default function TasksView() {
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
       {reminding && <ReminderDialog onClose={() => setReminding(false)} />}
       {bulk && <BulkExecuteDialog tasks={running} onClose={() => setBulk(false)} />}
+      {selecting && (
+        <div className="select-bar" role="region" aria-label="Samenvoegen">
+          <span><b>{picked.size}</b> {picked.size === 1 ? "kaart" : "kaarten"} gekozen. Kies de kaarten die één opdracht zijn.</span>
+          <button className="btn btn-ghost btn-sm" onClick={stopSelecting}>Annuleren</button>
+          <button className="btn btn-primary btn-sm" disabled={picked.size < 2} onClick={() => setMerging(true)}><Layers aria-hidden />Samenvoegen</button>
+        </div>
+      )}
+      {merging && pickedTasks.length >= 2 && <MergeDialog tasks={pickedTasks} onClose={() => setMerging(false)} onDone={stopSelecting} />}
     </>
   )
 }

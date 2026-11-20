@@ -19,6 +19,7 @@ import { buildAdhocSignal, signalKey, toPath } from "@/lib/signals"
 import { groupTasks, mergeTasks, signalsFrom } from "@/lib/taskset"
 import { columnOf, COLUMNS, KIND_META, STATUS_META } from "@/lib/workflow"
 import { reconcile } from "@/lib/contract"
+import { experimentFor } from "@/lib/execute"
 import { baselineFrom, buildDiagnosis } from "@/lib/diagnosis"
 import { addDays, today } from "@/lib/format"
 import { readAlerts } from "@/lib/server/alerts"
@@ -298,11 +299,8 @@ export const TOOLS: Tool[] = [
       await saveTask({ ...t, signal }, "uitgevoerd", { signal })
       await call(expPOST, `/api/experiments`, {
         advice_key: t.key, description: String(a.wat_aangepast).trim(),
-        baseline: { ...baselineFrom(signal, detail, diag, rec.targetRow), site },
-        hypothesis: `${diag.steps[0]?.title || signal.action || ""}. Verwacht: ${diag.importance.gainText.toLowerCase()}. ${diag.plan.success}`,
-        target_pages: signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x),
-        target_queries: signal.query ? [signal.query] : [],
-        predicted: { gain: signal.estimate ? Math.round(signal.estimate.gain * 10) / 10 : null, low: signal.estimate?.low ?? null, high: signal.estimate?.high ?? null, metric: diag.successMetric },
+        // Zelfde vastlegging als in het dashboard (lib/execute.ts), inclusief samengevoegde kaarten
+        ...(() => { const e = experimentFor(signal, detail, diag, rec.targetRow, site, String(a.wat_aangepast), (t.merged || []).map(m => m.signal)); return { baseline: e.baseline, hypothesis: e.hypothesis, target_pages: e.targetPages, target_queries: e.targetQueries, predicted: e.predicted } })(),
         query: signal.query ?? null,
         page: (rec.targetRow ? target : null) ?? (signal.kind === "dubbel" ? signal.page ?? null : signal.query ? null : signal.page ?? null),
       })

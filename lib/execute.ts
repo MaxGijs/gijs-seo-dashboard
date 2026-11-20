@@ -17,14 +17,18 @@ export function siteBaselineOf(overview: GscRow[]): SiteBaseline | null {
   } : null
 }
 
-export function experimentFor(signal: Signal, detail: AdviceDetail | null, diag: Diagnosis, targetRow: Reconciled["targetRow"], site: SiteBaseline | null, description: string) {
+export function experimentFor(signal: Signal, detail: AdviceDetail | null, diag: Diagnosis, targetRow: Reconciled["targetRow"], site: SiteBaseline | null, description: string, merged: Signal[] = []) {
   const target = diag.target
+  // Samengevoegde kaarten: hun zoekwoorden en pagina's horen bij deze meting
+  const extraQueries = merged.map(m => m.query).filter((x): x is string => !!x && x !== signal.query)
+  const extraPages = merged.map(m => m.page || m.conversions?.page).filter((x): x is string => !!x)
+  const uniq = (xs: string[]) => [...new Set(xs)]
   return {
     description: description.trim(),
     baseline: { ...baselineFrom(signal, detail, diag, targetRow), site },
     hypothesis: `${diag.steps[0]?.title || signal.action || ""}. Verwacht: ${diag.importance.gainText.toLowerCase()}. ${diag.plan.success}`,
-    targetPages: signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x),
-    targetQueries: signal.query ? [signal.query] : [],
+    targetPages: uniq([...(signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) || [] : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x)), ...extraPages]),
+    targetQueries: uniq([...(signal.query ? [signal.query] : []), ...extraQueries]),
     predicted: { gain: signal.estimate ? Math.round(signal.estimate.gain * 10) / 10 : null, low: signal.estimate?.low ?? null, high: signal.estimate?.high ?? null, metric: diag.successMetric },
   }
 }
@@ -51,5 +55,5 @@ export async function prepareExecution(task: Task, ctx: {
   const rec = reconcile(raw, detail, ctx.ctrModel, ctx.listWindow)
   if (rec.blocked) return { ok: false, reason: rec.blocked }
   const diag = buildDiagnosis(rec.signal, detail, { model: ctx.ctrModel, pages: ctx.pages, signalCount: ctx.signalCount })
-  return { ok: true, signal: rec.signal, experiment: experimentFor(rec.signal, detail, diag, rec.targetRow, siteBaselineOf(ctx.overview), description) }
+  return { ok: true, signal: rec.signal, experiment: experimentFor(rec.signal, detail, diag, rec.targetRow, siteBaselineOf(ctx.overview), description, (task.merged || []).map(m => m.signal)) }
 }

@@ -111,6 +111,8 @@ export interface Signal {
   routeNote?: string          // waarom een andere route dan normaal wordt geadviseerd
   goal?: "seo" | "conversie" | "overig"  // eigen taak: wat moet het opleveren (bepaalt de meting)
   reminder?: { date: string; link: string | null }  // herinnering: komt op deze datum terug
+  mergedInto?: string         // samengevoegd met deze kaart (status "samengevoegd")
+  mergedFrom?: Status         // status vóór het samenvoegen, voor "Splitsen"
 }
 
 export type Level = "laag" | "middel" | "hoog"
@@ -118,6 +120,7 @@ export type Level = "laag" | "middel" | "hoog"
 export type Status =
   | "nieuw" | "onderzoeken" | "uitgesteld" | "goedgekeurd" | "in_uitvoering"
   | "uitgevoerd" | "in_evaluatie" | "succesvol" | "niet_succesvol" | "afgewezen" | "onvoldoende_bewijs"
+  | "samengevoegd"
 
 export interface AdviceRecord {
   advice_key: string
@@ -162,6 +165,7 @@ export interface Task {
   updatedAt: string | null
   experiments: Experiment[]
   owner?: string | null       // e-mail van wie de taak oppakt
+  merged?: Task[]             // kaarten die in deze kaart zijn samengevoegd (je doet ze in één keer)
 }
 
 export interface PageAudit {

@@ -13,6 +13,7 @@ import { useWorkspace } from "@/lib/workspace"
 import { buildClaudePrompt, buildDiagnosis, type Diagnosis, type FindingTone } from "@/lib/diagnosis"
 import { reconcile } from "@/lib/contract"
 import { experimentFor, siteBaselineOf } from "@/lib/execute"
+import MergeSection from "./MergeSection"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
@@ -265,6 +266,9 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             </div>
           </section>
 
+          {/* Samengevoegde kaarten, en samenvoegen met andere kaarten */}
+          <MergeSection task={task} />
+
           {/* 1. Wat speelt er: probleem en bewijs */}
           <section className="psec" aria-labelledby="sec-probleem">
             <h3 className="psec-title" id="sec-probleem"><span className="psec-num">1</span>Wat speelt er</h3>
@@ -482,7 +486,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
                 <button className="btn btn-primary btn-sm" disabled={busy || blocked} onClick={() => {
                   if (!text.trim()) { setFormError("Beschrijf kort wat je hebt aangepast, zodat je later weet wat er gemeten wordt."); return }
-                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text) }, "Uitgevoerd. De meting is gestart.")
+                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text, (task.merged || []).map(m => m.signal)) }, "Uitgevoerd. De meting is gestart.")
                 }}>Opslaan en meting starten</button>
               </div>
             </div>

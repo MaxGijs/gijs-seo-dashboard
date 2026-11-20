@@ -3,7 +3,7 @@ import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard
 
 const VALID_STATUSES = [
   "nieuw", "onderzoeken", "uitgesteld", "goedgekeurd", "in_uitvoering", "uitgevoerd",
-  "in_evaluatie", "succesvol", "niet_succesvol", "afgewezen", "onvoldoende_bewijs",
+  "in_evaluatie", "succesvol", "niet_succesvol", "afgewezen", "onvoldoende_bewijs", "samengevoegd",
 ]
 
 // GET /api/advice — alle opgeslagen statussen, inclusief momentopname van het advies

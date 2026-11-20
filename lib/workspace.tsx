@@ -125,6 +125,9 @@ interface WorkspaceValue {
   siteDecisions: Map<string, AdviceRecord>
   decideSiteAdvice: (a: SiteAdvice, decision: "ingepland" | "afgewezen" | "later" | "gezien" | "terug", note?: string) => Promise<boolean>
   undoExecution: (task: Task, status: Status) => Promise<boolean>
+  // Kaarten samenvoegen tot één opdracht (en weer splitsen). Telt niet als afwijzing.
+  mergeTasks: (main: Task, others: Task[]) => Promise<boolean>
+  splitTask: (child: Task) => Promise<boolean>
   setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
   openTask: (key: string, intent?: PanelIntent) => void
@@ -584,13 +587,56 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [tasks, setStatus, addTask, toast])
 
+  // Eén record opslaan zonder bijwerkingen (gebruikt door samenvoegen en splitsen)
+  const saveRecord = useCallback(async (key: string, signal: Signal, status: Status, extra: { note?: string | null; owner?: string | null } = {}) => {
+    const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ advice_key: key, advice_title: `${signal.headline} — ${signal.title}`, advice_type: signal.legacyType, status, snapshot: signal, ...extra }),
+    })
+    setRecords(rs => [res.row, ...rs.filter(r => r.advice_key !== key)])
+    return res.row
+  }, [])
+
+  const mergeTasksInto = useCallback(async (main: Task, others: Task[]) => {
+    try {
+      // De hoofdkaart krijgt een eigen record, zodat hij blijft bestaan als het signaal later wegvalt
+      if (!records.some(r => r.advice_key === main.key)) await saveRecord(main.key, main.signal, main.status, { note: main.note })
+      // Kaarten die zelf al samengevoegd waren, gaan met hun onderdelen mee naar de nieuwe hoofdkaart
+      const all = others.flatMap(o => [o, ...(o.merged || [])]).filter(o => o.key !== main.key)
+      for (const o of all) {
+        const { mergedInto: _a, mergedFrom: _b, ...clean } = o.signal
+        const before = o.status === "samengevoegd" ? o.signal.mergedFrom || "nieuw" : o.status
+        await saveRecord(o.key, { ...clean, mergedInto: main.key, mergedFrom: before }, "samengevoegd", { note: o.note })
+      }
+      toast(`${all.length} ${all.length === 1 ? "kaart" : "kaarten"} samengevoegd met ${main.signal.query ? `"${main.signal.query}"` : main.signal.headline}`)
+      return true
+    } catch (e: any) {
+      if (e instanceof HttpError && e.status === 401) setAuthError(true)
+      toast(`Samenvoegen mislukt: ${e?.message || "onbekende fout"}. Ververs de pagina en probeer het opnieuw.`, "error")
+      return false
+    }
+  }, [records, saveRecord, toast])
+
+  const splitTask = useCallback(async (child: Task) => {
+    try {
+      const { mergedInto: _a, mergedFrom, ...clean } = child.signal
+      // Een uitgestelde kaart had een datum; die is bij het samenvoegen vervallen, dus terug naar Te beoordelen
+      await saveRecord(child.key, clean, !mergedFrom || mergedFrom === "uitgesteld" ? "nieuw" : mergedFrom, { note: child.note })
+      toast(`${child.signal.query ? `"${child.signal.query}"` : child.signal.headline} is weer een losse kaart`)
+      return true
+    } catch (e: any) {
+      toast(`Splitsen mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return false
+    }
+  }, [saveRecord, toast])
+
   const value: WorkspaceValue = {
     user,
     loading, error, authError, storageError,
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, addReminder, snoozeReminder, openTask,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, addReminder, snoozeReminder, openTask,
     siteAdvice, siteDecisions, decideSiteAdvice, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,
