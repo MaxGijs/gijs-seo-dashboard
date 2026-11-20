@@ -1576,3 +1576,12 @@ tr.is-picked td { background: var(--accent-050); }
   .ptl-label { margin: 0; }
   .ptl-date { margin-left: auto; }
 }
+
+/* Meerdere bronnen bij "Idee toevoegen" */
+.src-list { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.src-list > legend { padding: 0; margin-bottom: 6px; }
+.src-item { display: flex; flex-direction: column; gap: 8px; }
+.src-item + .src-item { padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+.src-head { display: flex; gap: 6px; align-items: center; }
+.src-head .input { flex: 1; min-width: 0; }
+.src-add { align-self: flex-start; }

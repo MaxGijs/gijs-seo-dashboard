@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
 import { buildIdea, siteContext, sourceOverview } from "@/lib/server/content"
 import { termsInText, topicKeywords } from "@/lib/content/build"
-import { impactOf, PROVINCES, regionsIn, reliabilityOf, servicesIn, SCAN_SERVICE } from "@/lib/content/model"
+import { impactOf, PROVINCES, regionsIn, RELIABILITY_META, reliabilityOf, servicesIn, SCAN_SERVICE } from "@/lib/content/model"
 
 export const maxDuration = 30
 
@@ -44,8 +44,20 @@ export async function POST(req: Request) {
   const title = String(body.title || "").trim().slice(0, 200)
   const why = String(body.why || "").trim().slice(0, 2000)
   if (!title) return NextResponse.json({ error: "Titel ontbreekt" }, { status: 400 })
-  const sourceUrl = String(body.sourceUrl || "").trim()
-  if (sourceUrl && !/^https?:\/\/\S+$/i.test(sourceUrl)) return NextResponse.json({ error: "Bron-URL is ongeldig" }, { status: 400 })
+  // Eén of meer bronnen: { sources: [{ url, title?, date? }] } (oud formaat sourceUrl blijft werken)
+  const rawSources: { url?: unknown; title?: unknown; date?: unknown }[] = Array.isArray(body.sources) ? body.sources : body.sourceUrl ? [{ url: body.sourceUrl, title: body.sourceTitle, date: body.sourceDate }] : []
+  const links: { url: string; title: string | null; date: string | null }[] = []
+  for (const [n, r] of rawSources.slice(0, 10).entries()) {
+    const url = String(r?.url || "").trim()
+    if (!url) continue
+    if (!/^https?:\/\/\S+$/i.test(url)) return NextResponse.json({ error: `Bron ${n + 1} heeft geen geldige link (moet beginnen met https://)` }, { status: 400 })
+    if (links.some(l => l.url === url)) continue
+    const date = typeof r?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : null
+    links.push({ url, title: r?.title ? String(r.title).trim().slice(0, 300) || null : null, date })
+  }
+  const linkRefs = links.map(l => ({ title: l.title || l.url, url: l.url, publisher: new URL(l.url).hostname.replace(/^www\./, ""), date: l.date, reliability: reliabilityOf(l.url) }))
+  // De betrouwbaarste bron telt mee in de score
+  const best = [...linkRefs].sort((a, b) => RELIABILITY_META[b.reliability].points - RELIABILITY_META[a.reliability].points)[0]
   const ctx = await siteContext()
   const question = String(body.question || "").trim().slice(0, 1000)
   const text = `${title} ${why} ${question}`
@@ -62,10 +74,10 @@ export async function POST(req: Request) {
     whyNow: why || (question ? `Klantvraag: "${question}"` : `Idee van ${who}.`),
     service, impact, regions: regions.length ? regions : regionsIn(text),
     sources: [
-      ...(sourceUrl ? [{ title: String(body.sourceTitle || sourceUrl).slice(0, 300), url: sourceUrl, publisher: String(body.sourcePublisher || new URL(sourceUrl).hostname.replace(/^www\./, "")), date: body.sourceDate || null, reliability: reliabilityOf(sourceUrl) }] : []),
+      ...linkRefs,
       { title: body.kind === "klantvraag" ? (question ? `Klantvraag: "${question.slice(0, 200)}"` : "Klantvraag") : "Idee van een medewerker", publisher: who, date: new Date().toISOString(), reliability: "medewerker" as const },
     ],
-    ageDays: null, reliability: sourceUrl ? reliabilityOf(sourceUrl) : "medewerker",
+    ageDays: null, reliability: best ? best.reliability : "medewerker",
     format: body.format || undefined,
     urgency,
     keywords: topicKeywords(termsInText(text, ctx.services), ctx.queries),
