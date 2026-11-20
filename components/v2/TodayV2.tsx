@@ -14,6 +14,7 @@ import { useMeasureUpdates } from "@/lib/measureUpdates"
 import { usePageFeed } from "@/lib/pageFeed"
 import { openRefreshes, REFRESH_META } from "@/lib/content/refresh"
 import { EVENT_META } from "@/lib/watch"
+import { KIND_META as EXP_KIND, nextMeasurement as nextExp, OUTCOME_META as EXP_OUTCOME } from "@/lib/experiment"
 import type { Experiment, Task } from "@/lib/types"
 import { KIND_META } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, gainShort, greeting, num, signedPct, today } from "@/lib/format"
@@ -25,11 +26,7 @@ import ReminderDialog from "@/components/reminders/ReminderDialog"
 import { PageHeader } from "@/components/ui"
 import AddTaskDialog from "@/components/views/AddTaskDialog"
 
-function nextMeasurement(e: Experiment) {
-  const steps: [number, keyof Experiment][] = [[14, "result_14d"], [28, "result_28d"], [56, "result_56d"]]
-  for (const [d, k] of steps) if (!e[k]) return { days: d, date: addDays(e.changed_at, d) }
-  return null
-}
+const nextMeasurement = (e: Experiment) => nextExp(e as any)
 const subject = (t: Task) => (t.signal.query ? `"${t.signal.query}"` : t.signal.headline)
 const kindLabel = (t: Task) => (t.signal.reminder ? "Herinnering" : KIND_META[t.signal.kind].label)
 const PRIO: Record<string, { label: string; dot: string }> = {
@@ -65,8 +62,13 @@ export default function TodayV2() {
 
   const measurements = useMemo(() => {
     const byKey = new Map(tasks.map(t => [t.key, t]))
+    // Een experimentfamilie staat er één keer in (met het aantal meetpunten)
+    const seen = new Set<string>()
+    const size = new Map<string, number>()
+    for (const e of experiments) if (e.family_id) size.set(e.family_id, (size.get(e.family_id) || 0) + 1)
     return experiments
-      .map(e => ({ e, next: nextMeasurement(e), task: byKey.get(e.advice_key) }))
+      .filter(e => { const k = e.family_id || e.id; if (seen.has(k)) return false; seen.add(k); return true })
+      .map(e => ({ e, next: nextMeasurement(e), task: byKey.get(e.advice_key), points: e.family_id ? size.get(e.family_id) || 1 : 1 }))
       .filter(x => x.task && (x.next || x.e.outcome))
       .sort((a, b) => ((a.next?.date || "9999") < (b.next?.date || "9999") ? -1 : 1))
       .slice(0, 5)
@@ -340,16 +342,16 @@ export default function TodayV2() {
               <CardContent><p className="text-[13px] text-muted">Nog geen metingen. Die starten zodra je een taak als uitgevoerd markeert.</p></CardContent>
             ) : (
               <ul className="divide-y divide-line-soft border-t border-line-soft">
-                {measurements.map(({ e, next, task }) => (
+                {measurements.map(({ e, next, task, points }) => (
                   <li key={e.id}>
-                    <button onClick={() => openTask(e.advice_key)} className="w-full cursor-pointer px-5 py-2.5 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
+                    <button onClick={() => points > 1 ? router.push(e.kind === "experiment" ? "/experimenten" : `/experimenten?soort=${e.kind || "experiment"}`) : openTask(e.advice_key)} className="w-full cursor-pointer px-5 py-2.5 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
                       <span className="flex items-baseline justify-between gap-2">
-                        <span className="truncate text-sm font-semibold text-heading">{task!.signal.query || task!.signal.headline}</span>
+                        <span className="truncate text-sm font-semibold text-heading">{points > 1 ? `${e.family_title || e.description} (${points} meetpunten)` : task!.signal.query || task!.signal.headline}</span>
                         {e.outcome
-                          ? <Badge variant={e.outcome === "succesvol" ? "accent" : e.outcome === "niet_succesvol" ? "danger" : "default"}>{e.outcome === "succesvol" ? "Geslaagd" : e.outcome === "niet_succesvol" ? "Niet geslaagd" : "Geen duidelijk effect"}</Badge>
+                          ? <Badge variant={e.outcome === "succesvol" ? "accent" : e.outcome === "niet_succesvol" ? "danger" : "default"}>{EXP_OUTCOME[e.outcome].label}</Badge>
                           : next && <span className="text-xs whitespace-nowrap text-subtle">{dateShort(next.date)}, na {next.days} d</span>}
                       </span>
-                      <span className="block truncate text-xs text-muted">{e.description}</span>
+                      <span className="block truncate text-xs text-muted">{e.kind && e.kind !== "experiment" ? `${EXP_KIND[e.kind].label} · ` : ""}{e.description}</span>
                     </button>
                   </li>
                 ))}

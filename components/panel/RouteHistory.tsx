@@ -7,6 +7,7 @@ import { dateShort } from "@/lib/format"
 
 const OUTCOME: Record<string, { label: string; cls: string }> = {
   succesvol: { label: "Geslaagd", cls: "txt-up" }, niet_succesvol: { label: "Niet geslaagd", cls: "txt-down" }, onduidelijk: { label: "Geen duidelijk effect", cls: "subtle" },
+  onvoldoende_data: { label: "Onvoldoende data", cls: "subtle" }, ongeldig: { label: "Meting ongeldig", cls: "subtle" }, beinvloed: { label: "Beïnvloed", cls: "subtle" }, gevolgd: { label: "Gevolgd, geen oordeel", cls: "subtle" },
 }
 
 // Wegen naar dezelfde pagina of hetzelfde zoekwoord: wat is al geprobeerd en wat leverde het op?

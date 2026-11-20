@@ -2,6 +2,7 @@
 
 import Attachments from "@/components/Attachments"
 import PageTimeline from "@/components/panel/PageTimeline"
+import { CELL_TEXT, cellState, comparablesFor, CONTENT_GOALS, dueDate, planVerdict, suggestGoal, suggestThreshold, type CellState, type ContentGoal } from "@/lib/content/plan"
 import { CONTENT_STEP } from "@/lib/content/useContent"
 import { articleVerdict } from "@/lib/content/verdict"
 import { compare, isPageUpdate, judgeUpdate, nextMilestone, OUTCOME_META, UPDATE_MILESTONES, UPDATE_RULE, type UpdatePoint } from "@/lib/content/update"
@@ -64,6 +65,8 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   // Bij bijwerken staat de pagina al vast: vul de bestaande URL alvast in
   const [pubUrl, setPubUrl] = useState(idea.published_url || (isPageUpdate(idea) && idea.target_page ? `https://www.groeninjestraat.nl${idea.target_page}` : ""))
   const [pubDate, setPubDate] = useState(idea.published_at || new Date().toISOString().slice(0, 10))
+  // Primair doel en succesgrens (vastgelegd bij publicatie)
+  const [plan, setPlan] = useState<PlanDraft>(() => draftPlan(idea, all))
 
   useEffect(() => {
     if (isPage) return
@@ -517,12 +520,13 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                     <div><label className="field-label" htmlFor="cp-url">URL op groeninjestraat.nl</label><input id="cp-url" className="input" style={{ width: "100%" }} value={pubUrl} onChange={e => setPubUrl(e.target.value)} placeholder="https://www.groeninjestraat.nl/kennis/…" /></div>
                     <div><label className="field-label" htmlFor="cp-date">{isPageUpdate(idea) ? "Datum dat de nieuwe versie live ging" : "Publicatiedatum"}</label><input id="cp-date" type="date" className="input" style={{ width: "100%" }} value={pubDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setPubDate(e.target.value)} /></div>
                   </div>
-                  <div className="inline-form-actions"><button className="btn btn-primary btn-sm" disabled={busy || !pubUrl} onClick={() => act({ action: "publish", url: pubUrl, date: pubDate }, isPageUpdate(idea) ? "Vastgelegd als bijgewerkt; voor/na-meting gestart" : "Vastgelegd als gepubliceerd; meting gestart")}>{isPageUpdate(idea) ? "Vastleggen als bijgewerkt" : "Vastleggen als gepubliceerd"}</button></div>
+                  {!isPageUpdate(idea) && <PlanFields idea={idea} all={all} plan={plan} setPlan={setPlan} />}
+                  <div className="inline-form-actions"><button className="btn btn-primary btn-sm" disabled={busy || !pubUrl || (!isPageUpdate(idea) && !(plan.threshold > 0))} onClick={() => act({ action: "publish", url: pubUrl, date: pubDate, ...(isPageUpdate(idea) ? {} : { plan: { goal: plan.goal, threshold: plan.threshold, prediction: plan.prediction === "" ? null : Number(plan.prediction), comparables: comparablesFor(idea, all).map(c => c.id) } }) }, isPageUpdate(idea) ? "Vastgelegd als bijgewerkt; voor/na-meting gestart" : "Vastgelegd als gepubliceerd; meting gestart")}>{isPageUpdate(idea) ? "Vastleggen als bijgewerkt" : "Vastleggen als gepubliceerd"}</button></div>
                 </div>
               ) : (
                 <>
                   <p style={{ fontSize: "var(--fs-sm)" }}>Gepubliceerd op {dateNl(idea.published_at)}: <a href={idea.published_url!} target="_blank" rel="noopener noreferrer">{idea.published_url!.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/, "")}</a></p>
-                  <ArticleResults idea={idea} all={all} />
+                  <ArticleResults idea={idea} all={all} onPlan={isPageUpdate(idea) ? undefined : (p: PlanDraft) => act({ action: "plan", plan: { goal: p.goal, threshold: p.threshold, prediction: p.prediction === "" ? null : Number(p.prediction), comparables: comparablesFor(idea, all).map(c => c.id) } }, "Doel en succesgrens vastgelegd")} busy={busy} />
                   {!isPageUpdate(idea) && <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>}
                   <PageTimeline paths={[(idea.published_url || "").replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "").replace(/(.)\/$/, "$1")]} title="Deze pagina bij Google" />
                 </>
@@ -689,10 +693,42 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
 
 // Resultaten per artikel: bekeken, tijd op de pagina, aanvragen (GA4) en Google (Search Console)
 const dur = (sec: number | null | undefined) => sec === null || sec === undefined ? "—" : sec < 60 ? `${sec} s` : `${Math.floor(sec / 60)} min ${String(sec % 60).padStart(2, "0")} s`
-export function ArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
+export function ArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea; all: ContentIdea[]; onPlan?: (p: PlanDraft) => void; busy?: boolean }) {
   // Bijgewerkte bestaande pagina: voor/na-experiment, geen artikeloordeel
   if (isPageUpdate(idea)) return <UpdateResults idea={idea} />
-  return <NewArticleResults idea={idea} all={all} />
+  return <NewArticleResults idea={idea} all={all} onPlan={onPlan} busy={busy} />
+}
+
+// ── Doel en succesgrens ─────────────────────────────────────────────────────
+export interface PlanDraft { goal: ContentGoal; threshold: number; prediction: string }
+function draftPlan(idea: ContentIdea, all: ContentIdea[]): PlanDraft {
+  const goal = idea.success_plan?.goal || suggestGoal(idea)
+  return { goal, threshold: idea.success_plan?.threshold ?? suggestThreshold(goal, comparablesFor(idea, all)).threshold, prediction: idea.success_plan?.prediction != null ? String(idea.success_plan.prediction) : "" }
+}
+function PlanFields({ idea, all, plan, setPlan }: { idea: ContentIdea; all: ContentIdea[]; plan: PlanDraft; setPlan: (p: PlanDraft) => void }) {
+  const g = CONTENT_GOALS[plan.goal]
+  const sug = suggestThreshold(plan.goal, comparablesFor(idea, all))
+  return (
+    <fieldset className="plan-fields">
+      <legend className="field-label">Wanneer is dit artikel geslaagd?</legend>
+      <div className="modal-row modal-row-3">
+        <div><label className="field-label" htmlFor="pl-goal">Primair doel</label>
+          <select id="pl-goal" className="select" value={plan.goal} onChange={e => { const goal = e.target.value as ContentGoal; setPlan({ ...plan, goal, threshold: suggestThreshold(goal, comparablesFor(idea, all)).threshold }) }}>
+            {(Object.keys(CONTENT_GOALS) as ContentGoal[]).map(k => <option key={k} value={k}>{CONTENT_GOALS[k].label}</option>)}
+          </select></div>
+        <div><label className="field-label" htmlFor="pl-thr">Geslaagd bij minstens</label><input id="pl-thr" type="number" min={1} className="input" value={plan.threshold || ""} onChange={e => setPlan({ ...plan, threshold: Number(e.target.value) })} /></div>
+        <div><label className="field-label" htmlFor="pl-pred">Verwachting <span className="subtle">(optioneel)</span></label><input id="pl-pred" type="number" min={0} className="input" value={plan.prediction} onChange={e => setPlan({ ...plan, prediction: e.target.value })} /></div>
+      </div>
+      <p className="field-hint">{g.text} Meetwaarde: {g.metric.toLowerCase()} na {g.window.slice(1)} dagen. Voorgestelde grens: {sug.threshold} ({sug.basis}).</p>
+    </fieldset>
+  )
+}
+
+// Wat staat er in een cel: een waarde, of waarom er (nog) geen is
+function Cell({ state, children, due }: { state: CellState; children?: React.ReactNode; due?: string | null }) {
+  if (state === "ok") return <>{children}</>
+  if (state === "nul") return <span title="Gemeten: nul">0</span>
+  return <span className="subtle cell-state" data-state={state}>{state === "nog-niet" && due ? `op ${dateNl(due)}` : CELL_TEXT[state]}</span>
 }
 
 // Resultaat van een bijgewerkte pagina: dezelfde pagina vóór en na, gecorrigeerd voor de hele site
@@ -704,7 +740,9 @@ export function UpdateResults({ idea }: { idea: ContentIdea }) {
   const cols = UPDATE_MILESTONES.map(d => ({ d, p: m?.points[`d${d}`] }))
   const b = m?.baseline || null
   const cmp = (p: UpdatePoint) => (b ? compare(b, p) : null)
-  const cell = (p: UpdatePoint | undefined, f: (p: UpdatePoint) => React.ReactNode) => <td className="num">{p ? f(p) : <span className="subtle">nog niet</span>}</td>
+  const today = new Date().toISOString().slice(0, 10)
+  const dueOf = (d: number) => { if (!changedAt) return null; const x = new Date(`${changedAt.slice(0, 10)}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + d + 3); return x.toISOString().slice(0, 10) }
+  const cellFor = (d: number) => (p: UpdatePoint | undefined, f: (p: UpdatePoint) => React.ReactNode) => { const due = dueOf(d); return <td className="num">{p ? f(p) : <Cell state={due && due > today ? "nog-niet" : "niet-binnen"} due={due} />}</td> }
   const leads = (g: any) => (g ? (g.measurement === "ok" ? g.requests || 0 : 0) + (g.contacts || 0) : null)
   const label = !m?.baseline ? "Nulmeting volgt" : !j?.outcome ? "Meting loopt" : j.final ? OUTCOME_META[j.outcome].label : `Voorlopig: ${OUTCOME_META[j.outcome].label.toLowerCase()}`
   const tone = j?.outcome && j.final ? OUTCOME_META[j.outcome].tone : "neutral"
@@ -720,15 +758,15 @@ export function UpdateResults({ idea }: { idea: ContentIdea }) {
           <thead><tr><th>Per 28 dagen</th><th className="num">Ervóór</th>{cols.map(c => <th key={c.d} className="num">Na {c.d} d</th>)}</tr></thead>
           <tbody>
             <tr className="rt-group"><th colSpan={5}>Google: zoekwoorden van deze kans</th></tr>
-            <tr><th scope="row">Gem. positie</th><td className="num">{b.queries.position ? pos(b.queries.position) : "—"}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => <b>{p.queries.position ? pos(p.queries.position) : "—"}</b>)}</Fragment>)}</tr>
-            <tr><th scope="row">Vertoningen</th><td className="num">{num(b.queries.impressions)}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => num(cmp(p)!.qImpAfter))}</Fragment>)}</tr>
+            <tr><th scope="row">Gem. positie</th><td className="num">{b.queries.position ? pos(b.queries.position) : "—"}</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => <b>{p.queries.position ? pos(p.queries.position) : "—"}</b>)}</Fragment>)}</tr>
+            <tr><th scope="row">Vertoningen</th><td className="num">{num(b.queries.impressions)}</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => num(cmp(p)!.qImpAfter))}</Fragment>)}</tr>
             <tr className="rt-group"><th colSpan={5}>Google: de hele pagina</th></tr>
-            <tr><th scope="row">Klikken</th><td className="num">{num(b.page.clicks)}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => <b>{num(cmp(p)!.clicksAfter, 1)}</b>)}</Fragment>)}</tr>
-            <tr><th scope="row">Vertoningen</th><td className="num">{num(b.page.impressions)}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => num(cmp(p)!.impAfter))}</Fragment>)}</tr>
-            <tr><th scope="row">Hele site t.o.v. ervóór</th><td className="num subtle">—</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => (p.growth ? `${p.growth >= 1 ? "+" : ""}${Math.round((p.growth - 1) * 100)}%` : "—"))}</Fragment>)}</tr>
+            <tr><th scope="row">Klikken</th><td className="num">{num(b.page.clicks)}</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => <b>{num(cmp(p)!.clicksAfter, 1)}</b>)}</Fragment>)}</tr>
+            <tr><th scope="row">Vertoningen</th><td className="num">{num(b.page.impressions)}</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => num(cmp(p)!.impAfter))}</Fragment>)}</tr>
+            <tr><th scope="row">Hele site t.o.v. ervóór</th><td className="num subtle">—</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => (p.growth ? `${p.growth >= 1 ? "+" : ""}${Math.round((p.growth - 1) * 100)}%` : "—"))}</Fragment>)}</tr>
             <tr className="rt-group"><th colSpan={5}>Bezoekers (GA4, ter informatie)</th></tr>
-            <tr><th scope="row">Bekeken</th><td className="num">{b.ga4 ? num(b.ga4.views) : "—"}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => (p.ga4 ? num(Math.round(p.ga4.views * 28 / p.window.days)) : "—"))}</Fragment>)}</tr>
-            <tr><th scope="row">Aanvragen via de pagina <span className="subtle">(geteld, niet omgerekend)</span></th><td className="num">{leads(b.ga4) ?? "—"}</td>{cols.map(c => <Fragment key={c.d}>{cell(c.p, p => leads(p.ga4) ?? "—")}</Fragment>)}</tr>
+            <tr><th scope="row">Bekeken</th><td className="num">{b.ga4 ? num(b.ga4.views) : "—"}</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => (p.ga4 ? num(Math.round(p.ga4.views * 28 / p.window.days)) : "—"))}</Fragment>)}</tr>
+            <tr><th scope="row">Aanvragen via de pagina <span className="subtle">(geteld, niet omgerekend)</span></th><td className="num">{leads(b.ga4) ?? "—"}</td>{cols.map(c => <Fragment key={c.d}>{cellFor(c.d)(c.p, p => leads(p.ga4) ?? "—")}</Fragment>)}</tr>
           </tbody>
         </table>
       )}
@@ -737,40 +775,68 @@ export function UpdateResults({ idea }: { idea: ContentIdea }) {
   )
 }
 
-function NewArticleResults({ idea, all }: { idea: ContentIdea; all: ContentIdea[] }) {
+function NewArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea; all: ContentIdea[]; onPlan?: (p: PlanDraft) => void; busy?: boolean }) {
   const v = articleVerdict(idea, all)
+  const pv = planVerdict(idea, all)
+  const [draft, setDraft] = useState<PlanDraft>(() => draftPlan(idea, all))
+  const [editing, setEditing] = useState(false)
   const keys = ["d7", "d30", "d90"] as const
   const ev = idea.evals || {}
   const before = ev.d30?.ga4Before
   const showBefore = !!before && (idea.advice === "bijwerken" || before.views > 0)
   const g = (k: (typeof keys)[number]) => ev[k]?.ga4
-  const cell = (k: (typeof keys)[number], f: (x: NonNullable<ContentIdea["evals"]["d7"]>) => React.ReactNode) => { const x = ev[k]; return <td className="num">{x ? f(x) : <span className="subtle">nog niet</span>}</td> }
+  const due = (k: (typeof keys)[number]) => (idea.published_at ? dueDate(idea.published_at, k) : null)
+  // Een cel met een waarde, of met de reden waarom er (nog) geen waarde is
+  const cell = (k: (typeof keys)[number], field: "gsc" | "position" | "ga4" | "ga4-extra" | "requests", get: (x: NonNullable<ContentIdea["evals"]["d7"]>) => number | null | undefined, show: (v: number) => React.ReactNode = v => num(v)) => {
+    const x = ev[k], val = x ? get(x) : null
+    const st = cellState(idea, k, field, val)
+    return <td className="num"><Cell state={st} due={due(k)}>{val !== null && val !== undefined ? show(val) : null}</Cell></td>
+  }
   const anyMeasurementIssue = keys.some(k => g(k) && g(k)!.measurement !== "ok")
   const pctOf = (a: number | null | undefined, b: number) => (a === null || a === undefined || !b ? "—" : `${Math.round((a / b) * 100)}%`)
   return (
     <>
-      <div className={`verdict-box tone-${v.tone}`}>
-        <p className="verdict-label">Werkt dit artikel? <b>{v.label}</b>{v.window ? <span className="subtle"> · {v.window}</span> : null}</p>
-        <ul>{v.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
-      </div>
+      {pv ? (
+        <div className={`verdict-box tone-${pv.tone}`} data-verdict="plan">
+          <p className="verdict-label">Geslaagd volgens het doel? <b>{pv.label}</b></p>
+          <ul>{pv.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          {onPlan && !editing && <button className="link-btn" onClick={() => setEditing(true)}>Doel of grens aanpassen</button>}
+        </div>
+      ) : (
+        <div className="verdict-box tone-warning" data-verdict="geen-plan">
+          <p className="verdict-label"><b>Nog geen doel en succesgrens vastgelegd.</b></p>
+          <p>Zonder doel zeggen de cijfers niet of het artikel geslaagd is: een informatief nieuwsartikel kan slagen zonder aanvraag. Leg het doel vast; dat wordt als "achteraf vastgelegd" gemarkeerd.</p>
+          {onPlan && !editing && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>Doel en succesgrens vastleggen</button>}
+        </div>
+      )}
+      {editing && onPlan && (
+        <div className="inline-form">
+          <PlanFields idea={idea} all={all} plan={draft} setPlan={setDraft} />
+          <div className="inline-form-actions"><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Annuleren</button><button className="btn btn-primary btn-sm" disabled={busy || !(draft.threshold > 0)} onClick={() => { onPlan(draft); setEditing(false) }}>Vastleggen</button></div>
+        </div>
+      )}
+      <details className="evidence-details" open={!pv}>
+        <summary>Overige signalen: {v.label.toLowerCase()}{v.window ? ` (${v.window})` : ""}</summary>
+        <ul className="verdict-more">{v.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+      </details>
       <table className="ptable results-table">
         <thead><tr><th>Meting</th>{showBefore && <th className="num">30 d ervóór</th>}{keys.map(k => <th key={k} className="num">Na {k.slice(1)} d</th>)}</tr></thead>
         <tbody>
           <tr className="rt-group"><th colSpan={showBefore ? 5 : 4}>Bezoekers (GA4)</th></tr>
-          <tr><th scope="row">Bekeken</th>{showBefore && <td className="num">{num(before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? <b>{num(x.ga4.views)}</b> : "—")}</Fragment>)}</tr>
-          <tr><th scope="row">Gem. tijd actief op de pagina</th>{showBefore && <td className="num">{dur(before!.engagementSec)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? dur(x.ga4.engagementSec) : "—")}</Fragment>)}</tr>
-          <tr><th scope="row">Binnengekomen via dit artikel</th>{showBefore && <td className="num">{num(before!.landingSessions)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? num(x.ga4.landingSessions) : "—")}</Fragment>)}</tr>
-          <tr><th scope="row">Leest tot onderaan</th>{showBefore && <td className="num">{pctOf(before!.scrolled, before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? pctOf(x.ga4.scrolled, x.ga4.views) : "—")}</Fragment>)}</tr>
-          <tr><th scope="row">Klikt op de knop naar de energiescan</th>{showBefore && <td className="num">{before!.ctaClicks ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? (x.ga4.ctaClicks ?? "—") : "—")}</Fragment>)}</tr>
-          <tr><th scope="row">Energiescanaanvragen</th>{showBefore && <td className="num">{before!.requests ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? (x.ga4.requests === null ? "—" : <b>{num(x.ga4.requests)}</b>) : "—")}</Fragment>)}</tr>
-          <tr><th scope="row">Contactaanvragen</th>{showBefore && <td className="num">{before!.contacts ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, x => x.ga4 ? (x.ga4.contacts ?? "—") : "—")}</Fragment>)}</tr>
+          <tr><th scope="row">Bekeken</th>{showBefore && <td className="num">{num(before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4", x => x.ga4?.views, v => <b>{num(v)}</b>)}</Fragment>)}</tr>
+          <tr><th scope="row">Gem. tijd actief op de pagina</th>{showBefore && <td className="num">{dur(before!.engagementSec)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4", x => x.ga4?.engagementSec, v => dur(v))}</Fragment>)}</tr>
+          <tr><th scope="row">Binnengekomen via dit artikel</th>{showBefore && <td className="num">{num(before!.landingSessions)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4", x => x.ga4?.landingSessions)}</Fragment>)}</tr>
+          <tr><th scope="row">Leest tot onderaan</th>{showBefore && <td className="num">{pctOf(before!.scrolled, before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4-extra", x => x.ga4?.scrolled, v => pctOf(v, ev[k]!.ga4!.views))}</Fragment>)}</tr>
+          <tr><th scope="row">Klikt op de knop naar de energiescan</th>{showBefore && <td className="num">{before!.ctaClicks ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4-extra", x => x.ga4?.ctaClicks)}</Fragment>)}</tr>
+          <tr><th scope="row">Energiescanaanvragen</th>{showBefore && <td className="num">{before!.requests ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "requests", x => x.ga4?.requests, v => <b>{num(v)}</b>)}</Fragment>)}</tr>
+          <tr><th scope="row">Contactaanvragen</th>{showBefore && <td className="num">{before!.contacts ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4-extra", x => x.ga4?.contacts)}</Fragment>)}</tr>
           <tr className="rt-group"><th colSpan={showBefore ? 5 : 4}>Google (Search Console)</th></tr>
-          <tr><th scope="row">Klikken</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, x => num(x.clicks))}</Fragment>)}</tr>
-          <tr><th scope="row">Vertoningen</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, x => num(x.impressions))}</Fragment>)}</tr>
-          <tr><th scope="row">Gem. positie</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, x => (x.position ? pos(x.position) : "—"))}</Fragment>)}</tr>
+          <tr><th scope="row">Klikken</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, "gsc", x => x.clicks)}</Fragment>)}</tr>
+          <tr><th scope="row">Vertoningen</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, "gsc", x => x.impressions)}</Fragment>)}</tr>
+          <tr><th scope="row">Gem. positie</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, "position", x => x.position, v => pos(v))}</Fragment>)}</tr>
         </tbody>
       </table>
-      <p className="field-hint"><BarChart3 aria-hidden style={{ width: 12, height: 12, verticalAlign: -1 }} /> Telt vanaf de publicatiedatum. Aanvragen = bezoeken die via dit artikel binnenkwamen en daarna een energiescan of contact aanvroegen. "—" bij lezen tot onderaan of klikken op de knop: dat wordt nog niet gemeten; zie de controletaak "Meten per artikel aanvullen via Google Tag Manager".{anyMeasurementIssue ? " Let op: de meting van aanvragen in GA4 klopt nog niet helemaal (zie de controletaak), dus dit aantal is voorlopig." : ""}{keys.some(k => ev[k]?.ga4Error) ? ` GA4 kon niet worden gelezen: ${keys.map(k => ev[k]?.ga4Error).find(Boolean)}` : ""}</p>
+      <p className="field-hint"><BarChart3 aria-hidden style={{ width: 12, height: 12, verticalAlign: -1 }} /> Telt vanaf de publicatiedatum. Aanvragen = bezoeken die via dit artikel binnenkwamen en daarna een energiescan of contact aanvroegen. "Op [datum]": de meetdatum is nog niet bereikt. "Nog niet binnen": de datum is voorbij maar de nachtelijke meting heeft het nog niet opgehaald. "Niet gemeten": de meetmethode ontbreekt of werkt niet (zoals lezen tot onderaan en de knop, zie de controletaak "Meten per artikel aanvullen via Google Tag Manager"). "0" is echt nul. "Te weinig data": te weinig vertoningen voor een betrouwbare positie.{anyMeasurementIssue ? " Let op: de meting van aanvragen in GA4 klopt nog niet helemaal (zie de controletaak), dus dit aantal is voorlopig." : ""}{keys.some(k => ev[k]?.ga4Error) ? ` GA4 kon niet worden gelezen: ${keys.map(k => ev[k]?.ga4Error).find(Boolean)}` : ""}</p>
     </>
   )
 }

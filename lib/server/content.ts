@@ -9,7 +9,7 @@ import { type Item, parseMilieuCentraal, parseRss } from "@/lib/content/parse"
 import { gscQuery, serviceSearchConsole, SITE_ORIGIN, toPath } from "./gsc"
 import { describe, overlaps, type Campaign } from "@/lib/campaigns"
 import { LAUNCH_DATES } from "@/lib/pages"
-import { learnFromFeedback } from "@/lib/content/feedback"
+import { learnFromFeedback, onlyApplicable } from "@/lib/content/feedback"
 import { coverageFor, coverageText, coverDocs } from "@/lib/content/coverage"
 import { baselineWindow, compare, isPageUpdate, judgeUpdate, pointWindow, UPDATE_MILESTONES, updateQueries, type SearchTotals, type UpdateMeasure, type UpdateSnapshot } from "@/lib/content/update"
 import {
@@ -175,11 +175,16 @@ export async function siteContext(): Promise<Ctx> {
 
   const { data: existing } = await sb.from("content_ideas").select("id, fingerprint, origin, status, service, sources, created_at, title, summary, why_now, feedback, impact, decision_note, regions, published_url, published_at, target_page, advice")
   const { data: reverted } = await sb.from("seo_lessons").select("key, source").in("source", ["content", "feedback"]).eq("status", "teruggedraaid")
+  // Bevestigde voorstellen (uit één afwijzing) worden wel toegepast
+  const { data: confirmedRows } = await sb.from("seo_lessons").select("key").not("confirmed_at", "is", null).eq("status", "actief")
+  const confirmed = new Set((confirmedRows || []).map(r => r.key))
   const ignoreRejections = new Set((reverted || []).filter(r => r.source === "content").map(r => r.key.replace(/^content\|/, "")))
   // Geleerd uit eigen toelichtingen; teruggedraaide feedbacklessen tellen niet mee
   const ignoreFeedback = new Set((reverted || []).filter(r => r.source === "feedback").map(r => r.key.replace(/^feedback\|/, "")))
-  const learned = learnFromFeedback((existing || []) as any[], ignoreFeedback)
-  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"], ignoreRejections, learned }
+  // Alleen toepassen wat vaker dan één keer voorkwam of bevestigd is
+  const learned = onlyApplicable(learnFromFeedback((existing || []) as any[], ignoreFeedback), confirmed)
+  const confirmedRejections = new Set([...confirmed].filter(k => k.startsWith("content|")).map(k => k.replace(/^content\|/, "")))
+  return { services, hasArticles, queries, capacity, places, existing: (existing || []) as Ctx["existing"], ignoreRejections, confirmedRejections, learned }
 }
 
 // ── Scan ────────────────────────────────────────────────────────────────────

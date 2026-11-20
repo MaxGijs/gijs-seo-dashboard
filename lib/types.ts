@@ -144,7 +144,12 @@ export interface Experiment {
   result_14d: Record<string, any> | null
   result_28d: Record<string, any> | null
   result_56d: Record<string, any> | null
-  outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | null
+  result_84d?: Record<string, any> | null
+  outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | "onvoldoende_data" | "ongeldig" | "beinvloed" | "gevolgd" | null
+  kind?: "experiment" | "validatie" | "meting"
+  family_id?: string | null
+  family_title?: string | null
+  suitability?: { ok: boolean; checks: { key: string; label: string; state: "ok" | "fout" | "onbekend"; detail: string }[]; summary: string } | null
   query: string | null
   page: string | null
   created_at: string

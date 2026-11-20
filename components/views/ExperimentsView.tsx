@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { CalendarClock, FlaskConical, Newspaper } from "lucide-react"
+import { CalendarClock, ChevronRight, FlaskConical, Newspaper } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
 import { ArticleResults } from "@/components/content/ContentPanel"
@@ -11,14 +11,13 @@ import type { Experiment } from "@/lib/types"
 import { addDays, dateLong, dateShort, num, pct, pos } from "@/lib/format"
 import { Badge, EmptyState, KindLabel, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
 import AccuracyCard from "@/components/views/AccuracyCard"
+import { familyOutcome, goalOf, KIND_META, nextMeasurement, OUTCOME_META, type ExpKind, type Outcome } from "@/lib/experiment"
+import type { Task } from "@/lib/types"
 
-type Filter = "alle" | "lopend" | "succesvol" | "niet_succesvol" | "onduidelijk"
-
-function outcomeBadge(e: Experiment) {
-  if (!e.outcome) return <Badge tone="info" dot>Wordt gemeten</Badge>
-  if (e.outcome === "succesvol") return <Badge tone="success" dot>Succesvol</Badge>
-  if (e.outcome === "niet_succesvol") return <Badge tone="error" dot>Niet succesvol</Badge>
-  return <Badge tone="neutral" dot>Geen duidelijk effect</Badge>
+const TONE: Record<string, "success" | "error" | "neutral" | "warning" | "info"> = { good: "success", problem: "error", info: "neutral", attention: "warning" }
+function outcomeBadge(o: Outcome | null | undefined, running = "Wordt gemeten") {
+  if (!o) return <Badge tone="info" dot>{running}</Badge>
+  return <Badge tone={TONE[OUTCOME_META[o].tone]} dot>{OUTCOME_META[o].label}</Badge>
 }
 
 function Delta({ base, value, metric }: { base: number | null | undefined; value: number | null | undefined; metric: "position" | "ctr" }) {
@@ -58,7 +57,10 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 // Wat heeft Gijs geleerd? Per soort aanpassing: hoeveel experimenten, hoeveel succesvol, voorspeld vs werkelijk
-function Learned({ experiments }: { experiments: Experiment[] }) {
+function Learned({ experiments: all }: { experiments: Experiment[] }) {
+  // Alleen echte experimenten; een familie telt als één (eerste meetpunt staat voor de familie)
+  const seen = new Set<string>()
+  const experiments = all.filter(e => (e.kind || "experiment") === "experiment").filter(e => { const k = e.family_id || e.id; if (seen.has(k)) return false; seen.add(k); return true })
   const groups = new Map<string, Experiment[]>()
   for (const e of experiments) {
     const t = e.baseline?.actionType || (e.baseline?.successMetric === "ctr" ? "snippet" : "ranking")
@@ -131,39 +133,61 @@ function ContentExperiments() {
   )
 }
 
+// ── Overzicht: per soort, families als één rij ─────────────────────────────
+
+interface Unit { id: string; kind: ExpKind; members: Experiment[]; title: string | null }
+function unitsOf(experiments: Experiment[]): Unit[] {
+  const map = new Map<string, Unit>()
+  for (const e of experiments) {
+    const id = e.family_id || e.id
+    const u = map.get(id) || { id, kind: (e.kind || "experiment") as ExpKind, members: [], title: e.family_id ? e.family_title || e.description : null }
+    u.members.push(e)
+    map.set(id, u)
+  }
+  return [...map.values()].sort((a, b) => b.members[0].changed_at.localeCompare(a.members[0].changed_at))
+}
+const unitOutcome = (u: Unit): Outcome | null => (u.members.length > 1 ? familyOutcome(u.members.map(m => m.outcome as Outcome | null)) : (u.members[0].outcome as Outcome | null))
+const unitNext = (u: Unit) => u.members.map(m => nextMeasurement(m as any)).filter(Boolean).sort((a, b) => a!.date.localeCompare(b!.date))[0] || null
+const subjectOf = (e: Experiment, task?: Task) => (task ? (task.signal.query ? `"${task.signal.query}"` : task.signal.headline) : e.query ? `"${e.query}"` : e.page || e.advice_key)
+// Deel van de taaktitel na het streepje ("… – Hardenberg") als naam van het meetpunt
+const pointName = (e: Experiment, task?: Task) => { const t = (task?.signal.headline || "").split(" — ")[0]; const m = t.match(/\s[–-]\s([^–-]+)$/); return m ? m[1].trim() : null }
+
+function Reliability({ u }: { u: Unit }) {
+  if (u.kind === "validatie") return <span className="subtle">n.v.t. (controle)</span>
+  const failed = [...new Set(u.members.flatMap(m => (m.suitability?.checks || []).filter(c => c.state === "fout").map(c => c.label)))]
+  const s = u.members[0].suitability
+  if (!s) return <span className="subtle">niet gecontroleerd</span>
+  if (!failed.length) return <Badge tone="success">Geschikt</Badge>
+  return <span className="exp-rel">{failed.slice(0, 3).map(f => <Badge key={f} tone="warning">{({ "Genoeg data": "Te weinig data", "Pagina oud genoeg": "Pagina te jong", "Zoekwoord en doelpagina kloppen": "Doelpagina klopt niet", "Stabiele nulmeting": "Onrustige nulmeting", "Eén herkenbare verandering": "Overlap", "Resultaat is meetbaar": "Niet meetbaar" } as Record<string, string>)[f] || f}</Badge>)}</span>
+}
+
 export default function ExperimentsView() {
   const router = useRouter()
   const params = useSearchParams()
   const tab = params.get("tab") === "content" ? "content" : "seo"
+  const kindTab = (["experiment", "meting", "validatie"].includes(params.get("soort") || "") ? params.get("soort") : "experiment") as ExpKind
   const { loading, experiments, tasks, openTask } = useWorkspace()
-  const [filter, setFilter] = useState<Filter>("alle")
+  const [open, setOpen] = useState<Set<string>>(new Set())
   const byKey = useMemo(() => new Map(tasks.map(t => [t.key, t])), [tasks])
-
-  const counts = useMemo(() => ({
-    alle: experiments.length,
-    lopend: experiments.filter(e => !e.outcome).length,
-    succesvol: experiments.filter(e => e.outcome === "succesvol").length,
-    niet_succesvol: experiments.filter(e => e.outcome === "niet_succesvol").length,
-    onduidelijk: experiments.filter(e => e.outcome === "onduidelijk").length,
-  }), [experiments])
-
-  const list = experiments.filter(e => filter === "alle" || (filter === "lopend" ? !e.outcome : e.outcome === filter))
-  const FILTERS: { id: Filter; label: string }[] = [
-    { id: "alle", label: "Alle" }, { id: "lopend", label: "Lopend" }, { id: "succesvol", label: "Succesvol" },
-    { id: "niet_succesvol", label: "Niet succesvol" }, { id: "onduidelijk", label: "Geen duidelijk effect" },
-  ]
+  const units = useMemo(() => unitsOf(experiments), [experiments])
+  const byKind = (k: ExpKind) => units.filter(u => u.kind === k)
+  const shown = byKind(kindTab)
+  const decided = units.filter(u => u.kind === "experiment" && unitOutcome(u) && OUTCOME_META[unitOutcome(u)!].decisive).length
+  const toggle = (id: string) => setOpen(o => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const plural = (n: number, a: string, b: string) => `${n} ${n === 1 ? a : b}`
+  const famPoints = byKind("meting").concat(byKind("experiment")).filter(u => u.members.length > 1)
 
   return (
     <>
       <PageHeader title="Experimenten"
-        status={loading ? null : !counts.alle ? { tone: "info", text: "Nog geen metingen. Ze starten zodra je een taak als uitgevoerd markeert." } : {
-          tone: (counts.niet_succesvol > counts.succesvol ? "attention" : counts.succesvol ? "good" : "info") as StatusTone,
-          text: `${counts.lopend} lopend, ${counts.succesvol} geslaagd, ${counts.niet_succesvol} niet geslaagd${counts.onduidelijk ? `, ${counts.onduidelijk} zonder duidelijk effect` : ""}.`,
+        status={loading ? null : !units.length ? { tone: "info", text: "Nog geen metingen. Ze starten zodra je een taak als uitgevoerd markeert." } : {
+          tone: "info" as StatusTone,
+          text: `${plural(byKind("experiment").length, "experiment", "experimenten")}, ${plural(byKind("meting").length, "meting", "metingen")} zonder oordeel en ${plural(byKind("validatie").length, "validatie", "validaties")}. ${decided ? `${plural(decided, "experiment heeft", "experimenten hebben")} een eindoordeel.` : "Nog geen eindoordeel."}${famPoints.length ? ` ${plural(famPoints.length, "familie telt", "families tellen")} als één experiment.` : ""}`,
         }}
-        sub={tab === "content" ? "Gepubliceerde content en wat het oplevert. Het dashboard meet automatisch na 7, 30 en 90 dagen." : "Wat je hebt aangepast en wat het opleverde. Het dashboard meet automatisch na 14, 28 en 56 dagen."} />
+        sub={tab === "content" ? "Gepubliceerde content en wat het oplevert, gemeten tegen het doel en de succesgrens die bij publicatie zijn vastgelegd." : "Experiment = onzekere aanpassing met genoeg data. Meting = volgen zonder oordeel. Validatie = controleren of een technische oplossing werkt."} />
 
-      <div className="seg" role="tablist" aria-label="Soort experiment">
-        <button role="tab" aria-selected={tab === "seo"} className={tab === "seo" ? "is-active" : ""} onClick={() => router.replace("/experimenten")}>SEO-experimenten</button>
+      <div className="seg" role="tablist" aria-label="SEO of content">
+        <button role="tab" aria-selected={tab === "seo"} className={tab === "seo" ? "is-active" : ""} onClick={() => router.replace("/experimenten")}>SEO</button>
         <button role="tab" aria-selected={tab === "content"} className={tab === "content" ? "is-active" : ""} onClick={() => router.replace("/experimenten?tab=content")}>Content</button>
       </div>
 
@@ -174,81 +198,139 @@ export default function ExperimentsView() {
           <EmptyState
             icon={<FlaskConical />}
             title="Nog geen experimenten"
-            text="Een experiment start zodra je in het zijpaneel een taak als uitgevoerd markeert. Dan wordt de nulmeting vastgelegd en meet het dashboard na 14, 28 en 56 dagen opnieuw. Zo zie je welke aanpassingen echt werken."
+            text="Een meting start zodra je in het zijpaneel een taak als uitgevoerd markeert. Het dashboard controleert dan of het een zuiver experiment kan zijn, legt de nulmeting vast en meet na 14, 28 en 56 dagen opnieuw."
             action={<Link href="/taken" className="btn btn-secondary btn-sm">Naar Mijn taken</Link>}
           />
         </div>
       ) : (
         <>
-          <AccuracyCard />
-          <Learned experiments={experiments} />
-          <div className="toolbar">
-            <div className="toolbar-left" role="group" aria-label="Filter op resultaat">
-              {FILTERS.filter(f => f.id === "alle" || counts[f.id] > 0).map(f => (
-                <button key={f.id} className={`chip${filter === f.id ? " is-active" : ""}`} onClick={() => setFilter(f.id)} aria-pressed={filter === f.id}>
-                  {f.label}<span className="chip-count">{counts[f.id]}</span>
-                </button>
-              ))}
+          <div className="exp-kinds chips" role="tablist" aria-label="Soort">
+            {(["experiment", "meting", "validatie"] as ExpKind[]).map(k => (
+              <button key={k} role="tab" aria-selected={kindTab === k} className={`chip${kindTab === k ? " is-active" : ""}`} onClick={() => router.replace(k === "experiment" ? "/experimenten" : `/experimenten?soort=${k}`)}>
+                {KIND_META[k].plural}<span className="chip-count">{byKind(k).length}</span>
+              </button>
+            ))}
+          </div>
+          <p className="muted small exp-kind-text">{KIND_META[kindTab].text}{kindTab === "validatie" ? " Telt niet mee bij de nauwkeurigheid of bij geleerde SEO-effecten." : kindTab === "meting" ? " Telt niet mee bij de nauwkeurigheid of bij geleerde SEO-effecten; de cijfers blijven zichtbaar." : ""}</p>
+
+          {shown.length === 0 ? <div className="card card-pad"><p className="muted small" style={{ margin: 0 }}>Geen {KIND_META[kindTab].plural.toLowerCase()}.</p></div> : (
+            <div className="table-wrap card exp-table">
+              <table className="table">
+                <thead><tr><th scope="col">Verandering</th><th scope="col">Doel en meetwaarde</th><th scope="col">Betrouwbaarheid</th><th scope="col">Volgende meting</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                  {shown.map(u => {
+                    const e = u.members[0], task = byKey.get(e.advice_key)
+                    const g = goalOf(e.baseline?.successMetric)
+                    const next = unitNext(u)
+                    const isOpen = open.has(u.id)
+                    return (
+                      <FragmentRow key={u.id}>
+                        <tr className={`exp-row${isOpen ? " is-open" : ""}`} data-unit={u.id}>
+                          <th scope="row">
+                            <button className="exp-toggle" onClick={() => toggle(u.id)} aria-expanded={isOpen} aria-controls={`exp-${u.id}`}>
+                              <ChevronRight aria-hidden className="exp-chev" />
+                              <span className="exp-main">
+                                <b>{u.title || subjectOf(e, task)}</b>
+                                <span className="subtle small">{u.members.length > 1 ? `Familie: ${u.members.length} meetpunten, telt als één experiment · ` : ""}aangepast {dateShort(e.changed_at)}</span>
+                              </span>
+                            </button>
+                          </th>
+                          <td><span className="exp-goal">{g.goal}</span><span className="subtle small">{g.metric}</span></td>
+                          <td><Reliability u={u} /></td>
+                          <td className="small">{next ? <>{dateShort(next.date)} <span className="subtle">({next.days} d)</span></> : unitOutcome(u) ? <span className="subtle">afgerond</span> : <span className="subtle">—</span>}</td>
+                          <td>{outcomeBadge(unitOutcome(u), u.members.some(m => m.outcome) ? "Deels gemeten" : "Wordt gemeten")}</td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="exp-detail-row" id={`exp-${u.id}`}><td colSpan={5}>
+                            {u.members.length > 1 ? (
+                              <>
+                                <p className="small" style={{ margin: "0 0 8px" }}><b>Wat is aangepast:</b> {e.description}</p>
+                                {e.suitability && <p className="small subtle" style={{ margin: "0 0 10px" }}>{e.suitability.summary}</p>}
+                                <table className="mini-table exp-points">
+                                  <thead><tr><th>Meetpunt</th><th>Zoekwoord en pagina</th><th className="num">Nulmeting</th><th className="num">Laatste meting</th><th>Status</th></tr></thead>
+                                  <tbody>{u.members.map(m => { const t = byKey.get(m.advice_key); const last = (m.result_84d || m.result_56d || m.result_28d || m.result_14d) as any; const bp = m.baseline?.targetPage ? m.baseline?.pairPosition : m.baseline?.position; return (
+                                    <tr key={m.id}>
+                                      <td>{t ? <button className="link-btn" onClick={() => openTask(t.key)}>{pointName(m, t) || subjectOf(m, t)}</button> : pointName(m, t) || subjectOf(m, t)}</td>
+                                      <td className="small">{m.query ? `"${m.query}"` : "—"} · {m.baseline?.targetPage || m.page || "—"}</td>
+                                      <td className="num">{typeof bp === "number" ? `pos. ${pos(bp)}` : "—"}<span className="subtle small"> · {num(m.baseline?.impressions ?? 0)} vert.</span></td>
+                                      <td className="num">{last ? (typeof last.position === "number" ? `pos. ${pos(last.position)}` : last.summary || "gemeten") : <span className="subtle">{(() => { const n = nextMeasurement(m as any); return n ? `op ${dateShort(n.date)}` : "—" })()}</span>}</td>
+                                      <td>{outcomeBadge(m.outcome as Outcome | null)}</td>
+                                    </tr>
+                                  ) })}</tbody>
+                                </table>
+                                <p className="field-hint">Elk meetpunt houdt zijn eigen zoekwoord, nulmeting, datum en metingen. Bij het leren en de nauwkeurigheid telt de familie als één experiment; verschillen per pagina blijven hier zichtbaar.</p>
+                              </>
+                            ) : <ExpDetail e={e} task={task} openTask={openTask} />}
+                          </td></tr>
+                        )}
+                      </FragmentRow>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="exp-list">
-            {list.map(e => {
-              const task = byKey.get(e.advice_key)
-              const base = e.baseline || {}
-              const metric: "position" | "ctr" = base.successMetric === "ctr" ? "ctr" : "position"
-              // Technisch, indexering en samenvoegen worden niet op positie gemeten
-              const other = ["technisch", "indexering", "consolidatie", "geen", "conversie", "controle"].includes(base.successMetric)
-              const pair = !!(e.query && e.page && base.targetPage)
-              const basePos = pair ? (base.pairPosition ?? null) : base.position ?? base.positionNow
-              const baseText = base.successMetric === "technisch" ? `${num(base.count ?? base.paths?.length)} fout`
-                : base.successMetric === "indexering" ? `${num(base.paths?.length ?? 1)} niet geïndexeerd`
-                : base.successMetric === "consolidatie" ? `${num((base.pages || []).reduce((a: number, p: any) => a + (p.impressions || 0), 0))} vert.`
-                : base.successMetric === "conversie" ? "28 d ervoor"
-                : base.successMetric === "controle" ? "probleem open"
-                : "—"
-              const subject = task ? (task.signal.query ? `"${task.signal.query}"` : task.signal.headline) : e.query ? `"${e.query}"` : e.page || e.advice_key
-              const ms: { label: string; days: number; d: Record<string, any> | null }[] = [
-                { label: "Na 14 dagen", days: 14, d: e.result_14d }, { label: "Na 28 dagen", days: 28, d: e.result_28d }, { label: "Na 56 dagen", days: 56, d: e.result_56d },
-              ]
-              return (
-                <button key={e.id} className="card exp-card interactive" onClick={() => task && openTask(task.key)} disabled={!task} aria-label={`Open advies ${subject}`}>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="meta-line" style={{ marginBottom: 6 }}>
-                      {task && <KindLabel signal={task.signal} />}
-                      {outcomeBadge(e)}
-                    </div>
-                    <p className="exp-title">{subject}</p>
-                    <p className="exp-desc">{e.description}</p>
-                    {e.hypothesis && <p className="exp-hyp"><b>Hypothese:</b> {e.hypothesis}</p>}
-                    <ExpOutcome e={e} />
-                    <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {other ? ({ technisch: "HTTP-status en sitemap", indexering: "indexeringsstatus", consolidatie: "doorverwijzing en vertoningen", geen: "niets", conversie: "energiescanaanvragen (GA4)", controle: "of het probleem weg is" } as Record<string, string>)[base.successMetric] : metric === "ctr" ? "doorklik" : pair ? `positie van ${e.page}` : "positie"}</p>
-                  </div>
-                  <div className="exp-measures">
-                    <div className="measure">
-                      <p className="measure-label">Nulmeting</p>
-                      <p className="measure-value">{other ? baseText : metric === "ctr" ? pct(base.ctr) : basePos === null && pair ? "niet zichtbaar" : `pos. ${pos(basePos)}`}</p>
-                      <p className="measure-sub">{other ? "bij uitvoeren" : `${num(base.clicks)} clicks / 28 d`}</p>
-                    </div>
-                    {ms.map(m => m.d ? (
-                      <div className="measure" key={m.label}>
-                        <p className="measure-label">{m.label}</p>
-                        <p className="measure-value">{other ? (m.d.summary?.split(" · ")[0] ?? "gemeten") : metric === "ctr" ? pct(m.d.ctr) : `pos. ${pos(m.d.position)}`}</p>
-                        {other ? <p className="measure-sub">{m.d.summary?.split(" · ").slice(1).join(" · ")}</p> : <p className="measure-sub"><Delta base={metric === "ctr" ? base.ctr : basePos} value={metric === "ctr" ? m.d.ctr : m.d.position} metric={metric} /> · {num(m.d.clicks)} clicks / {m.d.sampleDays ?? 7} d</p>}
-                      </div>
-                    ) : (
-                      <div className="measure is-pending" key={m.label}>
-                        <p className="measure-label">{m.label}</p>
-                        <p className="measure-value subtle">—</p>
-                        <p className="measure-sub">{dateShort(addDays(e.changed_at, m.days))}</p>
-                      </div>
-                    ))}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+          )}
+
+          {kindTab === "experiment" && <><AccuracyCard /><Learned experiments={experiments} /></>}
         </>
       )}
     </>
+  )
+}
+
+function FragmentRow({ children }: { children: React.ReactNode }) { return <>{children}</> }
+
+// Details van één experiment: geschiktheid, hypothese en alle metingen
+function ExpDetail({ e, task, openTask }: { e: Experiment; task?: Task; openTask: (k: string) => void }) {
+  const base = e.baseline || {}
+  const metric: "position" | "ctr" = base.successMetric === "ctr" ? "ctr" : "position"
+  const other = ["technisch", "indexering", "consolidatie", "geen", "conversie", "controle"].includes(base.successMetric)
+  const pair = !!(e.query && e.page && base.targetPage)
+  const basePos = pair ? (base.pairPosition ?? null) : base.position ?? base.positionNow
+  const baseText = base.successMetric === "technisch" ? `${num(base.count ?? base.paths?.length)} fout`
+    : base.successMetric === "indexering" ? `${num(base.paths?.length ?? 1)} niet geïndexeerd`
+    : base.successMetric === "consolidatie" ? `${num((base.pages || []).reduce((a: number, p: any) => a + (p.impressions || 0), 0))} vert.`
+    : base.successMetric === "conversie" ? "28 d ervoor"
+    : base.successMetric === "controle" ? "probleem open"
+    : "—"
+  const ms: { label: string; days: number; d: Record<string, any> | null | undefined }[] = [
+    { label: "Na 14 dagen", days: 14, d: e.result_14d }, { label: "Na 28 dagen", days: 28, d: e.result_28d }, { label: "Na 56 dagen", days: 56, d: e.result_56d },
+    ...(e.result_56d && (e.kind || "experiment") === "experiment" && (e.result_84d || !e.outcome) ? [{ label: "Na 84 dagen (verlengd)", days: 84, d: e.result_84d }] : []),
+  ]
+  return (
+    <div className="exp-detail">
+      <div style={{ minWidth: 0 }}>
+        <div className="meta-line" style={{ marginBottom: 6 }}>{task && <KindLabel signal={task.signal} />}{task && <button className="link-btn" onClick={() => openTask(task.key)}>Taak openen</button>}</div>
+        <p className="exp-desc">{e.description}</p>
+        {e.hypothesis && <p className="exp-hyp"><b>Hypothese:</b> {e.hypothesis}</p>}
+        {e.suitability && e.suitability.checks.length > 0 && (
+          <details className="exp-suit"><summary>Geschiktheidscontrole: {e.suitability.summary}</summary>
+            <ul>{e.suitability.checks.map(c => <li key={c.key} data-state={c.state}><b>{c.label}:</b> {c.state === "ok" ? "ja" : c.state === "fout" ? "nee" : "onbekend"}. <span className="subtle">{c.detail}</span></li>)}</ul>
+          </details>
+        )}
+        <ExpOutcome e={e} />
+        <p className="meta-line" style={{ marginTop: 8 }}><CalendarClock aria-hidden />Aangepast op {dateLong(e.changed_at)} · gemeten op {other ? ({ technisch: "HTTP-status en sitemap", indexering: "indexeringsstatus", consolidatie: "doorverwijzing en vertoningen", geen: "niets", conversie: "energiescanaanvragen (GA4)", controle: "of het probleem weg is" } as Record<string, string>)[base.successMetric] : metric === "ctr" ? "doorklik" : pair ? `positie van ${e.page}` : "positie"}</p>
+      </div>
+      <div className="exp-measures">
+        <div className="measure">
+          <p className="measure-label">Nulmeting</p>
+          <p className="measure-value">{other ? baseText : metric === "ctr" ? pct(base.ctr) : basePos === null && pair ? "niet zichtbaar" : `pos. ${pos(basePos)}`}</p>
+          <p className="measure-sub">{other ? "bij uitvoeren" : `${num(base.clicks)} clicks / 28 d`}</p>
+        </div>
+        {ms.map(m => m.d ? (
+          <div className="measure" key={m.label}>
+            <p className="measure-label">{m.label}</p>
+            <p className="measure-value">{other ? (m.d.summary?.split(" · ")[0] ?? "gemeten") : metric === "ctr" ? pct(m.d.ctr) : `pos. ${pos(m.d.position)}`}</p>
+            {other ? <p className="measure-sub">{m.d.summary?.split(" · ").slice(1).join(" · ")}</p> : <p className="measure-sub"><Delta base={metric === "ctr" ? base.ctr : basePos} value={metric === "ctr" ? m.d.ctr : m.d.position} metric={metric} /> · {num(m.d.clicks)} clicks / {m.d.sampleDays ?? 7} d</p>}
+          </div>
+        ) : (
+          <div className="measure is-pending" key={m.label}>
+            <p className="measure-label">{m.label}</p>
+            <p className="measure-value subtle">—</p>
+            <p className="measure-sub">meetdatum {dateShort(addDays(e.changed_at, m.days))}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

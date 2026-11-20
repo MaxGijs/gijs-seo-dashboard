@@ -8,6 +8,7 @@ import { recomputeLessons } from "@/lib/server/learning"
 import { readChecks } from "@/lib/server/checks"
 import { positionVerdict } from "@/lib/measure"
 import { addDaysIso, conversionVerdict, conversionWindows } from "@/lib/server/conversion"
+import { adviceStatusFor, finalOutcome, MIN_IMPRESSIONS, type ExpKind, type Outcome } from "@/lib/experiment"
 
 export const maxDuration = 120
 
@@ -187,10 +188,14 @@ export async function GET(request: Request) {
       results.checked++
       const ageDays = Math.floor((Date.now() - new Date(exp.changed_at).getTime()) / 86400000)
       const metric: string = exp.baseline?.successMetric || "position"
-      const milestones = ([[14, "result_14d"], [28, "result_28d"], [56, "result_56d"]] as const).filter(([d, col]) => ageDays >= d && !exp[col])
+      const kind: ExpKind = exp.kind || "experiment"
+      // 84 dagen alleen bij een experiment dat na 56 dagen nog te weinig data had (verlengd meten)
+      const steps = [[14, "result_14d"], [28, "result_28d"], [56, "result_56d"], ...(kind === "experiment" && exp.result_56d ? [[84, "result_84d"]] : [])] as [number, string][]
+      const milestones = steps.filter(([d, col]) => ageDays >= d && !exp[col])
       if (!milestones.length) continue
       const update: Record<string, any> = {}
       let verdict: Verdict | null = null
+      let influenced = false
 
       for (const [days, col] of milestones) {
         if (metric === "conversie") {
@@ -204,7 +209,7 @@ export async function GET(request: Request) {
             // Een offline campagne in één van beide periodes maakt de vergelijking onbetrouwbaar
             const { data: camps } = await supabase.from("seo_campaigns").select("*")
             const hit = ((camps || []) as Campaign[]).filter(c => overlaps(c, before.start, after.end))
-            if (hit.length && v.verdict !== "onduidelijk") v = { verdict: "onduidelijk", reason: `Geen oordeel: in de meetperiode liep ${hit.map(describe).join("; ")}.` }
+            if (hit.length) { influenced = true; v = { verdict: v.verdict, reason: `Beïnvloed: in de meetperiode liep ${hit.map(describe).join("; ")}.` } }
             update[col] = { measuredAt: today(), scope: "conversie", before: b, after: a, measurement: measurement.status, summary: `${a.requests ?? "—"} aanvragen in ${a.sessions} sessies (was ${b.requests ?? "—"} in ${b.sessions}) · ${v.reason}` }
             if (days >= 56) verdict = v.verdict
           } catch (e: any) {
@@ -233,7 +238,6 @@ export async function GET(request: Request) {
           if (days >= 56) verdict = final
         } else if (metric === "geen") {
           update[col] = { measuredAt: today(), summary: "Geen meting nodig" }
-          verdict = "onduidelijk"
         } else {
           const m = await measureSearch(supabase, exp.query, exp.page)
           if (m) {
@@ -254,17 +258,38 @@ export async function GET(request: Request) {
           }
           if (days >= 56) {
             // Leerbewijs alleen bij voldoende volume (zoekmetingen) of een harde technische uitkomst
-            const enough = ["technisch", "indexering"].includes(metric) || (exp.baseline?.impressions ?? 0) >= 100
+            // (conversie en samenvoegen hebben een eigen regel voor te weinig data)
+            const enough = !["position", "ctr"].includes(metric) || Math.max(exp.baseline?.impressions ?? 0, r.impressions28 ?? 0) >= MIN_IMPRESSIONS
             r.evidence = enough ? "telt mee" : "te weinig data"
           }
           results.measured++
         }
       }
 
-      if (verdict) {
-        update.outcome = verdict
-        if (verdict !== "onduidelijk") {
-          await supabase.from("seo_advice_status").update({ status: verdict, updated_at: new Date().toISOString() }).eq("advice_key", exp.advice_key)
+      // Eindoordeel volgens de soort: validaties op hun controle, metingen zonder oordeel, experimenten
+      // pas met genoeg data en een zuivere meting (anders verder meten tot 84 dagen of geen oordeel)
+      const lastCol = milestones[milestones.length - 1][1]
+      const last = update[lastCol]
+      const enoughData = !!last && (last.evidence ? last.evidence === "telt mee" : !["position", "ctr"].includes(metric))
+      let invalid = false
+      if (kind === "experiment" && ageDays >= 56) {
+        const target = exp.baseline?.targetPage || exp.page
+        if (target) {
+          const [row] = await pageRows(supabase, [target])
+          invalid = !!row && ((row.http_status ?? 0) >= 400 || (!!row.http_final_path && row.http_final_path !== target))
+        }
+        // Andere aanpassing op dezelfde pagina of hetzelfde zoekwoord tijdens de meting (buiten de eigen familie)
+        const { data: others } = await supabase.from("seo_experiments").select("id, query, page, target_pages, family_id, changed_at, kind").gt("changed_at", exp.changed_at).neq("id", exp.id)
+        const fam = exp.family_id || exp.id
+        influenced = influenced || (others || []).some((o: any) => (o.family_id || o.id) !== fam && o.kind !== "validatie" &&
+          ((exp.query && o.query === exp.query) || (target && [o.page, ...(o.target_pages || [])].includes(target))))
+      }
+      const outcome: Outcome | null = finalOutcome({ kind, ageDays, verdict, enoughData, invalid, influenced })
+      if (outcome) {
+        update.outcome = outcome
+        const status = adviceStatusFor(outcome)
+        if (status) {
+          await supabase.from("seo_advice_status").update({ status, updated_at: new Date().toISOString() }).eq("advice_key", exp.advice_key)
           results.finalized++
         }
       }

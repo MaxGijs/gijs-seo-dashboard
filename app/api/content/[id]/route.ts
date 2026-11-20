@@ -2,6 +2,7 @@ import { latestAttachmentText } from "@/lib/server/readdoc"
 import { analyzeText } from "@/lib/content/textcheck"
 import { NextResponse } from "next/server"
 import { getSupabase, requireUser } from "@/lib/server/guard"
+import { CONTENT_GOALS, type ContentGoal, type SuccessPlan } from "@/lib/content/plan"
 import { ANGLE_META, changePct, FEEDBACK_TAGS, FORMATS, REVIEW_ROLES, requiredReviews, STATUS_META, type ContentIdea } from "@/lib/content/model"
 
 // PATCH /api/content/:id — elke stap in de workflow. Het dashboard publiceert nooit:
@@ -19,6 +20,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const now = new Date().toISOString()
   const bad = (msg: string) => NextResponse.json({ error: msg }, { status: 400 })
   let patch: Record<string, unknown> = {}
+  // Doel en succesgrens controleren (zie lib/content/plan.ts)
+  const cleanPlan = (raw: any, by: string, afterwards: boolean): SuccessPlan | string => {
+    const goal = raw?.goal as ContentGoal
+    if (!goal || !(goal in CONTENT_GOALS)) return "Kies een primair doel."
+    const threshold = Number(raw?.threshold)
+    if (!Number.isFinite(threshold) || threshold <= 0) return "Vul een succesgrens groter dan 0 in."
+    const prediction = raw?.prediction === null || raw?.prediction === undefined || raw?.prediction === "" ? null : Number(raw.prediction)
+    if (prediction !== null && (!Number.isFinite(prediction) || prediction < 0)) return "De verwachting moet een getal zijn."
+    const comparables = Array.isArray(raw?.comparables) ? raw.comparables.filter((x: unknown) => typeof x === "string").slice(0, 20) : []
+    return { goal, window: CONTENT_GOALS[goal].window, threshold: Math.round(threshold), prediction: prediction === null ? null : Math.round(prediction), comparables, setAt: now, setBy: by, ...(afterwards ? { afterwards: true } : {}) }
+  }
 
   const feedbackFrom = (tags: unknown, note?: unknown) => {
     const list = Array.isArray(tags) ? tags.filter((t): t is string => (FEEDBACK_TAGS as readonly string[]).includes(t)) : []
@@ -147,6 +159,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const date = String(body.date || now.slice(0, 10))
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(date) > new Date()) return bad("Ongeldige publicatiedatum")
       patch = { status: "gepubliceerd", published_url: url, published_at: date }
+      if (body.plan) { const plan = cleanPlan(body.plan, who, false); if (typeof plan === "string") return bad(plan); patch.success_plan = plan }
+      break
+    }
+    case "plan": {
+      // Doel en succesgrens (ook achteraf vast te leggen; dan staat dat erbij)
+      const plan = cleanPlan(body.plan, who, cur.status === "gepubliceerd" && !!cur.published_at && cur.published_at < now.slice(0, 10))
+      if (typeof plan === "string") return bad(plan)
+      patch = { success_plan: plan }
       break
     }
     default:

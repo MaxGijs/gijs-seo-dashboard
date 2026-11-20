@@ -93,6 +93,7 @@ export interface ContentIdea {
   published_at: string | null
   // Nieuwe artikelen: 7, 30 en 90 dagen. Bijgewerkte bestaande pagina's: evals.update (voor/na-experiment)
   evals: Partial<Record<"d7" | "d30" | "d90", Eval>> & { update?: UpdateMeasure | null }
+  success_plan?: import("./plan").SuccessPlan | null   // doel en succesgrens, vastgelegd bij publicatie
   owner?: string | null
   original: any
 }

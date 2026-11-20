@@ -7,6 +7,7 @@ import type { CtrModel } from "./ctr"
 import { buildSignals } from "./signals"
 import { columnOf, isVisible, mergeTasks, PRIORITY_ORDER } from "./workflow"
 import { toTries, type RouteTry } from "./routes"
+import { PREFERENCE_MIN } from "./learning"
 
 export interface TaskInputs {
   keywords: GscRow[]; prevKeywords: GscRow[]; pages: GscRow[]; streaks: Streak[]
@@ -15,11 +16,17 @@ export interface TaskInputs {
 }
 
 export function signalsFrom(d: TaskInputs, ctrModel: CtrModel): Signal[] {
-  const feedback = d.records
+  const feedbackAll = d.records
     .filter(r => (r.status === "afgewezen" || r.status === "onvoldoende_bewijs") && r.snapshot?.kind && !(r.note || "").startsWith("Al opgelost"))
     .map(r => ({ key: r.advice_key, kind: r.snapshot!.kind, intent: r.snapshot!.intent }))
     // Teruggedraaide afwijzingslessen: die afwijzingen tellen niet meer mee voor de prioriteit
     .filter(f => !d.lessons.some(l => l.status === "teruggedraaid" && l.effect?.type === "afwijzing" && l.effect.match?.kind === f.kind && (l.effect.match?.intent ?? undefined) === (l.effect.match?.intent ? f.intent : undefined)))
+  // Eén afwijzing van een soort is een voorstel: pas vanaf twee (of na bevestiging) zakken vergelijkbare adviezen
+  const groupKey = (f: { kind: string; intent?: string }) => `afwijzing|${f.kind}|${f.intent || "-"}`
+  const counts = new Map<string, number>()
+  for (const f of feedbackAll) counts.set(groupKey(f), (counts.get(groupKey(f)) || 0) + 1)
+  const confirmed = new Set(d.lessons.filter(l => l.confirmed_at && l.status === "actief").map(l => l.key))
+  const feedback = feedbackAll.filter(f => (counts.get(groupKey(f)) || 0) >= PREFERENCE_MIN || confirmed.has(groupKey(f)))
   return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: [...toTries(d.experiments), ...(d.contentTries || [])] }, ctrModel)
 }
 

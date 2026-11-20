@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { requireUser, supabaseConfigured } from "@/lib/server/guard"
-import { readLessons, recomputeLessons, setLessonStatus } from "@/lib/server/learning"
+import { confirmLesson, readLessons, recomputeLessons, setLessonStatus } from "@/lib/server/learning"
 
 // GET  /api/lessons — lessen, logboek en hoeveel metingen er zijn
-// POST /api/lessons { action: "revert" | "restore", key } of { action: "recompute" }
+// POST /api/lessons { action: "revert" | "restore" | "confirm", key } of { action: "recompute" }
 export async function GET() {
   const guard = await requireUser()
   if (guard.error) return guard.error
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   try {
     if (body.action === "recompute") return NextResponse.json(await recomputeLessons(by))
+    if (body.action === "confirm" && typeof body.key === "string") { await confirmLesson(body.key, by); return NextResponse.json({ ok: true }) }
     if ((body.action === "revert" || body.action === "restore") && typeof body.key === "string") {
       await setLessonStatus(body.key, body.action === "revert" ? "teruggedraaid" : "actief", by)
       return NextResponse.json({ ok: true })

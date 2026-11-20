@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Task } from "./types"
 import type { ContentIdea } from "./content/model"
 import { OUTCOME_META, UPDATE_MILESTONES } from "./content/update"
+import { OUTCOME_META as EXP_OUTCOME } from "./experiment"
 import { addDays, num, pos, today } from "./format"
 import { readStorage, writeStorage } from "./workspace"
 
@@ -23,7 +24,7 @@ export interface MeasureUpdate {
 }
 
 const FRESH_DAYS = 14
-const SEO_STEPS = [[14, "result_14d"], [28, "result_28d"], [56, "result_56d"]] as const
+const SEO_STEPS = [[14, "result_14d"], [28, "result_28d"], [56, "result_56d"], [84, "result_84d"]] as const
 const toneOf = (o: string | null | undefined): MeasureUpdate["tone"] => (o === "succesvol" ? "goed" : o === "niet_succesvol" ? "slecht" : "neutraal")
 
 export function measureUpdates(tasks: Task[], ideas: ContentIdea[], now = today()): MeasureUpdate[] {
@@ -33,14 +34,16 @@ export function measureUpdates(tasks: Task[], ideas: ContentIdea[], now = today(
     const title = t.signal.query ? `"${t.signal.query}"` : t.signal.headline
     for (const e of t.experiments) {
       for (const [d, col] of SEO_STEPS) {
-        const r = e[col] as { measuredAt?: string; summary?: string } | null
+        const r = (e as any)[col] as { measuredAt?: string; summary?: string } | null
         const date = (r?.measuredAt || "").slice(0, 10)
         if (!r || !date || date < since) continue
-        const final = d === 56 && !!e.outcome
+        // Eindoordeel bij de laatste meting die er is (56, of 84 dagen bij verlengd meten)
+        const last = SEO_STEPS.filter(([, c]) => (e as any)[c]).pop()?.[0]
+        const final = d === last && !!e.outcome
         out.push({
           key: `exp:${e.id}:${d}`, date, title, milestone: d, final, taskKey: t.key,
           tone: final ? toneOf(e.outcome) : "neutraal",
-          text: final ? `Eindoordeel: ${OUTCOME_META[e.outcome!].label.toLowerCase()}. ${r.summary || ""}`.trim() : `${r.summary || "Gemeten"}.`,
+          text: final ? `Eindoordeel: ${EXP_OUTCOME[e.outcome!].label.toLowerCase()}. ${r.summary || ""}`.trim() : `${r.summary || "Gemeten"}.`,
         })
       }
     }

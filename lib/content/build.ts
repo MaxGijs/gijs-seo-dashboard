@@ -13,6 +13,7 @@ import {
   PROVINCES, regionNote, regionsIn, risksFor, SCAN_SERVICE, scoreIdea, SERVICE_TERMS, serviceLabel, servicePage, TITLE_MAX,
 } from "./model"
 import { explainedRejection, feedbackEffects, noteOf, REASONS, type Learned } from "./feedback"
+import { PREFERENCE_MIN } from "@/lib/learning"
 import { coverageText, type Coverage } from "./coverage"
 
 export const dayMs = 86400000
@@ -197,6 +198,7 @@ export interface Ctx {
   places: Map<string, Place>          // "zwolle" → { name: "Zwolle", path: "/regio/overijssel/zwolle" }
   existing: (Pick<ContentIdea, "id" | "fingerprint" | "origin" | "status" | "service" | "sources" | "created_at" | "title"> & Partial<Pick<ContentIdea, "summary" | "why_now" | "feedback" | "impact" | "decision_note" | "regions" | "published_url" | "published_at" | "target_page" | "advice">>)[]
   ignoreRejections?: Set<string>      // "dienst|herkomst" van teruggedraaide lessen
+  confirmedRejections?: Set<string>   // "dienst|herkomst" van bevestigde voorstellen (tellen al vanaf één afwijzing)
   learned?: Learned                   // geleerd uit de eigen toelichtingen bij afwijzingen
 }
 
@@ -205,7 +207,9 @@ function rejectedIds(ctx: Ctx, service: string | null, origin: Origin): string[]
   if (ctx.ignoreRejections?.has(`${service || "-"}|${origin}`)) return []
   // Afgewezen omdat het al op de site staat: zegt niets over het onderwerp zelf (daar is de controle "staat al op de site" voor)
   // Met een toelichting waarin een reden of onderwerp herkend wordt: telt alleen via die reden of dat onderwerp (zie feedback.ts)
-  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin && !REASONS.dubbel.pattern.test(noteOf(e as any)) && !explainedRejection(e as any)).map(e => e.id)
+  const ids = ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin && !REASONS.dubbel.pattern.test(noteOf(e as any)) && !explainedRejection(e as any)).map(e => e.id)
+  // Eén afwijzing is een voorstel: pas vanaf twee (of na bevestiging) telt het mee in de score
+  return ids.length >= PREFERENCE_MIN || ctx.confirmedRejections?.has(`${service || "-"}|${origin}`) ? ids : []
 }
 
 // Plaatsnaam in een zoekvraag (langste match eerst, zodat "hof van twente" wint van "twente")

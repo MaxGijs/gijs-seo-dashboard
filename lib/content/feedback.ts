@@ -9,9 +9,15 @@
 import { SERVICE_TERMS, type ContentIdea, type Impact, type Origin } from "./model"
 import type { Lesson } from "@/lib/learning"
 
-export type ReasonCode = "doelgroep" | "bedrijfsnieuws" | "zoekvraag" | "actualiteit" | "regio" | "kortlopend" | "dubbel" | "onjuist" | "toon"
+export type ReasonCode = "koppeling" | "doelgroep" | "bedrijfsnieuws" | "zoekvraag" | "actualiteit" | "regio" | "kortlopend" | "dubbel" | "indeling" | "onjuist" | "toon"
 
 export const REASONS: Record<ReasonCode, { label: string; pattern: RegExp; effect: string; applies: boolean }> = {
+  koppeling: {
+    label: "Verkeerd gekoppeld nieuws (fout van het systeem)",
+    pattern: /verkeerd gekoppeld|verkeerde koppeling|verzonnen koppeling|(heeft|hebben) (toch )?(niks|niets) (met|te maken)|gaat over (een )?(voetbal|sport|zorgpremie)|niet over verduurzaming|niets met (subsidie|verduurzam|woning)/i,
+    effect: "Geen voorkeur: het nieuws hoorde niet bij deze kans. Telt niet mee voor de dienst of voor onderwerpen; er wordt niets van geleerd over wat jullie wel of niet willen.",
+    applies: false,
+  },
   doelgroep: {
     label: "Geen aankoopbeslissing of verkeerde doelgroep",
     pattern: /(aankoop|koop)beslissing|nieuwszoekers?|gedupeerd|verkeerde doelgroep|niet voor (huis|woning)eigenaren|huurders|installateurs|ondernemers|conversie(kans)?|energiescan (wil(len)? )?aanvragen|commerci[ëe]le (zoek)?intentie|geen klant(en)?|trekt (vooral )?(de )?verkeerde/i,
@@ -32,7 +38,7 @@ export const REASONS: Record<ReasonCode, { label: string; pattern: RegExp; effec
   },
   actualiteit: {
     label: "Actualiteit telt te zwaar in de score",
-    pattern: /(actualiteit|actueel|nieuwswaarde)[^.]{0,80}(te )?(zwaar|hoog|beloond|overschat)|(score|dashboardscore)[^.]{0,30}te hoog|te hoog[^.]{0,30}score/i,
+    pattern: /(actualiteit|actueel|nieuwswaarde)[^.]{0,80}(te )?(zwaar|hoog|beloond|overschat)|(score|dashboardscore)[^.]{0,30}(te hoog|onterecht|onjuist)|te hoog[^.]{0,30}score/i,
     effect: "Bij nieuws zonder eigen zoekvraag telt actualiteit minder zwaar mee in de score.",
     applies: true,
   },
@@ -50,9 +56,15 @@ export const REASONS: Record<ReasonCode, { label: string; pattern: RegExp; effec
   },
   dubbel: {
     label: "Bestaat al op de site",
-    pattern: /bestaat al|al een (pagina|artikel)|staat al (op de (site|website)|online)|al op de (site|website)|al (eerder )?(geschreven|gepubliceerd|behandeld)|overlap|dubbel/i,
+    pattern: /bestaat al|al (een|onze|ons) (pagina|artikel|kennispagina|subsidiecheck|tool|rekenhulp)|staat al (op de (site|website)|online)|al op de (site|website)|al (eerder )?(geschreven|gepubliceerd|behandeld)|al behandeld in|bestaande (pagina|artikel|kennispagina)|overlap|dubbel/i,
     effect: "Nieuws dat inhoudelijk op deze kans lijkt, wordt niet opnieuw als nieuw artikel voorgesteld: hetzelfde nieuws via een andere bron wordt bij de bestaande kans gevoegd, een verwant onderwerp wordt \"bestaande pagina bijwerken\".",
     applies: true,
+  },
+  indeling: {
+    label: "Verkeerd ingedeeld (soort nieuws)",
+    pattern: /classificatie|ingedeeld|indeling|geen (nieuwe |echte )?regelgeving|geen daadwerkelijk|verkeerde? (soort|categorie)/i,
+    effect: "Ter informatie: de indeling van nieuws (regels, subsidie, kosten) wordt nog niet automatisch bijgesteld.",
+    applies: false,
   },
   onjuist: {
     label: "Feitelijk onjuist of onvoldoende onderbouwd",
@@ -102,15 +114,21 @@ const sentences = (t: string) => t.split(/(?<=[.!?])\s+|\n+/).map(s => s.trim())
 export interface ReadNote { reasons: { code: ReasonCode; quote: string }[]; topics: { stem: string; word: string; quote: string }[] }
 
 // Lees één toelichting bij één afgewezen kans
-export function readNote(raw: string, ideaText: string): ReadNote {
+export function readNote(raw: string, ideaText: string, title?: string): ReadNote {
   // Meegekopieerde bronvermeldingen uit Claude ("NOS+1") en dubbele spaties eruit
   const note = raw.replace(/\b\S+\+\d+\b/g, " ").replace(/[ \t]{2,}/g, " ").trim()
   const reasons: ReadNote["reasons"] = []
   for (const code of Object.keys(REASONS) as ReasonCode[]) {
-    const s = sentences(note).find(x => REASONS[code].pattern.test(x))
+    // "De classificatie is onjuist" gaat over de indeling, niet over een feitelijke fout
+    const s = sentences(note).find(x => REASONS[code].pattern.test(x) && !(code === "onjuist" && REASONS.indeling.pattern.test(x)))
     if (s) reasons.push({ code, quote: s.length > 220 ? s.slice(0, 217) + "…" : s })
   }
-  const inIdea = new Map(words(ideaText).map(w => [stem(w), w]))
+  // Verkeerd gekoppeld nieuws: de woorden komen uit het verkeerde bericht, dus geen onderwerpen leren
+  if (reasons.some(r => r.code === "koppeling")) return { reasons, topics: [] }
+  // Een onderwerp moet in de titel van de kans staan: daar staat waar de kans echt over gaat
+  // (losse woorden uit de samenvatting, zoals "huishoudens", zijn geen onderwerp)
+  const inTitle = title !== undefined ? new Set(words(title).map(stem)) : null
+  const inIdea = new Map(words(ideaText).filter(w => !inTitle || inTitle.has(stem(w))).map(w => [stem(w), w]))
   const topics: ReadNote["topics"] = []
   const seen = new Set<string>()
   for (const s of sentences(note)) {
@@ -144,7 +162,7 @@ export function learnFromFeedback(ideas: IdeaLike[], ignore: Set<string> = new S
   for (const i of ideas.filter(x => x.status === "afgewezen")) {
     const note = noteOf(i)
     if (!note) continue
-    const r = readNote(note, ideaText(i))
+    const r = readNote(note, ideaText(i), i.title)
     for (const { code, quote } of r.reasons) {
       if (ignore.has(`reden|${code}`)) continue
       const cur = out.reasons.get(code) || { n: 0, quotes: [], impacts: new Set<string>(), origins: new Set<string>() }
@@ -171,8 +189,17 @@ export const BUSINESS_NEWS = /faillis|failliet|curator|claim|rechtszaak|rechter|
 export function explainedRejection(i: IdeaLike): boolean {
   const note = noteOf(i)
   if (!note) return false
-  const r = readNote(note, ideaText(i))
+  const r = readNote(note, ideaText(i), i.title)
   return r.reasons.some(x => x.code !== "dubbel") || r.topics.length > 0
+}
+
+// Eén afwijzing is een voorstel, geen les: pas vanaf 2 vergelijkbare afwijzingen (of na bevestiging) toepassen
+export const FEEDBACK_MIN = 2
+export function onlyApplicable(l: Learned, confirmed: Set<string>): Learned {
+  return {
+    reasons: new Map([...l.reasons].filter(([code, r]) => r.n >= FEEDBACK_MIN || confirmed.has(`feedback|reden|${code}`))),
+    topics: new Map([...l.topics].filter(([st, t]) => t.n >= FEEDBACK_MIN || confirmed.has(`feedback|onderwerp|${st}`))),
+  }
 }
 
 export const factorFor = (n: number) => Math.max(0.5, Math.pow(0.85, n))
@@ -214,7 +241,7 @@ export function feedbackLessons(l: Learned): Lesson[] {
       conclusion: `Je schreef dit ${r.n}× bij een afwijzing. Herkend in: “${r.quotes[0].quote}”`,
       evidence: { n: r.n, reasons: r.quotes.map(q => q.quote), items: r.quotes.map(q => ({ id: q.id, title: q.title })) },
       confidence: conf(r.n),
-      effect: code === "dubbel" ? { type: "content-feedback", text: meta.effect } : meta.applies ? { type: "content-feedback", factor: f, text: `${meta.effect} Nu ×${nlF(f)}.` } : { type: "info", text: meta.effect },
+      effect: code === "dubbel" ? { type: "content-feedback", text: meta.effect } : meta.applies ? { type: "content-feedback", factor: f, pending: r.n < FEEDBACK_MIN, text: `${meta.effect} Nu ×${nlF(f)}.` } : { type: "info", text: meta.effect },
     })
   }
   for (const [st, t] of l.topics) {
@@ -225,7 +252,7 @@ export function feedbackLessons(l: Learned): Lesson[] {
       conclusion: `Uit je feedback: “${t.quotes[0].quote}”`,
       evidence: { n: t.n, reasons: t.quotes.map(q => q.quote), items: t.quotes.map(q => ({ id: q.id, title: q.title })) },
       confidence: conf(t.n),
-      effect: { type: "content-feedback", factor: f, text: `Nieuwe kansen waarin "${t.word}" voorkomt krijgen een lagere score. Nu ×${nlF(f)}.` },
+      effect: { type: "content-feedback", factor: f, pending: t.n < FEEDBACK_MIN, text: `Nieuwe kansen met "${t.word}" in de titel krijgen een lagere score. Nu ×${nlF(f)}.` },
     })
   }
   return out
@@ -239,6 +266,7 @@ export function briefingNotes(l: Learned): string[] {
   add("toon", "Houd de toon rustig en oplossingsgericht, niet sensationeel")
   add("dubbel", "Controleer eerst of een bestaande pagina dit al behandelt; verwijs daarnaar in plaats van te herhalen")
   add("doelgroep", "Schrijf voor huiseigenaren die een keuze moeten maken, niet voor nieuwszoekers")
+  add("koppeling", "Controleer of het nieuwsbericht echt over verduurzaming gaat voordat je erover schrijft")
   add("bedrijfsnieuws", "Gijs is een adviesbureau, geen nieuwssite: schrijf over de keuze of het gevolg voor de huiseigenaar, niet over het bedrijf zelf")
   return out
 }
@@ -247,7 +275,7 @@ export function briefingNotes(l: Learned): string[] {
 export function previewNote(note: string, idea: IdeaLike, all: IdeaLike[]) {
   if (!note.trim()) return { reasons: [] as { code: ReasonCode; label: string; applies: boolean }[], topics: [] as string[] }
   const okStems = new Set(all.filter(i => i.status !== "afgewezen" && i.id !== idea.id).flatMap(i => words(ideaText(i)).map(stem)))
-  const r = readNote(note, ideaText(idea))
+  const r = readNote(note, ideaText(idea), idea.title)
   return {
     reasons: r.reasons.map(x => ({ code: x.code, label: REASONS[x.code].label, applies: REASONS[x.code].applies })),
     topics: r.topics.filter(t => !okStems.has(t.stem)).map(t => t.word),

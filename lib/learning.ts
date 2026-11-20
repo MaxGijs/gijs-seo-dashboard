@@ -26,6 +26,7 @@ export type LessonMatch = Partial<Features>
 export interface LessonEffect {
   type: "prioriteit" | "afwijzing" | "content-afwijzing" | "content-feedback" | "info"
   factor?: number
+  pending?: boolean           // voorstel: nog niet toegepast (te weinig bewijs en niet bevestigd)
   match?: LessonMatch
   service?: string | null
   origin?: string
@@ -57,6 +58,8 @@ export interface Lesson {
   updated_at?: string
   reverted_at?: string | null
   reverted_by?: string | null
+  confirmed_at?: string | null
+  confirmed_by?: string | null
 }
 
 // ── Kenmerken van een advies ────────────────────────────────────────────────
@@ -159,6 +162,8 @@ export interface ContentFact { id?: string; title?: string; service: string | nu
 export const PRIOR_STRENGTH = 4
 export const EFFECT_SCALE = 0.7
 export const LESSON_MIN_REJECTIONS = 1
+// Een voorkeur uit afwijzingen wordt pas toegepast vanaf 2 vergelijkbare afwijzingen, of als iemand hem bevestigt
+export const PREFERENCE_MIN = 2
 
 export function updatedFactor(success: number, n: number, baseline: number) {
   const post = (success + PRIOR_STRENGTH * baseline) / (n + PRIOR_STRENGTH)
@@ -225,7 +230,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       conclusion: `${list.length}× afgewezen, ${accepted}× opgepakt.${reasons.length ? ` Genoemde redenen: ${reasons.map(r => `"${r}"`).join(", ")}.` : ""}`,
       evidence: { n: list.length, success: accepted, reasons },
       confidence: list.length >= 6 ? "hoog" : list.length >= 3 ? "middel" : "laag",
-      effect: { type: "afwijzing", factor, match: { kind, ...(intent !== "-" ? { intent } : {}) }, text: `Nieuwe adviezen van deze soort zakken in de prioriteit (nu ×${factorNl(factor)}; ×0,85 per afwijzing, nooit lager dan ×0,5). Ze blijven wel zichtbaar.` },
+      effect: { type: "afwijzing", factor, pending: list.length < PREFERENCE_MIN, match: { kind, ...(intent !== "-" ? { intent } : {}) }, text: `Nieuwe adviezen van deze soort zakken in de prioriteit (nu ×${factorNl(factor)}; ×0,85 per afwijzing, nooit lager dan ×0,5). Ze blijven wel zichtbaar.` },
     })
   }
 
@@ -246,7 +251,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
       conclusion: `${list.length}× afgewezen.${tags.size ? ` Meest genoemd: ${[...tags.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, n]) => `${t} (${n}×)`).join(", ")}.` : ""}`,
       evidence: { n: list.length, reasons: [...tags.keys()], items: list.filter(c => c.id && c.title).slice(0, 10).map(c => ({ id: c.id!, title: c.title! })) },
       confidence: list.length >= 6 ? "hoog" : list.length >= 3 ? "middel" : "laag",
-      effect: { type: "content-afwijzing", factor, service: service === "-" ? null : service, origin, text: `Nieuwe kansen van deze soort krijgen een lagere score (nu ×${factorNl(factor)}).` },
+      effect: { type: "content-afwijzing", factor, pending: list.length < PREFERENCE_MIN, service: service === "-" ? null : service, origin, text: `Nieuwe kansen van deze soort krijgen een lagere score (nu ×${factorNl(factor)}).` },
     })
   }
   const measured = input.content.filter(c => c.status === "gepubliceerd" && c.advice !== "bijwerken" && c.clicks30 !== null && c.clicks30 !== undefined)

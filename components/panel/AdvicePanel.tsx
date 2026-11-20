@@ -15,6 +15,7 @@ import { reconcile } from "@/lib/contract"
 import { experimentFor, siteBaselineOf } from "@/lib/execute"
 import MergeSection from "./MergeSection"
 import PageTimeline from "./PageTimeline"
+import { KIND_META as EXP_KIND, OUTCOME_META as EXP_OUTCOME } from "@/lib/experiment"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
@@ -167,8 +168,11 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
   // Wat leerden eerdere experimenten van dit type?
   const learned = (() => {
     if (!diag) return ""
-    const same = experiments.filter(e => e.baseline?.actionType === diag.actionType && e.advice_key !== task.key)
-    const done = same.filter(e => e.outcome && e.result_56d?.evidence !== "te weinig data")
+    // Alleen echte experimenten; een familie telt als één
+    const seen = new Set<string>()
+    const same = experiments.filter(e => (e.kind || "experiment") === "experiment" && e.baseline?.actionType === diag.actionType && e.advice_key !== task.key)
+      .filter(e => { const k = e.family_id || e.id; if (seen.has(k)) return false; seen.add(k); return true })
+    const done = same.filter(e => (e.outcome === "succesvol" || e.outcome === "niet_succesvol" || e.outcome === "onduidelijk") && e.result_56d?.evidence !== "te weinig data")
     const ok = done.filter(e => e.outcome === "succesvol").length
     if (!same.length) return `Nog geen eerdere experimenten van het type "${diag.plan.label.toLowerCase()}". Deze schatting steunt alleen op de doorklik per positie.`
     if (!done.length) return `${same.length} eerder${same.length === 1 ? " experiment" : "e experimenten"} van dit type ${same.length === 1 ? "loopt" : "lopen"} nog; er is nog geen uitkomst om op te leunen.`
@@ -620,7 +624,7 @@ function ExperimentSummary({ exp }: { exp: Experiment }) {
   ]
   return (
     <div className="card" style={{ padding: 14 }}>
-      <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.outcome && <Badge tone={exp.outcome === "succesvol" ? "success" : exp.outcome === "niet_succesvol" ? "error" : "neutral"}>{exp.outcome === "onduidelijk" ? "Geen duidelijk effect" : exp.outcome === "succesvol" ? "Succesvol" : "Niet succesvol"}</Badge>}</div>
+      <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.kind && exp.kind !== "experiment" && <Badge tone="neutral">{EXP_KIND[exp.kind].label}</Badge>}{exp.outcome && <Badge tone={exp.outcome === "succesvol" ? "success" : exp.outcome === "niet_succesvol" ? "error" : "neutral"}>{EXP_OUTCOME[exp.outcome].label}</Badge>}</div>
       <p style={{ fontSize: "var(--fs-sm)", marginBottom: 10 }}>{exp.description}</p>
       <div className="exp-measures">
         <div className="measure"><p className="measure-label">Nulmeting</p>

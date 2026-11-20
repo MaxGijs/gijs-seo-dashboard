@@ -73,7 +73,26 @@ export function accuracyRow(e: Experiment, subject: string): AccuracyRow | null 
 }
 
 export function computeAccuracy(experiments: Experiment[], subjectOf: (e: Experiment) => string = e => e.query ? `"${e.query}"` : e.page || e.advice_key): Accuracy {
-  const rows = experiments.map(e => accuracyRow(e, subjectOf(e))).filter((r): r is AccuracyRow => !!r)
+  // Alleen echte experimenten: validaties en metingen zonder oordeel tellen niet mee.
+  // Een experimentfamilie telt als één rij: opgetelde voorspelling tegen opgetelde meting.
+  const real = experiments.filter(e => (e.kind || "experiment") === "experiment")
+  const groups = new Map<string, Experiment[]>()
+  for (const e of real) groups.set(e.family_id || e.id, [...(groups.get(e.family_id || e.id) || []), e])
+  const rows = [...groups.values()].map(list => {
+    const parts = list.map(e => accuracyRow(e, subjectOf(e))).filter((r): r is AccuracyRow => !!r)
+    if (list.length === 1 || !parts.length) return parts[0] || null
+    const sum = (f: (r: AccuracyRow) => number) => round(parts.reduce((a, r) => a + f(r), 0))
+    const predicted = sum(r => r.predicted), actual = sum(r => r.actual), low = parts.reduce((a, r) => a + r.low, 0), high = parts.reduce((a, r) => a + r.high, 0)
+    const final = parts.length === list.length && parts.every(r => r.final)
+    return {
+      ...parts[0], id: list[0].family_id || list[0].id, subject: `${list[0].family_title || list[0].description} (${list.length} meetpunten)`,
+      predicted, low, high, actual, error: round(actual - predicted), bandFromModel: parts.every(r => r.bandFromModel),
+      hit: (actual < low ? "onder" : actual > high ? "boven" : "binnen") as Hit, final,
+      counts: final && parts.some(r => r.counts),
+      reason: !final ? "Nog niet alle meetpunten hebben een eindmeting" : parts.some(r => r.counts) ? undefined : "Te weinig vertoningen om van te leren",
+      measuredAt: parts.map(r => r.measuredAt || "").sort().pop() || undefined,
+    } as AccuracyRow
+  }).filter((r): r is AccuracyRow => !!r)
   const scored = rows.filter(r => r.counts)
   const provisional = rows.filter(r => !r.final)
   const excluded = rows.filter(r => r.final && !r.counts)

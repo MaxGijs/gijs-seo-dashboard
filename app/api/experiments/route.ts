@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
 import { updateTry } from "@/lib/content/update"
 import type { RouteTry } from "@/lib/routes"
+import { prepareStart } from "@/lib/server/experimentStart"
 
 // GET /api/experiments — gelogde experimenten (optioneel gefilterd op advice_key)
 export async function GET(request: Request) {
@@ -48,9 +49,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "advice_key, description en baseline zijn verplicht" }, { status: 400 })
     }
 
+    const today = new Date().toISOString().split("T")[0]
+    // Geschiktheidscontrole, soort en familie (bij een fout: gewoon als experiment vastleggen)
+    const start = await prepareStart({ advice_key, description: description.trim(), baseline, query: query ?? null, page: page ?? null }, today).catch(() => null)
+    if (start?.familyRoot) await getSupabase().from("seo_experiments").update({ family_id: start.family_id, family_title: start.familyRoot.family_title }).or(`id.eq.${start.familyRoot.id},family_id.eq.${start.family_id}`)
     const { data, error } = await getSupabase()
       .from("seo_experiments")
       .insert({
+        ...(start ? { kind: start.kind, suitability: start.suitability, family_id: start.family_id, family_title: start.family_title } : {}),
         advice_key,
         description: description.trim(),
         baseline,
@@ -60,7 +66,7 @@ export async function POST(request: Request) {
         target_pages: Array.isArray(target_pages) ? target_pages.slice(0, 500).map(String) : null,
         target_queries: Array.isArray(target_queries) ? target_queries.slice(0, 50).map(String) : null,
         predicted: predicted && typeof predicted === "object" ? predicted : null,
-        changed_at: new Date().toISOString().split("T")[0],
+        changed_at: today,
       })
       .select()
       .single()
