@@ -14,6 +14,7 @@ import { buildClaudePrompt, buildDiagnosis, type Diagnosis, type FindingTone } f
 import { reconcile } from "@/lib/contract"
 import { experimentFor, siteBaselineOf } from "@/lib/execute"
 import MergeSection from "./MergeSection"
+import PageTimeline from "./PageTimeline"
 import { columnOf } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
@@ -304,6 +305,8 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 </table>
               </details>
             )}
+            {signal.kind === "techniek" && signal.tech?.type === "niet-geindexeerd" && signal.tech.pages.length > 0 && <PageTimeline paths={signal.tech.pages.map(p => p.path)} />}
+            {signal.kind !== "techniek" && signal.page && ["goedgekeurd", "in_uitvoering", "uitgevoerd", "in_evaluatie"].includes(task.status) && <PageTimeline paths={[signal.page]} title="Deze pagina bij Google" />}
             {diag.history.length >= 2 && <Sparkline points={diag.history} />}
             {detail && (detail.queryPages?.cur?.length || detail.pageQueries?.length) ? (
               <details className="evidence-details">

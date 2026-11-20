@@ -5,7 +5,7 @@ import type { UpdateMeasure } from "./update"
 // een actualiteit uit een betrouwbare bron, zoekvraag zonder goed antwoord op de site,
 // of een seizoensmoment. Er wordt nooit iets gepubliceerd; een medewerker beslist.
 
-export type Origin = "actualiteit" | "trend" | "zoekdata" | "seizoen" | "handmatig"
+export type Origin = "actualiteit" | "trend" | "zoekdata" | "seizoen" | "handmatig" | "prestatie"
 export type IdeaStatus =
   | "nieuw" | "geaccepteerd" | "briefing" | "concept" | "review" | "goedgekeurd" | "gepubliceerd"
   | "later" | "afgewezen" | "verlopen"
@@ -116,6 +116,7 @@ export const ORIGIN_META: Record<Origin, { label: string }> = {
   zoekdata: { label: "Zoekvraag" },
   seizoen: { label: "Seizoen" },
   handmatig: { label: "Eigen idee" },
+  prestatie: { label: "Minder vertoningen" },
 }
 
 export const IMPACT_META: Record<Impact, { label: string; points: number }> = {
@@ -324,6 +325,7 @@ export function scoreIdea(i: ScoreInput): { score: number; parts: ScorePart[]; f
     actWhy = `Aanleiding is ${Math.round(i.ageDays)} dagen oud${i.ageDays <= 7 ? ": nu publiceren heeft het meeste effect" : i.ageDays > 45 ? ": het nieuws is niet vers meer, wel nog bruikbaar als achtergrond" : ""}.`
   } else if (i.origin === "seizoen") { act = 14; actWhy = "Het seizoen begint nu; zoekvraag naar dit onderwerp stijgt in deze periode." }
   else if (i.origin === "zoekdata") { act = 10; actWhy = "Er wordt nu al op gezocht; geen nieuws, wel een vaste vraag." }
+  else if (i.origin === "prestatie") { act = i.urgency === "hoog" ? 20 : 16; actWhy = "De pagina verliest nu vertoningen; hoe langer het duurt, hoe meer posities verloren gaan." }
   else {
     act = i.urgency === "hoog" ? 22 : i.urgency === "laag" ? 6 : 12
     actWhy = `Aanleiding aangedragen door een medewerker${i.urgency ? ` met urgentie ${i.urgency}` : ""}.`
@@ -333,7 +335,7 @@ export function scoreIdea(i: ScoreInput): { score: number; parts: ScorePart[]; f
     act = Math.round(act * actW)
     actWhy += ` Telt minder zwaar (×${actW.toFixed(2).replace(/0$/, "").replace(".", ",")}): je gaf eerder in je feedback aan dat actualiteit bij nieuws zonder zoekvraag te zwaar telt.`
   }
-  parts.push({ label: "Actualiteit", points: act, max: 25, why: actWhy, basis: (i.origin === "actualiteit" || i.origin === "trend") && i.ageDays !== null ? "gemeten" : i.origin === "zoekdata" ? "afgeleid" : "aangenomen" })
+  parts.push({ label: "Actualiteit", points: act, max: 25, why: actWhy, basis: ((i.origin === "actualiteit" || i.origin === "trend") && i.ageDays !== null) || i.origin === "prestatie" ? "gemeten" : i.origin === "zoekdata" ? "afgeleid" : "aangenomen" })
 
   // 2. Aansluiting op een dienst
   const fit = !i.service ? 0 : i.service === SCAN_SERVICE ? 13 : 20

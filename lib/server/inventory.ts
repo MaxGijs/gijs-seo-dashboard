@@ -1,6 +1,8 @@
 import { getSupabase } from "./guard"
 import { serviceSearchConsole, SITE_ORIGIN, SITE_URL, toPath } from "./gsc"
 import { classifyPath, LAUNCH_DATES } from "@/lib/pages"
+import { indexEvents, type PageEvent } from "@/lib/watch"
+import { saveEvents } from "./watch"
 
 // ── Sitemap → pagina-inventaris ─────────────────────────────────────────────
 
@@ -131,15 +133,26 @@ export async function checkHttpStatus({ budgetMs = 40000, concurrency = 10 } = {
 // ── Indexeringscontrole (URL Inspection API) ────────────────────────────────
 // Quotum van Google: 2.000 inspecties per dag en 600 per minuut per property.
 
-export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 6, staleDays = 7 } = {}) {
+const PREV_COLS = "path, url, index_verdict, coverage_state, last_crawl_time, inspected_at"
+
+export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 6, staleDays = 7, watched = new Set<string>() }: { budgetMs?: number; max?: number; concurrency?: number; staleDays?: number; watched?: Set<string> } = {}) {
   const started = Date.now()
   const supabase = getSupabase()
   const staleBefore = new Date(Date.now() - staleDays * 86400000).toISOString()
 
-  // Eerst pagina's die nog nooit gecontroleerd zijn, daarna de oudste controles.
+  // Gevolgde pagina's elke nacht (als ze meer dan 20 uur geleden gecontroleerd zijn),
+  // daarna pagina's die nog nooit gecontroleerd zijn, daarna de oudste controles.
+  const dailyBefore = new Date(Date.now() - 20 * 3600000).toISOString()
+  const first: any[] = []
+  const watchList = [...watched]
+  for (let i = 0; i < watchList.length; i += 100) {
+    const { data, error } = await supabase.from("seo_pages").select(PREV_COLS).in("path", watchList.slice(i, i + 100)).or(`inspected_at.is.null,inspected_at.lt.${dailyBefore}`)
+    if (error) throw new Error(`ophalen gevolgde pagina's: ${error.message}`)
+    first.push(...(data || []))
+  }
   const { data: todo, error } = await supabase
     .from("seo_pages")
-    .select("path, url")
+    .select(PREV_COLS)
     .eq("in_sitemap", true)
     .or(`inspected_at.is.null,inspected_at.lt.${staleBefore}`)
     .order("inspected_at", { ascending: true, nullsFirst: true })
@@ -147,9 +160,10 @@ export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 
   if (error) throw new Error(`ophalen: ${error.message}`)
 
   const sc = serviceSearchConsole()
-  const queue = [...(todo || [])]
-  let done = 0, failed = 0
+  const queue = [...first, ...(todo || []).filter(t => !first.some(f => f.path === t.path))]
+  let done = 0, failed = 0, dailyDone = 0
   let quotaHit: string | null = null
+  const events: PageEvent[] = []
 
   async function worker() {
     while (queue.length && !quotaHit && Date.now() - started < budgetMs) {
@@ -159,6 +173,9 @@ export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 
           requestBody: { inspectionUrl: page.url, siteUrl: SITE_URL, languageCode: "nl-NL" },
         })
         const r = res.data?.inspectionResult?.indexStatusResult || {}
+        const now = new Date().toISOString()
+        events.push(...indexEvents(page.path, page, { index_verdict: r.verdict ?? null, coverage_state: r.coverageState ?? null, last_crawl_time: r.lastCrawlTime ?? null, inspected_at: now }, now, watched.has(page.path)))
+        if (watched.has(page.path)) dailyDone++
         await supabase.from("seo_pages").update({
           index_verdict: r.verdict ?? null,
           coverage_state: r.coverageState ?? null,
@@ -181,6 +198,8 @@ export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 
     }
   }
   await Promise.all(Array.from({ length: concurrency }, worker))
+  let gebeurtenissen = 0
+  try { gebeurtenissen = await saveEvents(events) } catch (e: any) { failed++; console.error(e?.message) }
 
   const { count } = await supabase
     .from("seo_pages")
@@ -188,5 +207,5 @@ export async function inspectBatch({ budgetMs = 45000, max = 400, concurrency = 
     .eq("in_sitemap", true)
     .or(`inspected_at.is.null,inspected_at.lt.${staleBefore}`)
 
-  return { gecontroleerd: done, mislukt: failed, resterend: count ?? null, quotum: quotaHit, ms: Date.now() - started }
+  return { gecontroleerd: done, gevolgd: watched.size, gevolgdGecontroleerd: dailyDone, gebeurtenissen, mislukt: failed, resterend: count ?? null, quotum: quotaHit, ms: Date.now() - started }
 }

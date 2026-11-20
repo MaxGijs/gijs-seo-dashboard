@@ -6,11 +6,14 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { BellRing, CalendarClock, CalendarPlus, Check, CheckCircle2, CircleAlert, ExternalLink, LineChart, ListTodo, Newspaper, Play, Plus } from "lucide-react"
+import { BellRing, CalendarClock, CalendarPlus, Check, CheckCircle2, CircleAlert, ExternalLink, Eye, LineChart, ListTodo, Newspaper, Play, Plus, RefreshCw } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
 import { useAlerts } from "@/components/dashboard/Alerts"
 import { useMeasureUpdates } from "@/lib/measureUpdates"
+import { usePageFeed } from "@/lib/pageFeed"
+import { openRefreshes, REFRESH_META } from "@/lib/content/refresh"
+import { EVENT_META } from "@/lib/watch"
 import type { Experiment, Task } from "@/lib/types"
 import { KIND_META } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, gainShort, greeting, num, signedPct, today } from "@/lib/format"
@@ -39,6 +42,9 @@ export default function TodayV2() {
   const content = useContentIdeas()
   const { d: alerts } = useAlerts()
   const updates = useMeasureUpdates(tasks, content.ideas)
+  const feed = usePageFeed()
+  const refreshes = useMemo(() => openRefreshes(content.ideas || []), [content.ideas])
+  const lostPages = feed.items.filter(e => e.event === "uit-index")
   const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [reminding, setReminding] = useState(false)
@@ -73,6 +79,8 @@ export default function TodayV2() {
     if (due.length) parts.push(`${due.length} ${due.length === 1 ? "herinnering" : "herinneringen"}`)
     if (highCount) parts.push(`${highCount} ${highCount === 1 ? "advies" : "adviezen"} met hoge prioriteit`)
     if (openAlerts.length) parts.push(`${openAlerts.length} ${openAlerts.length === 1 ? "melding" : "meldingen"}`)
+    if (refreshes.length) parts.push(`${refreshes.length} ${refreshes.length === 1 ? "pagina die een refresh nodig heeft" : "pagina's die een refresh nodig hebben"}`)
+    if (lostPages.length) parts.push(`${lostPages.length} ${lostPages.length === 1 ? "pagina die uit Google verdween" : "pagina's die uit Google verdwenen"}`)
     if (parts.length) return `Vandaag vragen ${parts.length > 1 ? parts.slice(0, -1).join(", ") + " en " + parts[parts.length - 1] : parts[0]} je aandacht.`
     if (active.length) return `Niets dringends. Werk verder aan je ${active.length} lopende ${active.length === 1 ? "taak" : "taken"}.`
     return toReview.length ? "Niets dringends. Er liggen adviezen klaar om te beoordelen." : "Alles is beoordeeld. Nieuwe data komt elke nacht binnen."
@@ -83,7 +91,7 @@ export default function TodayV2() {
     <div className="v2 font-sans text-ink">
       {/* Kop: wat zie ik, is het goed, wat doe ik nu (zie docs/DESIGN.md) */}
       <PageHeader title="Vandaag"
-        status={loading ? null : { tone: due.length || highCount || openAlerts.length ? "attention" : "good", text: summary }}
+        status={loading ? null : { tone: due.length || highCount || openAlerts.length || refreshes.length || lostPages.length ? "attention" : "good", text: summary }}
         sub={<>{greeting()}{first ? `, ${first}` : ""}. Het is {dateLong(today())}.{!loading && overview.length > 0 && <> Laatste 28 dagen: <b>{num(clicks)}</b> klikken{clickDelta !== null && <> ({signedPct(clickDelta)})</>} en <b>{num(impressions)}</b> vertoningen in Google.</>}</>}
         actions={<>
           <Button variant="outline" size="sm" onClick={() => setReminding(true)}><BellRing />Herinnering</Button>
@@ -158,6 +166,35 @@ export default function TodayV2() {
           </Card>
 
           {/* Lopend werk */}
+          {/* Pagina's die een refresh nodig hebben: blijven staan tot iemand ze behandelt */}
+          {!loading && refreshes.length > 0 && (
+            <Card aria-labelledby="v2-refresh" className="border-amber/35">
+              <CardHeader>
+                <div>
+                  <CardTitle id="v2-refresh" className="flex items-center gap-2"><RefreshCw className="size-4 text-amber" />Refresh nodig</CardTitle>
+                  <CardDescription>Inhoud die verouderd is of minder goed scoort. Blijft staan tot je hem bijwerkt of afwijst.</CardDescription>
+                </div>
+              </CardHeader>
+              <ul className="divide-y divide-line-soft border-t border-line-soft">
+                {refreshes.slice(0, 5).map(r => (
+                  <li key={r.id} data-refresh={r.kind}>
+                    <button onClick={() => router.push(`/content/${r.id}?van=vandaag`)} className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 px-5 py-3 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
+                      <span className="min-w-0">
+                        <span className="block text-xs text-muted">{REFRESH_META[r.kind].label}{r.page ? ` · ${r.page}` : ""}</span>
+                        <span className="block truncate text-sm font-semibold text-heading">{r.title}</span>
+                      </span>
+                      <span className="text-xs whitespace-nowrap text-subtle">sinds {dateShort(r.created_at)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <CardFooter className="justify-between text-[13px]">
+                <span className="text-muted">{refreshes.length > 5 ? `En nog ${refreshes.length - 5}.` : ""}</span>
+                <Link href="/content" className={buttonVariants({ variant: "link", size: "sm" })}>Naar Contentkansen</Link>
+              </CardFooter>
+            </Card>
+          )}
+
           <Card aria-labelledby="v2-lopend">
             <CardHeader>
               <div>
@@ -214,6 +251,40 @@ export default function TodayV2() {
                 ))}
               </ul>
               {updates.items.length > 5 && <CardFooter className="text-[13px] text-muted">En nog {updates.items.length - 5}.</CardFooter>}
+            </Card>
+          )}
+
+          {/* Gevolgde pagina's: wat Google deed met pagina's die je net hebt aangepast of gepubliceerd */}
+          {feed.items.length > 0 && (
+            <Card aria-labelledby="v2-volgen" className={lostPages.length ? "border-danger/25" : "border-accent-line"}>
+              <CardHeader>
+                <div>
+                  <CardTitle id="v2-volgen" className="flex items-center gap-2"><Eye className="size-4 text-accent" />Gevolgde pagina&apos;s</CardTitle>
+                  <CardDescription>{feed.items.length} {feed.items.length === 1 ? "nieuwe stap" : "nieuwe stappen"} bij Google. {feed.watchedCount} pagina&apos;s worden elke nacht gecontroleerd.</CardDescription>
+                </div>
+                {feed.items.length > 1 && <Button variant="ghost" size="sm" onClick={feed.dismissAll}><Check />Alles gezien</Button>}
+              </CardHeader>
+              <ul className="divide-y divide-line-soft border-t border-line-soft">
+                {feed.items.slice(0, 6).map(e => {
+                  const ref = feed.watch[e.path]?.find(r => r.ref)
+                  const open = () => ref?.kind === "content" ? router.push(`/content/${ref.ref}?van=vandaag`) : ref?.ref ? openTask(ref.ref) : router.push(`/advies`)
+                  const good = EVENT_META[e.event].good
+                  return (
+                    <li key={`${e.path}${e.event}${e.at}`} className="flex items-start gap-1 pr-2" data-event={e.event}>
+                      <button onClick={open} className="min-w-0 flex-1 cursor-pointer px-5 py-2.5 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
+                        <span className="flex items-center gap-2">
+                          <Badge variant={good ? "accent" : "danger"}>{EVENT_META[e.event].label}</Badge>
+                          <span className="text-xs text-subtle">{dateShort(e.at)}</span>
+                        </span>
+                        <span className="mt-1 block truncate text-sm font-semibold text-heading">{e.path}</span>
+                        <span className="block text-xs text-muted">{EVENT_META[e.event].text(e)}</span>
+                      </button>
+                      <Button variant="ghost" size="icon" className="mt-2 shrink-0" onClick={() => feed.dismiss(e)} aria-label={`${e.path}: gezien`} title="Gezien"><Check /></Button>
+                    </li>
+                  )
+                })}
+              </ul>
+              {feed.items.length > 6 && <CardFooter className="text-[13px] text-muted">En nog {feed.items.length - 6}.</CardFooter>}
             </Card>
           )}
 

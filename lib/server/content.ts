@@ -21,6 +21,7 @@ import { prettySlug } from "@/lib/pages"
 import { CONTENT_MODEL_VERSION } from "@/lib/content/model"
 import { freshnessDrafts, type NewsRef } from "@/lib/content/freshness"
 import { readPageFacts, refreshPageFacts } from "./freshness"
+import { decayDrafts, mayExpire, type DecayPage } from "@/lib/content/refresh"
 export { buildIdea } from "@/lib/content/build"
 
 // ── Bronnen ─────────────────────────────────────────────────────────────────
@@ -355,8 +356,37 @@ export async function scanContent() {
     actueel = { ...actueel, controleKansen: fresh.length, paginasMetZinnen: facts.filter(f => f.facts.length).length }
   } catch (e: any) { actueel = { fout: e?.message || "actualiteitscontrole mislukt" } }
 
+  // 3c. Refresh nodig: pagina's die duidelijk minder vertoningen krijgen dan de rest van de site.
+  // Niet voor pagina's waar al een bijwerkkans openstaat of die de laatste 56 dagen zijn aangepast
+  // (dan loopt er een meting en hoort een daling daarbij).
+  let refresh: Record<string, unknown> = {}
+  try {
+    const recent = new Date(Date.now() - 56 * dayMs).toISOString().slice(0, 10)
+    const [{ data: pg }, { data: exps }, facts] = await Promise.all([
+      sb.from("seo_pages").select("path, page_type, in_sitemap, http_status, http_final_path, imp_28d, imp_prev_28d, clicks_28d, position_28d").eq("in_sitemap", true),
+      sb.from("seo_experiments").select("page, baseline").gte("changed_at", recent),
+      readPageFacts().catch(() => []),
+    ])
+    const skip = new Set<string>()
+    for (const e of ctx.existing) {
+      const open = !["afgewezen", "verlopen"].includes(e.status) && !(e.status === "gepubliceerd" && (e.published_at || "") < recent)
+      if (open && e.target_page) skip.add(e.target_page)
+    }
+    for (const x of exps || []) for (const p of [x.page, ...((x.baseline?.paths as string[]) || [])]) if (p) skip.add(toPath(p))
+    const titles = new Map(facts.filter(f => f.title).map(f => [f.path, f.title!.split("|")[0].trim()]))
+    const known3 = new Set(ctx.existing.map(e => e.fingerprint))
+    const drafts = decayDrafts((pg || []) as DecayPage[], { skip, titles }).filter(d => !known3.has(d.fingerprint)).map(d => buildIdea(d, ctx))
+      .filter(b => { if ("issues" in b) { rejectedChecks.push(`${b.title}: ${(b as any).issues.join(" ")}`); return false } return true })
+    if (drafts.length) {
+      const { error } = await sb.from("content_ideas").upsert(drafts, { onConflict: "fingerprint", ignoreDuplicates: true })
+      if (error) throw new Error(error.message)
+    }
+    refresh = { nieuweRefreshKansen: drafts.length }
+  } catch (e: any) { refresh = { fout: e?.message || "refresh-controle mislukt" } }
+
   // 4. Onbehandelde actualiteiten die te oud zijn → verlopen
-  const old = ctx.existing.filter(e => e.status === "nieuw" && (e.origin === "actualiteit" || e.origin === "trend")
+  // Verouderde zinnen en dalende pagina's verlopen niet: die blijven staan tot iemand ze behandelt
+  const old = ctx.existing.filter(e => e.status === "nieuw" && (e.origin === "actualiteit" || e.origin === "trend") && mayExpire(e)
     && Math.max(...(e.sources || []).map((s: SourceRef) => (s.date ? new Date(s.date).getTime() : 0))) < Date.now() - MAX_AGE_DAYS * dayMs)
   if (old.length) await sb.from("content_ideas").update({ status: "verlopen", decision_note: `Automatisch gearchiveerd: het nieuws is ouder dan ${MAX_AGE_DAYS} dagen en de kans is niet opgepakt.` }).in("id", old.map(o => o.id))
 
@@ -365,7 +395,7 @@ export async function scanContent() {
     bronnen: status.length, bronnenMislukt: failed.length, berichten: items.length, recent: recent.length,
     relevant: classified.filter(c => c.relevant).length, herbeoordeeld: flips.length, gearchiveerd, webVondsten: webChecked, herbouwd: outdated.length, geblokkeerdDoorControle: rejectedChecks, alOpSite, alOpSiteGearchiveerd: gedekt, nieuweKansen: created + extra.length, samengevoegd: merged, verlopen: old.length,
     ...(failed.length === status.length ? { fout: `Geen enkele bron bereikbaar (${failed[0]?.error})` } : {}),
-    bronStatus: status, actualiteitscontrole: actueel,
+    bronStatus: status, actualiteitscontrole: actueel, refreshControle: refresh,
   }
 }
 

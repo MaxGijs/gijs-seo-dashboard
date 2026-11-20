@@ -240,7 +240,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
     const factor = Math.max(0.5, Math.pow(0.85, list.length))
     out.push({
       key: `content|${k}`, source: "content",
-      title: `Contentkansen ${origin === "actualiteit" ? "uit nieuws" : origin === "zoekdata" ? "uit zoekdata" : origin === "seizoen" ? "uit de seizoenskalender" : origin === "trend" ? "uit webtrends" : "van eigen ideeën"} over ${service === "-" ? "algemene onderwerpen" : service.replace(/-/g, " ")} — ${list.length}× afgewezen`,
+      title: `Contentkansen ${origin === "actualiteit" ? "uit nieuws" : origin === "zoekdata" ? "uit zoekdata" : origin === "seizoen" ? "uit de seizoenskalender" : origin === "trend" ? "uit webtrends" : origin === "prestatie" ? "uit dalende pagina's" : "van eigen ideeën"} over ${service === "-" ? "algemene onderwerpen" : service.replace(/-/g, " ")} — ${list.length}× afgewezen`,
       conclusion: `${list.length}× afgewezen.${tags.size ? ` Meest genoemd: ${[...tags.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, n]) => `${t} (${n}×)`).join(", ")}.` : ""}`,
       evidence: { n: list.length, reasons: [...tags.keys()], items: list.filter(c => c.id && c.title).slice(0, 10).map(c => ({ id: c.id!, title: c.title! })) },
       confidence: list.length >= 6 ? "hoog" : list.length >= 3 ? "middel" : "laag",

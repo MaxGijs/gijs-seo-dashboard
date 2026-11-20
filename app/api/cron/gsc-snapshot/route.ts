@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { google } from "googleapis"
 import { createClient } from "@supabase/supabase-js"
 import { checkHttpStatus, inspectBatch, syncInventory } from "@/lib/server/inventory"
+import { readWatch, recordSearchMilestones } from "@/lib/server/watch"
 import { logged } from "@/lib/server/synclog"
 
 const SITE_URL = "https://www.groeninjestraat.nl/"
@@ -112,7 +113,11 @@ export async function GET(request: Request) {
     await logged("gsc-snapshot", async () => ({ snapshotDate, overview: results.overview, keywords: results.keywords, pages: results.pages, ms: Date.now() - started }))
     try { results.inventaris = await logged("inventaris", () => syncInventory()) } catch (e: any) { results.inventaris = { fout: e.message } }
     try { results.http = await logged("http-controle", () => checkHttpStatus({ budgetMs: 60000 })) } catch (e: any) { results.http = { fout: e.message } }
-    try { results.indexering = await logged("indexering", () => inspectBatch({ budgetMs: 200000, max: 1500 })) } catch (e: any) { results.indexering = { fout: e.message } }
+    // Gevolgde pagina's (open taken, lopende metingen, nieuwe content, kernpagina's buiten Google)
+    // elke nacht; de rest eens per week. Daarna de zoekmijlpalen van gevolgde nieuwe pagina's.
+    const watched = await readWatch().catch(() => new Map())
+    try { results.indexering = await logged("indexering", () => inspectBatch({ budgetMs: 200000, max: 1500, watched: new Set(watched.keys()) })) } catch (e: any) { results.indexering = { fout: e.message } }
+    try { results.volgen = await logged("pagina-volgen", () => recordSearchMilestones(watched)) } catch (e: any) { results.volgen = { fout: e.message } }
 
     return NextResponse.json({ ok: true, ...results })
   } catch (err: any) {

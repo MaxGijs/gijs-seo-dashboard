@@ -227,7 +227,7 @@ export function assessPage(p: PageRow): PageAssessment {
     }
     return {
       status: "niet-geindexeerd", priority: "hoog", monitor: false,
-      reason: `${state}, terwijl de pagina al ${age ?? "?"} dagen bestaat.`,
+      reason: age !== null ? `${state}, terwijl de pagina al ${age} dagen bestaat.` : `${state}. De pagina staat niet meer in de opbouwfase, maar Google heeft hem nog nooit getoond.`,
       next: isCrawledNotIndexed(p.coverage_state)
         ? "Google vond de pagina niet waardevol genoeg: voeg unieke lokale inhoud toe of voeg samen met een verwante pagina."
         : "Versterk interne links naar deze pagina en vraag indexering aan in Search Console.",

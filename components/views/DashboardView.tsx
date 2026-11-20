@@ -2,12 +2,10 @@
 
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import {
-  AlertCircle, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Award, CircleHelp, ExternalLink, Filter, Gauge,
-  LineChart, MapPin, MousePointerClick, Eye, Users, Target, TrendingDown, TrendingUp, Minus, X, Lightbulb, Radio, Hourglass, BookOpenCheck, FileBarChart, Swords, BellRing,
-} from "lucide-react"
+import { AlertCircle, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Award, BellRing, BookOpenCheck, CircleHelp, ExternalLink, Eye, FileBarChart, Filter, Gauge, Hourglass, Lightbulb, LineChart, MapPin, Minus, MousePointerClick, Radio, RefreshCw, Swords, Target, TrendingDown, TrendingUp, Users, X } from "lucide-react"
 import { useTaskGroups, useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
+import { openRefreshes } from "@/lib/content/refresh"
 import { useMeasureUpdates } from "@/lib/measureUpdates"
 import {
   type Compare, type DashboardData, type DashboardQuery, type KeywordItem, type Metric, type PresetPeriod, type TrendItem, type TrendSet,
@@ -236,6 +234,7 @@ function TopActions({ stalled }: { stalled: DashboardData["stalled"] }) {
   const { toReview } = useTaskGroups()
   const content = useContentIdeas()
   const updates = useMeasureUpdates(tasks, content.ideas)
+  const refreshes = openRefreshes(content.ideas || [])
   const top = toReview.filter(t => t.signal.intent !== "merk" && !t.signal.reminder).slice(0, 3)
   const due = tasks.filter(t => t.signal.reminder && t.status === "uitgesteld" && !t.snoozed).length
   if (loading) return <section className="card card-pad page-block"><Skeleton height={18} width="40%" /><div style={{ height: 12 }} /><Skeleton height={60} /></section>
@@ -264,9 +263,10 @@ function TopActions({ stalled }: { stalled: DashboardData["stalled"] }) {
           ))}
         </ol>
       )}
-      {(due > 0 || updates.items.length > 0 || stalled.length > 0) && (
+      {(due > 0 || updates.items.length > 0 || stalled.length > 0 || refreshes.length > 0) && (
         <div className="card-foot inline-links">
           {due > 0 && <Link href="/vandaag"><BellRing aria-hidden />{due} {due === 1 ? "herinnering" : "herinneringen"} voor vandaag</Link>}
+          {refreshes.length > 0 && <Link href="/vandaag"><RefreshCw aria-hidden />{refreshes.length} {refreshes.length === 1 ? "pagina heeft" : "pagina's hebben"} een refresh nodig</Link>}
           {updates.items.length > 0 && <Link href="/vandaag"><LineChart aria-hidden />{updates.items.length} nieuwe {updates.items.length === 1 ? "meetresultaat" : "meetresultaten"}</Link>}
           {stalled.slice(0, 2).map(st => <Link key={st.id} href={st.href}><Hourglass aria-hidden />{st.text}</Link>)}
         </div>

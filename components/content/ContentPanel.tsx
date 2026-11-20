@@ -1,6 +1,7 @@
 "use client"
 
 import Attachments from "@/components/Attachments"
+import PageTimeline from "@/components/panel/PageTimeline"
 import { CONTENT_STEP } from "@/lib/content/useContent"
 import { articleVerdict } from "@/lib/content/verdict"
 import { compare, isPageUpdate, judgeUpdate, nextMilestone, OUTCOME_META, UPDATE_MILESTONES, UPDATE_RULE, type UpdatePoint } from "@/lib/content/update"
@@ -523,6 +524,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                   <p style={{ fontSize: "var(--fs-sm)" }}>Gepubliceerd op {dateNl(idea.published_at)}: <a href={idea.published_url!} target="_blank" rel="noopener noreferrer">{idea.published_url!.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/, "")}</a></p>
                   <ArticleResults idea={idea} all={all} />
                   {!isPageUpdate(idea) && <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>}
+                  <PageTimeline paths={[(idea.published_url || "").replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "").replace(/(.)\/$/, "$1")]} title="Deze pagina bij Google" />
                 </>
               )}
             </section>

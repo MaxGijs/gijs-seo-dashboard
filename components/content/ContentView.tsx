@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingUp } from "lucide-react"
+import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingDown, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge, EmptyState, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
 import { num, pct } from "@/lib/format"
@@ -52,7 +52,7 @@ function sortValue(i: ContentIdea, tab: Tab, key: SortKey): number | string {
 }
 
 const ORIGIN_ICON: Record<Origin, React.ReactNode> = {
-  actualiteit: <Newspaper aria-hidden />, trend: <Globe aria-hidden />, zoekdata: <Search aria-hidden />, seizoen: <CalendarDays aria-hidden />, handmatig: <Lightbulb aria-hidden />,
+  actualiteit: <Newspaper aria-hidden />, trend: <Globe aria-hidden />, zoekdata: <Search aria-hidden />, seizoen: <CalendarDays aria-hidden />, handmatig: <Lightbulb aria-hidden />, prestatie: <TrendingDown aria-hidden />,
 }
 
 export function ago(iso: string | null | undefined) {
