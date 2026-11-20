@@ -709,8 +709,8 @@ function PlanFields({ idea, all, plan, setPlan }: { idea: ContentIdea; all: Cont
   const g = CONTENT_GOALS[plan.goal]
   const sug = suggestThreshold(plan.goal, comparablesFor(idea, all))
   return (
-    <fieldset className="plan-fields">
-      <legend className="field-label">Wanneer is dit artikel geslaagd?</legend>
+    <div className="plan-fields" role="group" aria-labelledby="pl-title">
+      <p className="plan-title" id="pl-title">Wanneer is dit artikel geslaagd?</p>
       <div className="modal-row modal-row-3">
         <div><label className="field-label" htmlFor="pl-goal">Primair doel</label>
           <select id="pl-goal" className="select" value={plan.goal} onChange={e => { const goal = e.target.value as ContentGoal; setPlan({ ...plan, goal, threshold: suggestThreshold(goal, comparablesFor(idea, all)).threshold }) }}>
@@ -720,7 +720,7 @@ function PlanFields({ idea, all, plan, setPlan }: { idea: ContentIdea; all: Cont
         <div><label className="field-label" htmlFor="pl-pred">Verwachting <span className="subtle">(optioneel)</span></label><input id="pl-pred" type="number" min={0} className="input" value={plan.prediction} onChange={e => setPlan({ ...plan, prediction: e.target.value })} /></div>
       </div>
       <p className="field-hint">{g.text} Meetwaarde: {g.metric.toLowerCase()} na {g.window.slice(1)} dagen. Voorgestelde grens: {sug.threshold} ({sug.basis}).</p>
-    </fieldset>
+    </div>
   )
 }
 
