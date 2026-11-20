@@ -10,6 +10,7 @@ import { ArticleResults } from "@/components/content/ContentPanel"
 import type { Experiment } from "@/lib/types"
 import { addDays, dateLong, dateShort, num, pct, pos } from "@/lib/format"
 import { Badge, EmptyState, KindLabel, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
+import AccuracyCard from "@/components/views/AccuracyCard"
 
 type Filter = "alle" | "lopend" | "succesvol" | "niet_succesvol" | "onduidelijk"
 
@@ -179,6 +180,7 @@ export default function ExperimentsView() {
         </div>
       ) : (
         <>
+          <AccuracyCard />
           <Learned experiments={experiments} />
           <div className="toolbar">
             <div className="toolbar-left" role="group" aria-label="Filter op resultaat">

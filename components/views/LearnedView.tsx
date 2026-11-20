@@ -8,7 +8,9 @@ import { describeMatch, type Lesson, type LessonRejection } from "@/lib/learning
 import { columnOf } from "@/lib/workflow"
 import type { Task } from "@/lib/types"
 import { dateShort } from "@/lib/format"
-import { Alert, Badge, EmptyState, PageHeader, Skeleton } from "@/components/ui"
+import { Alert, Badge, EmptyState, PageHeader, Skeleton, StatusLine } from "@/components/ui"
+import { useAccuracy } from "@/components/views/AccuracyCard"
+import { accuracySentence } from "@/lib/accuracy"
 
 interface LogRow { id: number; lesson_key: string; at: string; action: string; detail: string | null; by: string | null }
 interface Data { lessons: Lesson[]; log: LogRow[]; stats: { lopend: number; afgerond: number; afgewezen: number; gepubliceerd: number } | null }
@@ -67,6 +69,8 @@ export default function LearnedView() {
 
       {err && <Alert tone="error" title="Lessen konden niet worden geladen">{err}</Alert>}
 
+      <AccuracySummary />
+
       <div className="learn-stats">
         <Stat label="Afgeronde metingen" value={s?.afgerond} />
         <Stat label="Lopende metingen" value={s?.lopend} />
@@ -109,6 +113,18 @@ export default function LearnedView() {
         </section>
       )}
     </>
+  )
+}
+
+// Hoe goed klopt de voorspelling? Eén regel, met de details op Experimenten
+function AccuracySummary() {
+  const a = useAccuracy()
+  if (!a.rows.length) return null
+  return (
+    <section className="card card-pad accuracy acc-summary" aria-label="Nauwkeurigheid van de voorspelling">
+      <StatusLine tone={a.level === "geen" || a.level === "te-weinig" ? "info" : (a.hitRate ?? 0) >= 0.5 && (a.skill ?? 0) > 0 ? "good" : "attention"}>Voorspelling: {accuracySentence(a)}</StatusLine>
+      <Link href="/experimenten" className="btn btn-ghost btn-sm">Voorspeld tegen gemeten bekijken<ArrowRight aria-hidden /></Link>
+    </section>
   )
 }
 
