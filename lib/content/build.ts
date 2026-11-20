@@ -12,7 +12,7 @@ import {
   commercialFor, consistencyIssues, CONTENT_MODEL_VERSION, ctaFor, defaultAngle, formatFor, GENERAL_TERMS, priorityFor,
   PROVINCES, regionNote, regionsIn, risksFor, SCAN_SERVICE, scoreIdea, SERVICE_TERMS, serviceLabel, servicePage, TITLE_MAX,
 } from "./model"
-import { feedbackEffects, noteOf, REASONS, type Learned } from "./feedback"
+import { explainedRejection, feedbackEffects, noteOf, REASONS, type Learned } from "./feedback"
 import { coverageText, type Coverage } from "./coverage"
 
 export const dayMs = 86400000
@@ -204,7 +204,8 @@ function rejectedIds(ctx: Ctx, service: string | null, origin: Origin): string[]
   // Teruggedraaide les ("Wat hebben we geleerd?"): afwijzingen van deze soort tellen niet meer mee
   if (ctx.ignoreRejections?.has(`${service || "-"}|${origin}`)) return []
   // Afgewezen omdat het al op de site staat: zegt niets over het onderwerp zelf (daar is de controle "staat al op de site" voor)
-  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin && !REASONS.dubbel.pattern.test(noteOf(e as any))).map(e => e.id)
+  // Met een toelichting waarin een reden of onderwerp herkend wordt: telt alleen via die reden of dat onderwerp (zie feedback.ts)
+  return ctx.existing.filter(e => e.status === "afgewezen" && e.service === service && e.origin === origin && !REASONS.dubbel.pattern.test(noteOf(e as any)) && !explainedRejection(e as any)).map(e => e.id)
 }
 
 // Plaatsnaam in een zoekvraag (langste match eerst, zodat "hof van twente" wint van "twente")

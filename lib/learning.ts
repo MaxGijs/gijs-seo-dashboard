@@ -146,6 +146,7 @@ export interface ExperimentFact { outcome: "succesvol" | "niet_succesvol" | "ond
 export interface DecisionFact { kind: string; intent?: string; status: string; note?: string | null }
 export interface ContentFact { id?: string; title?: string; service: string | null; origin: string; status: string; tags: string[]; format?: string | null; clicks30?: number | null
   alreadyOnSite?: boolean  // afgewezen omdat het al op de site staat: zegt niets over het onderwerp zelf
+  explained?: boolean      // afgewezen met een toelichting waarin een reden of onderwerp herkend is: telt via je feedback, niet voor de hele dienst
   advice?: string | null   // "bijwerken" = bestaande pagina; telt niet mee in vergelijkingen tussen artikelen
   views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 30 dagen
   // Kenmerken van de eigen tekst (uit de ingeleverde PDF/Word)
@@ -229,7 +230,8 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
   }
 
   // 3. Content: afwijzingen per dienst en herkomst, en (later) resultaten per format
-  const cRej = input.content.filter(c => c.status === "afgewezen" && !c.alreadyOnSite)
+  // Alleen afwijzingen zonder herkenbare toelichting: met toelichting leert het systeem de genoemde reden of het onderwerp
+  const cRej = input.content.filter(c => c.status === "afgewezen" && !c.alreadyOnSite && !c.explained)
   const cGroups = new Map<string, ContentFact[]>()
   for (const c of cRej) cGroups.set(`${c.service || "-"}|${c.origin}`, [...(cGroups.get(`${c.service || "-"}|${c.origin}`) || []), c])
   for (const [k, list] of cGroups) {

@@ -9,13 +9,19 @@
 import { SERVICE_TERMS, type ContentIdea, type Impact, type Origin } from "./model"
 import type { Lesson } from "@/lib/learning"
 
-export type ReasonCode = "doelgroep" | "zoekvraag" | "actualiteit" | "regio" | "kortlopend" | "dubbel" | "onjuist" | "toon"
+export type ReasonCode = "doelgroep" | "bedrijfsnieuws" | "zoekvraag" | "actualiteit" | "regio" | "kortlopend" | "dubbel" | "onjuist" | "toon"
 
 export const REASONS: Record<ReasonCode, { label: string; pattern: RegExp; effect: string; applies: boolean }> = {
   doelgroep: {
     label: "Geen aankoopbeslissing of verkeerde doelgroep",
     pattern: /(aankoop|koop)beslissing|nieuwszoekers?|gedupeerd|verkeerde doelgroep|niet voor (huis|woning)eigenaren|huurders|installateurs|ondernemers|conversie(kans)?|energiescan (wil(len)? )?aanvragen|commerci[ëe]le (zoek)?intentie|geen klant(en)?|trekt (vooral )?(de )?verkeerde/i,
     effect: "Nieuwe kansen over hetzelfde soort onderwerp (zelfde herkomst en soort gevolgen) krijgen een lagere score.",
+    applies: true,
+  },
+  bedrijfsnieuws: {
+    label: "Bedrijfsnieuws, geen adviesonderwerp",
+    pattern: /faillis|failliet|curator|(miljoenen)?claim|rechtszaak|rechter|aanklacht|aangeklaagd|fraude|overname|aandeelhouder|beursgang|bedrijfsnieuws|nieuwsforum|nieuwssite|geen advies(onderwerp|vraag)|adviesbureau/i,
+    effect: "Nieuwe nieuwskansen over faillissementen, claims, rechtszaken of overnames krijgen een lagere score, bij elke dienst. Het onderwerp zelf (bijvoorbeeld zonnepanelen) blijft gewoon relevant.",
     applies: true,
   },
   zoekvraag: {
@@ -75,6 +81,11 @@ const NEVER_RAW = [
   "andere", "echter", "daarom", "hierover", "daarover", "gewoon", "zeker", "misschien", "precies", "volgens", "tussen", "zonder", "tegen",
   "omdat", "wanneer", "waarbij", "daarnaast", "sinds", "tijdens", "alleen", "steeds", "weinig", "minder", "meer", "groot", "klein", "zwakke",
   "sterke", "sterk", "artikelen", "pagina", "paginas", "klanten", "klant", "bedrijf", "bedrijven", "berichten", "bericht", "nieuwsbericht",
+  // Namen van nieuwsbronnen: waar iets stond zegt niets over het onderwerp
+  "omroep", "tubantia", "gelderlander", "stentor", "destentor", "nieuwsuur", "telegraaf", "volkskrant", "trouw", "parool", "rijksoverheid",
+  "milieucentraal", "omroepgelderland", "rtvutrecht", "omroepflevoland", "dagblad", "nieuwsblad", "persbericht", "bericht", "berichtgeving",
+  // Gewone woorden uit een toelichting
+  "toelichting", "oordeel", "vermelden", "particuliere", "eigenlijk", "zwakke", "trekken", "aanvragen",
 ]
 
 const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -146,6 +157,19 @@ export function learnFromFeedback(ideas: IdeaLike[], ignore: Set<string> = new S
   return out
 }
 
+// Nieuws over bedrijven in plaats van over een keuze van de huiseigenaar
+export const BUSINESS_NEWS = /faillis|failliet|curator|claim|rechtszaak|rechter|aanklacht|aangeklaagd|fraude|overname|overgenomen|aandeelhouder|beursgang|beursgenoteerd|reorganisatie|ontslagen/i
+
+// Heeft deze afwijzing een toelichting waar het dashboard een reden of onderwerp in herkent?
+// Dan telt de afwijzing alleen voor die reden of dat onderwerp, niet voor de hele dienst:
+// "zonnepanelen" blijft relevant als je een claim tegen een zonnepanelenbedrijf afwijst.
+export function explainedRejection(i: IdeaLike): boolean {
+  const note = noteOf(i)
+  if (!note) return false
+  const r = readNote(note, ideaText(i))
+  return r.reasons.some(x => x.code !== "dubbel") || r.topics.length > 0
+}
+
 export const factorFor = (n: number) => Math.max(0.5, Math.pow(0.85, n))
 export const nlF = (f: number) => f.toFixed(2).replace(/0$/, "").replace(".", ",")
 
@@ -166,6 +190,8 @@ export function feedbackEffects(l: Learned | undefined, d: { subject: string; su
   if (zv && d.demand < 10) matches.push({ label: "geen eigen zoekvraag", ids: ids(zv.quotes) })
   const reg = r.get("regio")
   if (reg && news && !d.regions.length) matches.push({ label: "landelijk nieuws", ids: ids(reg.quotes) })
+  const biz = r.get("bedrijfsnieuws")
+  if (biz && news && BUSINESS_NEWS.test(`${d.subject} ${d.summary || ""} ${d.whyNow || ""}`)) matches.push({ label: "bedrijfsnieuws (faillissement, claim, rechtszaak of overname)", ids: ids(biz.quotes) })
   const act = r.get("actualiteit")
   if (act && news && d.demand < 10) actWeight = factorFor(act.n)
   return { matches, actWeight }
@@ -208,6 +234,7 @@ export function briefingNotes(l: Learned): string[] {
   add("toon", "Houd de toon rustig en oplossingsgericht, niet sensationeel")
   add("dubbel", "Controleer eerst of een bestaande pagina dit al behandelt; verwijs daarnaar in plaats van te herhalen")
   add("doelgroep", "Schrijf voor huiseigenaren die een keuze moeten maken, niet voor nieuwszoekers")
+  add("bedrijfsnieuws", "Gijs is een adviesbureau, geen nieuwssite: schrijf over de keuze of het gevolg voor de huiseigenaar, niet over het bedrijf zelf")
   return out
 }
 

@@ -2,7 +2,7 @@
 // en op verzoek vanaf de pagina "Wat hebben we geleerd?".
 
 import { getSupabase } from "./guard"
-import { feedbackLessons, learnFromFeedback, noteOf, REASONS } from "@/lib/content/feedback"
+import { explainedRejection, feedbackLessons, learnFromFeedback, noteOf, REASONS } from "@/lib/content/feedback"
 import { computeLessons, featuresOf, type ContentFact, type DecisionFact, type ExperimentFact, type Lesson } from "@/lib/learning"
 
 export async function recomputeLessons(by = "systeem") {
@@ -35,7 +35,7 @@ export async function recomputeLessons(by = "systeem") {
       label: `${u.page}: pagina bijgewerkt (contentkans "${i.title}")`.slice(0, 160),
     })
   }
-  const content: ContentFact[] = (ideas || []).map(i => ({ id: i.id, title: i.title, service: i.service, origin: i.origin, status: i.status, advice: i.advice, alreadyOnSite: i.status === "afgewezen" && REASONS.dubbel.pattern.test(noteOf(i)), tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, views30: i.evals?.d30?.ga4?.views ?? null, leads30: i.evals?.d30?.ga4 ? (i.evals.d30.ga4.measurement === "ok" ? i.evals.d30.ga4.requests ?? 0 : 0) + (i.evals.d30.ga4.contacts ?? 0) : null, engagement30: i.evals?.d30?.ga4?.engagementSec ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
+  const content: ContentFact[] = (ideas || []).map(i => ({ id: i.id, title: i.title, service: i.service, origin: i.origin, status: i.status, advice: i.advice, alreadyOnSite: i.status === "afgewezen" && REASONS.dubbel.pattern.test(noteOf(i)), explained: i.status === "afgewezen" && explainedRejection(i as any), tags: (i.feedback || []).map((f: any) => f.tag), format: i.format, clicks30: i.evals?.d30?.clicks ?? null, views30: i.evals?.d30?.ga4?.views ?? null, leads30: i.evals?.d30?.ga4 ? (i.evals.d30.ga4.measurement === "ok" ? i.evals.d30.ga4.requests ?? 0 : 0) + (i.evals.d30.ga4.contacts ?? 0) : null, engagement30: i.evals?.d30?.ga4?.engagementSec ?? null, text: i.text_check?.readable ? i.text_check.features ?? null : null }))
 
   // Plus: lessen uit wat medewerkers zelf schrijven bij een afwijzing
   const drafts = [...computeLessons({ experiments, decisions, content }), ...feedbackLessons(learnFromFeedback((ideas || []) as any[]))]
