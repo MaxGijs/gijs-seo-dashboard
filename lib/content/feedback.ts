@@ -86,6 +86,8 @@ const NEVER_RAW = [
   "milieucentraal", "omroepgelderland", "rtvutrecht", "omroepflevoland", "dagblad", "nieuwsblad", "persbericht", "bericht", "berichtgeving",
   // Gewone woorden uit een toelichting
   "toelichting", "oordeel", "vermelden", "particuliere", "eigenlijk", "zwakke", "trekken", "aanvragen",
+  // Woorden uit de vaste zinnen die het systeem zelf schrijft
+  "subsidienieuws", "huiseigenaren", "verduurzamen", "uitleggen", "aanleiding", "publiceerde",
 ]
 
 const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -123,7 +125,10 @@ export function readNote(raw: string, ideaText: string): ReadNote {
 }
 
 type IdeaLike = Pick<ContentIdea, "id" | "title" | "status" | "origin"> & Partial<Pick<ContentIdea, "summary" | "why_now" | "feedback" | "impact" | "decision_note" | "regions">>
-export const ideaText = (i: Partial<Pick<ContentIdea, "title" | "summary" | "why_now">>) => `${i.title || ""} ${i.summary || ""} ${i.why_now || ""}`
+// Tekst waarin onderwerpen gezocht worden: titel en samenvatting van de kans. "Waarom nu" niet bij
+// automatische kansen: daar staan zinnen die het systeem zelf schrijft ("Subsidienieuws leidt direct
+// tot zoekvragen"), en een woord daaruit is geen onderwerp van het nieuws.
+export const ideaText = (i: Partial<Pick<ContentIdea, "title" | "summary" | "why_now" | "origin">>) => `${i.title || ""} ${i.summary || ""}${i.origin === "handmatig" ? ` ${i.why_now || ""}` : ""}`
 export const noteOf = (i: IdeaLike) => [...(i.feedback || []).map(f => f.note).filter(Boolean), i.decision_note].filter(Boolean).join(" ").trim()
 
 export interface Learned {
@@ -179,7 +184,7 @@ export function feedbackEffects(l: Learned | undefined, d: { subject: string; su
   const matches: { label: string; ids: string[] }[] = []
   let actWeight = 1
   if (!l) return { matches, actWeight }
-  const text = new Set(words(`${d.subject} ${d.summary || ""} ${d.whyNow || ""}`).map(stem))
+  const text = new Set(words(`${d.subject} ${d.summary || ""}${d.origin === "handmatig" ? ` ${d.whyNow || ""}` : ""}`).map(stem))
   const ids = (q: { id: string }[]) => [...new Set(q.map(x => x.id))]
   for (const [st, t] of l.topics) if (text.has(st)) matches.push({ label: `onderwerp "${t.word}"`, ids: ids(t.quotes) })
   const news = d.origin === "actualiteit" || d.origin === "trend"
