@@ -6,6 +6,7 @@ import { WorkspaceProvider, useWorkspace } from "@/lib/workspace"
 import Sidebar from "./Sidebar"
 import SearchBox from "./SearchBox"
 import AdvicePanel from "@/components/panel/AdvicePanel"
+import RunningWarningDialog from "@/components/views/RunningWarningDialog"
 import { Alert, Toasts } from "@/components/ui"
 import { handleSignIn } from "@/app/actions"
 
@@ -73,6 +74,7 @@ export default function AppShell({ user, children }: { user: User; children: Rea
         </div>
       </div>
       <AdvicePanel />
+      <RunningWarningDialog />
       <Toasts />
     </WorkspaceProvider>
   )

@@ -125,7 +125,8 @@ export function mergeTasks(signals: Signal[], records: AdviceRecord[], experimen
   for (const s of signals) {
     // Actuele cijfers, maar de koppeling aan een hoofdkaart komt uit de opgeslagen kaart
     const rec = recMap.get(s.key)
-    tasks.push(make(rec?.status === "samengevoegd" ? { ...s, mergedInto: rec.snapshot?.mergedInto, mergedFrom: rec.snapshot?.mergedFrom } : s, rec, true))
+    const groupTitle = rec?.snapshot?.groupTitle ? { groupTitle: rec.snapshot.groupTitle } : {}
+    tasks.push(make(rec?.status === "samengevoegd" ? { ...s, mergedInto: rec.snapshot?.mergedInto, mergedFrom: rec.snapshot?.mergedFrom } : { ...s, ...groupTitle }, rec, true))
     seen.add(s.key)
   }
   for (const r of records) {
@@ -157,3 +158,13 @@ export function isVisible(task: Task) {
 }
 
 export const PRIORITY_ORDER = { hoog: 0, middel: 1, laag: 2 } as const
+
+// ── Samengevoegde groep: naam en onderdelen ─────────────────────────────────
+// Met een eigen groepsnaam staat de kaart onder die naam, met alle onderdelen (zoekwoord en pagina) eronder.
+export const groupName = (t: Task) => (t.merged?.length && t.signal.groupTitle ? t.signal.groupTitle : null)
+export const memberLabel = (t: Task) => {
+  const s = t.signal
+  if (s.query) return s.page ? `"${s.query}" · ${s.page}` : `"${s.query}"`
+  return s.page && s.kind !== "eigen" ? s.page : s.page ? `${s.headline} · ${s.page}` : s.headline
+}
+export const groupMembers = (t: Task) => [t, ...(t.merged || [])]

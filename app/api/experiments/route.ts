@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { randomUUID } from "crypto"
 import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard"
 import { updateTry } from "@/lib/content/update"
 import type { RouteTry } from "@/lib/routes"
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { advice_key, description, baseline, query, page, hypothesis, target_pages, target_queries, predicted } = body
+    const groupTitle = typeof body.group_title === "string" && body.group_title.trim() ? body.group_title.trim().slice(0, 140) : null
     if (!advice_key || !description?.trim() || !baseline) {
       return NextResponse.json({ error: "advice_key, description en baseline zijn verplicht" }, { status: 400 })
     }
@@ -52,11 +54,14 @@ export async function POST(request: Request) {
     const today = new Date().toISOString().split("T")[0]
     // Geschiktheidscontrole, soort en familie (bij een fout: gewoon als experiment vastleggen)
     const start = await prepareStart({ advice_key, description: description.trim(), baseline, query: query ?? null, page: page ?? null }, today).catch(() => null)
+    // Eigen groepsnaam (samengevoegde kaarten) gaat voor de automatisch bedachte familienaam
+    if (start && groupTitle) { start.family_id = start.family_id || randomUUID(); start.family_title = groupTitle; if (start.familyRoot) start.familyRoot.family_title = groupTitle }
     if (start?.familyRoot) await getSupabase().from("seo_experiments").update({ family_id: start.family_id, family_title: start.familyRoot.family_title }).or(`id.eq.${start.familyRoot.id},family_id.eq.${start.family_id}`)
+    else if (start?.family_id && groupTitle) await getSupabase().from("seo_experiments").update({ family_title: groupTitle }).eq("family_id", start.family_id)
     const { data, error } = await getSupabase()
       .from("seo_experiments")
       .insert({
-        ...(start ? { kind: start.kind, suitability: start.suitability, family_id: start.family_id, family_title: start.family_title } : {}),
+        ...(start ? { kind: start.kind, suitability: start.suitability, family_id: start.family_id, family_title: start.family_title } : groupTitle ? { family_id: randomUUID(), family_title: groupTitle } : {}),
         advice_key,
         description: description.trim(),
         baseline,
@@ -73,6 +78,41 @@ export async function POST(request: Request) {
     if (error) throw error
 
     return NextResponse.json({ ok: true, experiment: data })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
+// PATCH /api/experiments — naam van een familie (groep) wijzigen
+// Body: { family_id, family_title } of { advice_keys: [...], family_title } (vanuit een samengevoegde kaart).
+// Bij advice_keys komen metingen van die kaarten zonder familie in dezelfde familie: het was één gezamenlijke wijziging.
+export async function PATCH(request: Request) {
+  const guard = await requireUser()
+  if (guard.error) return guard.error
+  if (!supabaseConfigured()) return NextResponse.json({ error: "Opslag niet geconfigureerd" }, { status: 500 })
+  try {
+    const body = await request.json()
+    const title = typeof body.family_title === "string" ? body.family_title.trim().slice(0, 140) : ""
+    if (!title) return NextResponse.json({ error: "family_title is verplicht" }, { status: 400 })
+    const sb = getSupabase()
+    if (typeof body.family_id === "string" && body.family_id) {
+      const { data, error } = await sb.from("seo_experiments").update({ family_title: title }).eq("family_id", body.family_id).select()
+      if (error) throw error
+      if (!data?.length) return NextResponse.json({ error: "Familie niet gevonden" }, { status: 404 })
+      return NextResponse.json({ ok: true, rows: data })
+    }
+    const keys = Array.isArray(body.advice_keys) ? body.advice_keys.filter((k: unknown) => typeof k === "string").slice(0, 100) : []
+    if (!keys.length) return NextResponse.json({ error: "family_id of advice_keys is verplicht" }, { status: 400 })
+    const { data: rows, error } = await sb.from("seo_experiments").select("id, family_id").in("advice_key", keys)
+    if (error) throw error
+    if (!rows?.length) return NextResponse.json({ ok: true, rows: [] })
+    const families = [...new Set(rows.map(r => r.family_id).filter(Boolean))] as string[]
+    const target = families[0] || randomUUID()
+    const loose = rows.filter(r => !r.family_id).map(r => r.id)
+    if (loose.length) { const { error: e1 } = await sb.from("seo_experiments").update({ family_id: target, family_title: title }).in("id", loose); if (e1) throw e1 }
+    if (families.length) { const { error: e2 } = await sb.from("seo_experiments").update({ family_title: title }).in("family_id", families); if (e2) throw e2 }
+    const { data } = await sb.from("seo_experiments").select("*").in("family_id", [...new Set([target, ...families])])
+    return NextResponse.json({ ok: true, rows: data || [] })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }

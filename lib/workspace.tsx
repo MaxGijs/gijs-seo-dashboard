@@ -6,7 +6,8 @@ import { ROUTE_LABEL, toTries, type RouteTry } from "./routes"
 import { buildSiteAdvice, planFor, type SiteAdvice } from "./siteadvice"
 import { buildCtrModel, type CtrModel } from "./ctr"
 import { buildAdhocSignal, signalKey, toPath } from "./signals"
-import { isVisible, mergeTasks } from "./workflow"
+import { columnOf, isVisible, mergeTasks } from "./workflow"
+import { runningMeasurements, type RunningHit } from "./running"
 import { today } from "./format"
 import type { PageRow } from "./pages"
 import type { Lesson } from "./learning"
@@ -62,7 +63,11 @@ export interface StatusOptions {
     targetQueries?: string[]
     predicted?: { gain: number | null; low: number | null; high: number | null; metric: string } | null
   }
+  ignoreRunning?: boolean       // waarschuwing over een lopende meting al gezien
 }
+
+// Waarschuwing: kaart gaat naar Gepland of In uitvoering terwijl er op dezelfde pagina of hetzelfde zoekwoord al een meting loopt
+export interface RunningWarning { task: Task; to: Status; hits: RunningHit[] }
 
 export interface NewTask {
   title: string
@@ -126,8 +131,11 @@ interface WorkspaceValue {
   decideSiteAdvice: (a: SiteAdvice, decision: "ingepland" | "afgewezen" | "later" | "gezien" | "terug", note?: string) => Promise<boolean>
   undoExecution: (task: Task, status: Status) => Promise<boolean>
   // Kaarten samenvoegen tot één opdracht (en weer splitsen). Telt niet als afwijzing.
-  mergeTasks: (main: Task, others: Task[]) => Promise<boolean>
+  mergeTasks: (main: Task, others: Task[], groupTitle?: string | null) => Promise<boolean>
   splitTask: (child: Task) => Promise<boolean>
+  setGroupTitle: (main: Task, title: string | null) => Promise<boolean>
+  runningWarning: RunningWarning | null
+  answerRunningWarning: (goOn: boolean) => void
   setGoal: (task: Task, goal: "seo" | "conversie" | "overig") => Promise<boolean>
   addTask: (input: NewTask) => Promise<string | null>
   openTask: (key: string, intent?: PanelIntent) => void
@@ -181,6 +189,10 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [listWindow, setListWindow] = useState<{ startDate: string; endDate: string } | null>(null)
   const [records, setRecords] = useState<AdviceRecord[]>([])
   const [experiments, setExperiments] = useState<Experiment[]>([])
+  const experimentsRef = useRef<Experiment[]>([])
+  experimentsRef.current = experiments
+  const [runningWarning, setRunningWarning] = useState<RunningWarning | null>(null)
+  const runningResolve = useRef<((goOn: boolean) => void) | null>(null)
   const [contentTries, setContentTries] = useState<RouteTry[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [checks, setChecks] = useState<DataCheck[]>([])
@@ -376,6 +388,14 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [keywords, prevKeywords, pages, overview, prevOverview]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setStatus = useCallback(async (task: Task, to: Status, opts: StatusOptions = {}) => {
+    if (!opts.ignoreRunning && columnOf(task.status) === "beoordelen" && (to === "goedgekeurd" || to === "in_uitvoering")) {
+      const hits = runningMeasurements(task, experimentsRef.current)
+      if (hits.length) {
+        const goOn = await new Promise<boolean>(resolve => { runningResolve.current = resolve; setRunningWarning({ task, to, hits }) })
+        setRunningWarning(null)
+        if (!goOn) return false
+      }
+    }
     const snapshot: Signal = { ...task.signal }
     try {
       const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
@@ -405,6 +425,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
             target_pages: opts.experiment.targetPages,
             target_queries: opts.experiment.targetQueries,
             predicted: opts.experiment.predicted ?? null,
+            // Eigen groepsnaam van samengevoegde kaarten wordt de naam van de familie in Experimenten
+            group_title: task.merged?.length && task.signal.groupTitle ? task.signal.groupTitle : null,
             query: task.signal.query ?? null,
             // Bij een zoekwoord met doelpagina meten we de zoekwoord-paginacombinatie
             page: (opts.experiment.baseline.targetPage as string | undefined) ?? (task.signal.kind === "dubbel" ? task.signal.page ?? null : task.signal.query ? null : task.signal.page ?? null),
@@ -588,7 +610,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [tasks, setStatus, addTask, toast])
 
   // Eén record opslaan zonder bijwerkingen (gebruikt door samenvoegen en splitsen)
-  const saveRecord = useCallback(async (key: string, signal: Signal, status: Status, extra: { note?: string | null; owner?: string | null } = {}) => {
+  const saveRecord = useCallback(async (key: string, signal: Signal, status: Status, extra: { note?: string | null; owner?: string | null; snooze_until?: string | null } = {}) => {
     const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ advice_key: key, advice_title: `${signal.headline} — ${signal.title}`, advice_type: signal.legacyType, status, snapshot: signal, ...extra }),
@@ -597,18 +619,23 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     return res.row
   }, [])
 
-  const mergeTasksInto = useCallback(async (main: Task, others: Task[]) => {
+  const mergeTasksInto = useCallback(async (main: Task, others: Task[], groupTitle?: string | null) => {
     try {
-      // De hoofdkaart krijgt een eigen record, zodat hij blijft bestaan als het signaal later wegvalt
-      if (!records.some(r => r.advice_key === main.key)) await saveRecord(main.key, main.signal, main.status, { note: main.note })
+      // De hoofdkaart krijgt een eigen record, zodat hij blijft bestaan als het signaal later wegvalt.
+      // Een eigen groepsnaam staat op de hoofdkaart.
+      const title = groupTitle === undefined ? main.signal.groupTitle : groupTitle?.trim().slice(0, 140) || undefined
+      if (!records.some(r => r.advice_key === main.key) || title !== main.signal.groupTitle) {
+        const { groupTitle: _g, ...rest } = main.signal
+        await saveRecord(main.key, title ? { ...rest, groupTitle: title } : rest, main.status, { note: main.note, owner: main.owner, snooze_until: main.snoozeUntil })
+      }
       // Kaarten die zelf al samengevoegd waren, gaan met hun onderdelen mee naar de nieuwe hoofdkaart
       const all = others.flatMap(o => [o, ...(o.merged || [])]).filter(o => o.key !== main.key)
       for (const o of all) {
-        const { mergedInto: _a, mergedFrom: _b, ...clean } = o.signal
+        const { mergedInto: _a, mergedFrom: _b, groupTitle: _c, ...clean } = o.signal
         const before = o.status === "samengevoegd" ? o.signal.mergedFrom || "nieuw" : o.status
         await saveRecord(o.key, { ...clean, mergedInto: main.key, mergedFrom: before }, "samengevoegd", { note: o.note })
       }
-      toast(`${all.length} ${all.length === 1 ? "kaart" : "kaarten"} samengevoegd met ${main.signal.query ? `"${main.signal.query}"` : main.signal.headline}`)
+      toast(`${all.length} ${all.length === 1 ? "kaart" : "kaarten"} samengevoegd ${title ? `onder "${title}"` : `met ${main.signal.query ? `"${main.signal.query}"` : main.signal.headline}`}`)
       return true
     } catch (e: any) {
       if (e instanceof HttpError && e.status === 401) setAuthError(true)
@@ -630,13 +657,35 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [saveRecord, toast])
 
+  // Groepsnaam van een hoofdkaart wijzigen of weghalen. Loopt er al een meting, dan krijgt die dezelfde naam in Experimenten.
+  const setGroupTitle = useCallback(async (main: Task, title: string | null) => {
+    try {
+      const clean = title?.trim().slice(0, 140) || null
+      const { groupTitle: _g, ...rest } = main.signal
+      await saveRecord(main.key, clean ? { ...rest, groupTitle: clean } : rest, main.status, { note: main.note, owner: main.owner, snooze_until: main.snoozeUntil })
+      const keys = [main.key, ...(main.merged || []).map(m => m.key)]
+      if (clean && experiments.some(e => keys.includes(e.advice_key))) {
+        const res = await getJson<{ rows: Experiment[] }>(`/api/experiments`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ advice_keys: keys, family_title: clean }) })
+        const upd = new Map(res.rows.map(r => [r.id, r]))
+        setExperiments(es => es.map(e => upd.get(e.id) || e))
+      }
+      toast(clean ? `Groepsnaam: "${clean}"` : "Groepsnaam weggehaald")
+      return true
+    } catch (e: any) {
+      toast(`Groepsnaam opslaan mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return false
+    }
+  }, [experiments, saveRecord, toast])
+
+  const answerRunningWarning = useCallback((goOn: boolean) => { runningResolve.current?.(goOn); runningResolve.current = null }, [])
+
   const value: WorkspaceValue = {
     user,
     loading, error, authError, storageError,
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, addReminder, snoozeReminder, openTask,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, setGroupTitle, runningWarning, answerRunningWarning, addReminder, snoozeReminder, openTask,
     siteAdvice, siteDecisions, decideSiteAdvice, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,

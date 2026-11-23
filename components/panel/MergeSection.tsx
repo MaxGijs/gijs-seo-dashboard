@@ -4,9 +4,9 @@
 // met voorstellen voor dezelfde pagina of plaats en een zoekveld voor alle andere open kaarten.
 
 import { useMemo, useState } from "react"
-import { Layers, Search, Unlink } from "lucide-react"
+import { Layers, Pencil, Search, Unlink } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import { columnOf, isVisible } from "@/lib/workflow"
+import { columnOf, groupName, isVisible } from "@/lib/workflow"
 import { normalize } from "@/lib/format"
 import type { Task } from "@/lib/types"
 import MergeDialog, { label } from "@/components/views/MergeDialog"
@@ -30,7 +30,9 @@ export function similarity(a: Task, b: Task): string | null {
 }
 
 export default function MergeSection({ task }: { task: Task }) {
-  const { tasks, splitTask, openTask } = useWorkspace()
+  const { tasks, splitTask, openTask, setGroupTitle } = useWorkspace()
+  const [naming, setNaming] = useState(false)
+  const [name, setName] = useState(task.signal.groupTitle || "")
   const [q, setQ] = useState("")
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [dialog, setDialog] = useState(false)
@@ -52,7 +54,7 @@ export default function MergeSection({ task }: { task: Task }) {
       <section className="psec" aria-label="Samengevoegd">
         <div className="merge-note">
           <Layers aria-hidden />
-          <p>Deze kaart is samengevoegd met <b>{main ? label(main) : "een andere kaart"}</b> en wordt daar in één keer gedaan.</p>
+          <p>Deze kaart is samengevoegd {main && groupName(main) ? <>in de groep <b>{groupName(main)}</b></> : <>met <b>{main ? label(main) : "een andere kaart"}</b></>} en wordt daar in één keer gedaan.</p>
           {main && <button className="btn btn-secondary btn-sm" onClick={() => openTask(main.key)}>Open hoofdkaart</button>}
           <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={async () => { setBusy(task.key); await splitTask(task); setBusy(null) }}><Unlink aria-hidden />Splitsen</button>
         </div>
@@ -74,16 +76,37 @@ export default function MergeSection({ task }: { task: Task }) {
     <section className="psec" aria-labelledby="sec-merge">
       {task.merged?.length ? (
         <>
-          <h3 className="psec-title" id="sec-merge">Samengevoegd in deze kaart</h3>
-          <p className="muted small">Je doet deze in één keer. Bij uitvoeren legt de meting alle zoekwoorden en pagina&apos;s vast.</p>
+          <h3 className="psec-title" id="sec-merge">{groupName(task) ? `In deze groep (${task.merged.length + 1})` : `Samengevoegd in deze kaart (${task.merged.length + 1})`}</h3>
+          {naming ? (
+            <form className="group-name-form" onSubmit={async e => { e.preventDefault(); setBusy("naam"); const ok = await setGroupTitle(task, name.trim() || null); setBusy(null); if (ok) setNaming(false) }}>
+              <label className="field-label" htmlFor="group-name">Naam van de groep</label>
+              <input id="group-name" className="input" value={name} maxLength={140} autoFocus onChange={e => setName(e.target.value)} placeholder="Bijv. Warmtepompartikel op de regiopagina's" />
+              <p className="field-hint">Staat op het bord, in Vandaag en als naam van de meting in Experimenten.</p>
+              <div className="inline-form-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setNaming(false); setName(task.signal.groupTitle || "") }}>Annuleren</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={busy === "naam"}>{busy === "naam" ? "Bezig…" : "Naam opslaan"}</button>
+              </div>
+            </form>
+          ) : (
+            <p className="group-name-line">
+              {groupName(task) ? <>Groepsnaam: <b>{groupName(task)}</b></> : <span className="subtle">Nog geen groepsnaam; de kaart heet nu naar {label(task)}.</span>}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setName(task.signal.groupTitle || ""); setNaming(true) }}><Pencil aria-hidden />{groupName(task) ? "Naam wijzigen" : "Groep een naam geven"}</button>
+            </p>
+          )}
+          <p className="muted small">Je doet deze in één keer. Bij uitvoeren legt de meting alle zoekwoorden en pagina&apos;s vast. Uit elkaar halen kan per kaart of in één keer; elke kaart krijgt dan zijn eigen status terug.</p>
           <ul className="merge-list">
             {task.merged.map(m => (
               <li key={m.key}>
                 <span className="bulk-main"><b>{label(m)}</b><span className="subtle small">{m.signal.action || m.signal.title}</span></span>
-                <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={async () => { setBusy(m.key); await splitTask(m); setBusy(null) }}><Unlink aria-hidden />{busy === m.key ? "Bezig…" : "Splitsen"}</button>
+                <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={async () => { setBusy(m.key); const ok = await splitTask(m); if (ok && task.merged!.length === 1 && task.signal.groupTitle) await setGroupTitle({ ...task, merged: [] }, null); setBusy(null) }}><Unlink aria-hidden />{busy === m.key ? "Bezig…" : "Splitsen"}</button>
               </li>
             ))}
           </ul>
+          {task.merged.length > 1 && (
+            <div className="inline-form-actions" style={{ marginTop: 8 }}>
+              <button className="btn btn-secondary btn-sm" disabled={!!busy} onClick={async () => { setBusy("alles"); for (const m of task.merged!) await splitTask(m); if (task.signal.groupTitle) await setGroupTitle({ ...task, merged: [] }, null); setBusy(null) }}><Unlink aria-hidden />{busy === "alles" ? "Bezig…" : `Alles weer los (${task.merged.length + 1} kaarten)`}</button>
+            </div>
+          )}
         </>
       ) : null}
       {mergeable && (

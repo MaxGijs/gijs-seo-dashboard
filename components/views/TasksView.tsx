@@ -7,7 +7,7 @@ import { BellRing, CalendarClock, ChevronRight, Clock, Plus, Eye, KanbanSquare, 
 import { ownerName } from "@/components/OwnerSelect"
 import { readStorage, sortByPriority, useWorkspace, writeStorage } from "@/lib/workspace"
 import type { Priority, SignalKind, Status, Task } from "@/lib/types"
-import { COLUMNS, columnOf, KIND_META, type ColumnId } from "@/lib/workflow"
+import { COLUMNS, columnOf, groupMembers, groupName, KIND_META, memberLabel, type ColumnId } from "@/lib/workflow"
 import { addDays, dateShort, gainShort, normalize, num, today } from "@/lib/format"
 import AddTaskDialog from "./AddTaskDialog"
 import ReminderDialog from "@/components/reminders/ReminderDialog"
@@ -393,12 +393,17 @@ export default function TasksView() {
                         <KindLabel signal={t.signal} />
                         {isNew ? <NewBadge /> : isMeasuring ? <MeasuringBadge /> : c.id === "beoordelen" && t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : c.id === "afgerond" ? <StatusBadge task={t} /> : null}
                       </span>
-                      <span className="tcard-title">{t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
+                      {t.merged?.length ? <span className="merged-banner"><Layers aria-hidden />{groupName(t) ? "Groep" : "Samengevoegd"} · {t.merged.length + 1} kaarten</span> : null}
+                      <span className="tcard-title">{groupName(t) ? <Breakable text={groupName(t)!} /> : t.signal.query ? `"${t.signal.query}"` : <Breakable text={t.signal.headline} />}</span>
+                      {groupName(t) ? (
+                        <span className="merged-names is-group">{groupMembers(t).slice(0, 4).map(m => <span key={m.key}>{memberLabel(m)}</span>)}{t.merged!.length + 1 > 4 ? <span>en nog {t.merged!.length + 1 - 4}</span> : null}</span>
+                      ) : t.merged?.length ? (
+                        <span className="merged-names">{t.merged.slice(0, 3).map(m => <span key={m.key}>+ {m.signal.query ? `"${m.signal.query}"` : m.signal.headline}</span>)}{t.merged.length > 3 ? <span>en nog {t.merged.length - 3}</span> : null}</span>
+                      ) : null}
                       <span className="tcard-sub clamp2" title={t.signal.action || t.signal.title}>{t.signal.action || t.signal.title}</span>
                       {t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>
-                        {t.merged?.length ? <span className="merged-chip" title={t.merged.map(m => m.signal.query || m.signal.headline).join(", ")}><Layers aria-hidden />+{t.merged.length}</span> : null}
                         {t.owner ? <span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span> : null}
                         {t.status === "onderzoeken" ? <span>In onderzoek</span>
                           : !t.current && c.id !== "afgerond" ? <span title="Niet meer in de actuele signalen">Niet actueel</span> : null}
@@ -443,7 +448,7 @@ export default function TasksView() {
                   <tr key={t.key} className={selecting ? (canPick(en) ? `is-clickable${picked.has(t.key) ? " is-picked" : ""}` : "is-unpickable") : "is-clickable"}
                     onClick={() => (selecting ? canPick(en) && togglePick(t.key) : openTask(t.key))} tabIndex={0} onKeyDown={e => { if (e.key === "Enter" || (selecting && e.key === " ")) { e.preventDefault(); selecting ? canPick(en) && togglePick(t.key) : openTask(t.key) } }}>
                     {selecting && <td className="cell-check">{canPick(en) && <input type="checkbox" checked={picked.has(t.key)} onChange={() => togglePick(t.key)} onClick={e => e.stopPropagation()} aria-label={`${t.signal.query || t.signal.headline} kiezen`} />}</td>}
-                    <td className="cell-main"><span className="truncate" style={{ display: "block" }}>{t.signal.query || t.signal.headline}{t.merged?.length ? <span className="merged-chip" style={{ marginLeft: 6 }}><Layers aria-hidden />+{t.merged.length}</span> : null}</span><span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span>{t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}</td>
+                    <td className="cell-main">{t.merged?.length ? <span className="merged-banner"><Layers aria-hidden />{groupName(t) ? "Groep" : "Samengevoegd"} · {t.merged.length + 1} kaarten</span> : null}<span className="truncate" style={{ display: "block" }}>{groupName(t) || t.signal.query || t.signal.headline}</span>{groupName(t) ? <span className="merged-names is-group">{groupMembers(t).slice(0, 4).map(m => <span key={m.key}>{memberLabel(m)}</span>)}{t.merged!.length + 1 > 4 ? <span>en nog {t.merged!.length + 1 - 4}</span> : null}</span> : t.merged?.length ? <span className="merged-names">{t.merged.slice(0, 3).map(m => <span key={m.key}>+ {m.signal.query || m.signal.headline}</span>)}{t.merged.length > 3 ? <span>en nog {t.merged.length - 3}</span> : null}</span> : null}<span className="subtle" style={{ fontSize: 12, fontWeight: 400, display: "block" }}>{t.signal.action || t.signal.title}</span>{t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}</td>
                     <td className="nowrap">{KIND_META[t.signal.kind].label}{t.signal.intent && <div style={{ marginTop: 4 }}><IntentBadge intent={t.signal.intent} /></div>}</td>
                     <td><StatusBadge task={t} />{t.owner && <div style={{ marginTop: 4 }}><span className="owner-chip"><UserRound aria-hidden />{ownerName(t.owner, users, me)}</span></div>}</td>
                     <td>{t.signal.kind !== "analyse" ? <PriorityMeter priority={t.signal.priority} /> : <span className="subtle">—</span>}</td>

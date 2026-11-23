@@ -16,7 +16,7 @@ import { openRefreshes, REFRESH_META } from "@/lib/content/refresh"
 import { EVENT_META } from "@/lib/watch"
 import { KIND_META as EXP_KIND, nextMeasurement as nextExp, OUTCOME_META as EXP_OUTCOME } from "@/lib/experiment"
 import type { Experiment, Task } from "@/lib/types"
-import { KIND_META } from "@/lib/workflow"
+import { groupName, KIND_META } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, gainShort, greeting, num, signedPct, today } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "./ui/button"
@@ -27,7 +27,9 @@ import { PageHeader } from "@/components/ui"
 import AddTaskDialog from "@/components/views/AddTaskDialog"
 
 const nextMeasurement = (e: Experiment) => nextExp(e as any)
-const subject = (t: Task) => (t.signal.query ? `"${t.signal.query}"` : t.signal.headline)
+const one = (t: Task) => (t.signal.query ? `"${t.signal.query}"` : t.signal.headline)
+// Samengevoegde kaarten: alle namen, zodat je ziet dat het meerdere kaarten zijn
+const subject = (t: Task) => (groupName(t) ? `${groupName(t)} (${(t.merged?.length || 0) + 1} kaarten)` : [one(t), ...(t.merged || []).map(one)].join(" + "))
 const kindLabel = (t: Task) => (t.signal.reminder ? "Herinnering" : KIND_META[t.signal.kind].label)
 const PRIO: Record<string, { label: string; dot: string }> = {
   hoog: { label: "Hoog", dot: "bg-accent" }, middel: { label: "Middel", dot: "bg-subtle" }, laag: { label: "Laag", dot: "bg-line" },

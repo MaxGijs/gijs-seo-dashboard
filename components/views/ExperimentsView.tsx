@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { CalendarClock, ChevronRight, FlaskConical, Newspaper } from "lucide-react"
+import { CalendarClock, ChevronRight, FlaskConical, Newspaper, Pencil } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { useContentIdeas } from "@/lib/content/useContent"
 import { ArticleResults } from "@/components/content/ContentPanel"
@@ -146,6 +146,38 @@ function unitsOf(experiments: Experiment[]): Unit[] {
   }
   return [...map.values()].sort((a, b) => b.members[0].changed_at.localeCompare(a.members[0].changed_at))
 }
+// Welke pagina's onder een familie of groep vallen
+const unitPages = (u: Unit) => [...new Set(u.members.flatMap(m => [m.baseline?.targetPage || m.page, ...(m.target_pages || [])]).filter((p): p is string => !!p))]
+
+const unitQueries = (u: Unit) => [...new Set(u.members.flatMap(m => [m.query, ...(m.target_queries || [])]).filter((q): q is string => !!q))]
+
+function FamilyRename({ u }: { u: Unit }) {
+  const { reload } = useWorkspace()
+  const [edit, setEdit] = useState(false)
+  const [name, setName] = useState(u.title || "")
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const famId = u.members[0].family_id
+  if (!famId) return null
+  if (!edit) return <p className="exp-rename small">Naam: <b>{u.title}</b><button type="button" className="btn btn-ghost btn-sm" onClick={() => { setName(u.title || ""); setEdit(true) }}><Pencil aria-hidden />Naam wijzigen</button></p>
+  return (
+    <form className="exp-rename" onSubmit={async e => {
+      e.preventDefault(); if (!name.trim()) return
+      setBusy(true); setErr(null)
+      const res = await fetch("/api/experiments", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ family_id: famId, family_title: name.trim() }) }).catch(() => null)
+      setBusy(false)
+      if (!res?.ok) { setErr("Opslaan mislukt. Probeer het opnieuw."); return }
+      setEdit(false); reload()
+    }}>
+      <label className="sr-only" htmlFor={`fam-${u.id}`}>Naam van de familie</label>
+      <input id={`fam-${u.id}`} className="input" value={name} maxLength={140} autoFocus onChange={e => setName(e.target.value)} />
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(false)}>Annuleren</button>
+      <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !name.trim()}>{busy ? "Bezig…" : "Naam opslaan"}</button>
+      {err && <span className="txt-down small">{err}</span>}
+    </form>
+  )
+}
+
 const unitOutcome = (u: Unit): Outcome | null => (u.members.length > 1 ? familyOutcome(u.members.map(m => m.outcome as Outcome | null)) : (u.members[0].outcome as Outcome | null))
 const unitNext = (u: Unit) => u.members.map(m => nextMeasurement(m as any)).filter(Boolean).sort((a, b) => a!.date.localeCompare(b!.date))[0] || null
 const subjectOf = (e: Experiment, task?: Task) => (task ? (task.signal.query ? `"${task.signal.query}"` : task.signal.headline) : e.query ? `"${e.query}"` : e.page || e.advice_key)
@@ -231,6 +263,8 @@ export default function ExperimentsView() {
                               <ChevronRight aria-hidden className="exp-chev" />
                               <span className="exp-main">
                                 <b>{u.title || subjectOf(e, task)}</b>
+                                {(u.title || u.members.length > 1) && unitPages(u).length > 0 && (() => { const ps = unitPages(u); return <span className="exp-pages">{ps.length === 1 ? "Pagina" : `${ps.length} pagina's`}: {ps.slice(0, 4).join(", ")}{ps.length > 4 ? ` en nog ${ps.length - 4}` : ""}</span> })()}
+                                {u.title && (() => { const qs = unitQueries(u); return qs.length > 1 ? <span className="exp-pages">{qs.length} zoekwoorden: {qs.slice(0, 4).map(q => `"${q}"`).join(", ")}{qs.length > 4 ? ` en nog ${qs.length - 4}` : ""}</span> : null })()}
                                 <span className="subtle small">{u.members.length > 1 ? `Familie: ${u.members.length} meetpunten, telt als één experiment · ` : ""}aangepast {dateShort(e.changed_at)}</span>
                               </span>
                             </button>
@@ -242,6 +276,7 @@ export default function ExperimentsView() {
                         </tr>
                         {isOpen && (
                           <tr className="exp-detail-row" id={`exp-${u.id}`}><td colSpan={5}>
+                            <FamilyRename u={u} />
                             {u.members.length > 1 ? (
                               <>
                                 <p className="small" style={{ margin: "0 0 8px" }}><b>Wat is aangepast:</b> {e.description}</p>

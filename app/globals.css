@@ -1630,3 +1630,29 @@ tr.is-picked td { background: var(--accent-050); }
 .exp-suit li[data-state=fout] b { color: var(--warning); }
 @media (max-width: 900px) { .exp-detail { grid-template-columns: 1fr; } }
 .exp-detail .exp-measures { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); min-width: min(100%, 440px); }
+
+/* Samengevoegde kaarten: duidelijk zichtbaar, alle namen */
+.merged-banner { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--accent-050, #eef6f1); color: var(--accent-700); font-size: var(--fs-xs); font-weight: 600; }
+.merged-banner svg { width: 12px; height: 12px; }
+.merged-names { display: flex; flex-direction: column; gap: 1px; font-size: var(--fs-xs); font-weight: 600; color: var(--green-800); line-height: 1.35; }
+.merged-names span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell-main .merged-banner { margin-bottom: 4px; }
+.cell-main .merged-names { margin-top: 2px; }
+.panel-merged { margin: 0 0 6px; }
+.panel-title-merged { font-weight: 700; }
+.merged-names.is-group { font-weight: 500; color: var(--text-muted, #4b5563); }
+.merged-names.is-group span::before { content: "• "; color: var(--green-700); }
+.panel-group-members { margin: 2px 0 6px; padding-left: 18px; font-size: var(--fs-sm); color: var(--text-muted, #4b5563); display: grid; gap: 2px; }
+.panel-group-members li { overflow-wrap: anywhere; }
+.group-name-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; font-size: var(--fs-sm); }
+.group-name-form { display: grid; gap: 6px; margin: 0 0 12px; }
+.exp-pages { display: block; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-muted, #4b5563); font-weight: 400; overflow-wrap: anywhere; }
+.exp-rename { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+.exp-rename .input { flex: 1 1 260px; }
+
+/* Waarschuwing: er loopt al een meting */
+.running-warning h2 { display: flex; align-items: center; gap: 8px; }
+.running-warning .rw-icon { width: 20px; height: 20px; color: var(--warning); flex: none; }
+.rw-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
+.rw-list li { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid var(--warning-dot); border-radius: 6px; background: var(--surface-card); }
+.rw-list .link-btn { justify-self: start; }

@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
   FlaskConical, MessageSquareText, Play, RotateCcw, ShieldCheck,
   ThumbsDown, ThumbsUp, TrendingUp, X, XCircle, CircleSlash, PauseCircle, PencilLine,
-  Users, Calculator, Database, Target, Trash2,
+  Users, Calculator, Database, Target, Trash2, Layers,
 } from "lucide-react"
 import type { AdviceDetail, Estimate, Experiment, Status, Task } from "@/lib/types"
 import { INTENT_META } from "@/lib/intent"
@@ -16,7 +16,7 @@ import { experimentFor, siteBaselineOf } from "@/lib/execute"
 import MergeSection from "./MergeSection"
 import PageTimeline from "./PageTimeline"
 import { KIND_META as EXP_KIND, OUTCOME_META as EXP_OUTCOME } from "@/lib/experiment"
-import { columnOf } from "@/lib/workflow"
+import { columnOf, groupMembers, groupName, memberLabel } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -201,7 +201,13 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
         </div>
         <button ref={closeRef} className="icon-btn" onClick={onClose} aria-label="Paneel sluiten"><X /></button>
       </div>
-      <h2 className="panel-title" id="panel-title">{raw.kind === "eigen" ? raw.headline : raw.query ? `"${raw.query}"` : <Breakable text={raw.headline} />}</h2>
+      {task.merged?.length ? <p className="merged-banner panel-merged"><Layers aria-hidden />{groupName(task) ? "Groep" : "Samengevoegd"} · {task.merged.length + 1} kaarten in één opdracht</p> : null}
+      {groupName(task) ? (
+        <>
+          <h2 className="panel-title" id="panel-title"><Breakable text={groupName(task)!} /></h2>
+          <ul className="panel-group-members">{groupMembers(task).map(m => <li key={m.key}>{memberLabel(m)}</li>)}</ul>
+        </>
+      ) : <h2 className="panel-title" id="panel-title">{raw.kind === "eigen" ? raw.headline : raw.query ? `"${raw.query}"` : <Breakable text={raw.headline} />}{task.merged?.length ? <span className="panel-title-merged">{task.merged.map(m => <span key={m.key}> + {m.signal.query ? `"${m.signal.query}"` : m.signal.headline}</span>)}</span> : null}</h2>}
       <p className="panel-subtitle">
         {raw.reminder ? (
           <>Herinnering voor {dateShort(raw.reminder.date)}{raw.reminder.link && <> · <a href={raw.reminder.link} target="_blank" rel="noopener noreferrer">bron openen<ExternalLink aria-hidden /></a></>}</>

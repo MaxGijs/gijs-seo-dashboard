@@ -113,6 +113,7 @@ export interface Signal {
   reminder?: { date: string; link: string | null }  // herinnering: komt op deze datum terug
   mergedInto?: string         // samengevoegd met deze kaart (status "samengevoegd")
   mergedFrom?: Status         // status vóór het samenvoegen, voor "Splitsen"
+  groupTitle?: string         // hoofdkaart: eigen naam voor de samengevoegde groep (bv. "Warmtepompartikel op regiopagina's")
 }
 
 export type Level = "laag" | "middel" | "hoog"

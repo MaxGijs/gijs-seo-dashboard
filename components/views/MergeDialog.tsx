@@ -25,6 +25,8 @@ export default function MergeDialog({ tasks, initialMain, onClose, onDone }: { t
   const { mergeTasks, openTask } = useWorkspace()
   const [main, setMain] = useState(initialMain || defaultMain(tasks).key)
   const [busy, setBusy] = useState(false)
+  // Eigen groepsnaam; bestaat er al een (in een van de kaarten), dan die als begin
+  const [group, setGroup] = useState(() => tasks.find(t => t.key === (initialMain || defaultMain(tasks).key))?.signal.groupTitle || tasks.find(t => t.signal.groupTitle)?.signal.groupTitle || "")
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose() }
     window.addEventListener("keydown", onKey)
@@ -38,7 +40,7 @@ export default function MergeDialog({ tasks, initialMain, onClose, onDone }: { t
 
   const go = async () => {
     setBusy(true)
-    const ok = await mergeTasks(mainTask, others)
+    const ok = await mergeTasks(mainTask, others, group.trim() || null)
     setBusy(false)
     if (ok) { onClose(); onDone?.(main); openTask(main) }
   }
@@ -67,8 +69,11 @@ export default function MergeDialog({ tasks, initialMain, onClose, onDone }: { t
               </label>
             ))}
           </fieldset>
+          <label className="field-label" htmlFor="merge-group">Naam van de groep <span className="subtle small">(optioneel)</span></label>
+          <input id="merge-group" className="input" value={group} maxLength={140} disabled={busy} onChange={e => setGroup(e.target.value)} placeholder="Bijv. Warmtepompartikel op de regiopagina's" />
+          <p className="field-hint">Met een naam staat de kaart onder die naam op het bord, met eronder welke zoekwoorden en pagina&apos;s erbij horen. De meting krijgt dezelfde naam in Experimenten.</p>
           <div className="merge-result">
-            <p><b>Na samenvoegen:</b> één kaart, {label(mainTask)}, in de kolom {COLUMNS.find(c => c.id === columnOf(mainTask.status))!.label}.{queries.length > 1 ? ` Zoekwoorden: ${queries.map(q => `"${q}"`).join(", ")}.` : ""}</p>
+            <p><b>Na samenvoegen:</b> één kaart, {group.trim() ? <>&ldquo;{group.trim()}&rdquo; ({all.length} kaarten)</> : label(mainTask)}, in de kolom {COLUMNS.find(c => c.id === columnOf(mainTask.status))!.label}.{queries.length > 1 ? ` Zoekwoorden: ${queries.map(q => `"${q}"`).join(", ")}.` : ""}</p>
             <p>Zet je hem later op uitgevoerd, dan legt de meting alle zoekwoorden en pagina&apos;s vast. Samenvoegen telt niet als afwijzing, en met Splitsen in de kaart maak je het ongedaan.</p>
             <p className="subtle small">Samen indicatief {gainShort(all.reduce((s, t) => s + (t.signal.gain || 0), 0))}.</p>
           </div>
