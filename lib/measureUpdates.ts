@@ -3,6 +3,7 @@
 // dat er een tussenmeting of het eindoordeel binnenkomt, verschijnt hier een update tot je hem
 // als gezien markeert (of tot hij twee weken oud is).
 
+import { needs56 } from "./content/plan"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Task } from "./types"
 import type { ContentIdea } from "./content/model"
@@ -69,12 +70,12 @@ export function measureUpdates(tasks: Task[], ideas: ContentIdea[], now = today(
       }
       continue
     }
-    for (const [d, k] of [[7, "d7"], [30, "d30"], [90, "d90"]] as const) {
+    for (const [d, k] of [[7, "d7"], [14, "d14"], [28, "d28"], [56, "d56"]] as const) {
       const ev = i.evals?.[k]
       const date = (ev?.measured_at || "").slice(0, 10)
       if (!ev || !date || date < since) continue
       out.push({
-        key: `art:${i.id}:${d}`, date, title: i.title, milestone: d, final: d === 90, ideaId: i.id, tone: "neutraal",
+        key: `art:${i.id}:${d}`, date, title: i.title, milestone: d, final: d === 56 || (d === 28 && !needs56(i)), ideaId: i.id, tone: "neutraal",
         text: `${num(ev.clicks)} klikken en ${num(ev.impressions)} vertoningen${ev.position !== null ? `, positie ${pos(ev.position)}` : ""}${ev.ga4 ? `, ${num(ev.ga4.views)} keer bekeken` : ""}.`,
       })
     }

@@ -93,8 +93,8 @@ export interface ContentIdea {
   relevance_check?: { verdict: "relevant" | "twijfel" | "niet_relevant"; reasoning: string; at: string; by: string } | null
   published_url: string | null
   published_at: string | null
-  // Nieuwe artikelen: 7, 30 en 90 dagen. Bijgewerkte bestaande pagina's: evals.update (voor/na-experiment)
-  evals: Partial<Record<"d7" | "d30" | "d90", Eval>> & { update?: UpdateMeasure | null }
+  // Nieuwe artikelen: 7, 14, 28 en (bij SEO-doel of te weinig data) 56 dagen. Bijgewerkte pagina's: evals.update
+  evals: Partial<Record<"d7" | "d14" | "d28" | "d56", Eval>> & { update?: UpdateMeasure | null }
   success_plan?: import("./plan").SuccessPlan | null   // doel en succesgrens, vastgelegd bij publicatie
   owner?: string | null
   original: any

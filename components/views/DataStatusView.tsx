@@ -23,7 +23,7 @@ const JOB_META: Record<string, { label: string; what: string; maxAgeH: number }>
   indexering: { label: "Indexeringscontrole", what: "URL-inspectie van Google (max. 2.000 per dag)", maxAgeH: 30 },
   experimenten: { label: "Experimentmetingen", what: "Metingen na 7, 14 en 28 dagen (56 bij verlenging)", maxAgeH: 30 },
   actualiteiten: { label: "Contentkansen", what: "Nieuws van Rijksoverheid en Milieu Centraal, webtrends (maandag), zoekdata en seizoen", maxAgeH: 30 },
-  "content-metingen": { label: "Contentmetingen", what: "Gepubliceerde artikelen na 7, 30 en 90 dagen", maxAgeH: 30 },
+  "content-metingen": { label: "Contentmetingen", what: "Gepubliceerde artikelen en bijgewerkte pagina's na 7, 14 en 28 dagen (56 bij SEO-doel of verlenging)", maxAgeH: 30 },
 }
 
 function ago(iso: string | null) {

@@ -1,5 +1,6 @@
 "use client"
 
+import { nextArticlePoint } from "@/lib/content/plan"
 import { nextMeasurement } from "@/lib/experiment"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -73,8 +74,8 @@ function contentMeta(i: ContentIdea, col: ColumnId) {
     return { icon: <CalendarClock aria-hidden />, text: n ? `${n.days}-dagenmeting ${dateShort(n.date)}` : "Eindoordeel volgt" }
   }
   if (col === "evalueren") {
-    const next = !i.evals?.d7 ? 7 : !i.evals?.d30 ? 30 : 90
-    return { icon: <CalendarClock aria-hidden />, text: i.published_at ? `${next}-dagenmeting ${dateShort(addDays(i.published_at, next))}` : "Wordt gemeten" }
+    const n = nextArticlePoint(i)
+    return { icon: <CalendarClock aria-hidden />, text: n ? `Dag ${n.days} (${n.label}) ${dateShort(n.date)}` : "Wordt gemeten" }
   }
   if (i.due_date && ["geaccepteerd", "briefing", "concept"].includes(i.status)) {
     const late = i.due_date < new Date().toISOString().slice(0, 10)

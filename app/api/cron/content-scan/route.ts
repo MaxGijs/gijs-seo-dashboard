@@ -4,7 +4,7 @@ import { logged } from "@/lib/server/synclog"
 
 export const maxDuration = 180
 
-// Nachtelijk: nieuwe contentkansen zoeken en gepubliceerde content meten (7, 30, 90 dagen)
+// Nachtelijk: nieuwe contentkansen zoeken en gepubliceerde content meten (7, 14, 28; 56 bij SEO-doel of te weinig data)
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization")
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {

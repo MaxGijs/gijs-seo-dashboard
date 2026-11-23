@@ -1,14 +1,15 @@
 // Een bijgewerkte bestaande pagina meten we als experiment, niet als nieuw artikel:
 // dezelfde pagina vóór en na de aanpassing, op de zoekwoorden waar de kans over ging,
 // gecorrigeerd voor groei of krimp van de hele site (seizoen, nieuwe provincies).
-// Meetmomenten 14, 28 en 56 dagen (zoals bij de SEO-taken); het oordeel valt na 56 dagen.
+// Meetmomenten 7 (signalering), 14 (eerste beoordeling) en 28 dagen (eindoordeel), zoals bij de
+// SEO-experimenten; 56 dagen alleen als er na 28 dagen te weinig data is.
 // Pure functies: gebruikt door de nachtelijke meting (server), het contentpaneel en de lessen.
 
 import { positionVerdict, POSITION_RULE } from "@/lib/measure"
 import type { Ga4Eval } from "./model"
 import type { RouteTry } from "@/lib/routes"
 
-export const UPDATE_MILESTONES = [14, 28, 56] as const
+export const UPDATE_MILESTONES = [7, 14, 28, 56] as const
 export type UpdateMilestone = (typeof UPDATE_MILESTONES)[number]
 export const BASELINE_DAYS = 28
 // Minder vertoningen dan dit (per 28 dagen, vóór én na) is te weinig om iets te concluderen
@@ -74,9 +75,10 @@ export function compare(base: UpdateSnapshot, p: UpdatePoint) {
 const nl1 = (n: number | null) => (n === null ? "—" : String(Math.round(n * 10) / 10).replace(".", ","))
 const pctNl = (r: number) => `${r > 0 ? "+" : ""}${Math.round(r * 100)}%`
 
-// Oordeel volgens vaste regels. Na 14 en 28 dagen voorlopig; na 56 dagen definitief.
+// Oordeel volgens vaste regels. Na 7 en 14 dagen voorlopig; na 28 dagen definitief, of na 56 dagen
+// als er na 28 dagen te weinig data was.
 export function judgeUpdate(m: Pick<UpdateMeasure, "baseline" | "points" | "queries">): { outcome: UpdateOutcome | null; final: boolean; at: UpdateMilestone | null; reasons: string[] } {
-  const latestKey = ([56, 28, 14] as const).find(d => m.points[`d${d}`])
+  const latestKey = ([56, 28, 14, 7] as const).find(d => m.points[`d${d}`])
   if (!m.baseline || !latestKey) return { outcome: null, final: false, at: null, reasons: [] }
   const p = m.points[`d${latestKey}`]!
   const c = compare(m.baseline, p)
@@ -110,7 +112,7 @@ export function judgeUpdate(m: Pick<UpdateMeasure, "baseline" | "points" | "quer
   else if (posV === "niet_succesvol" && !up) outcome = "niet_succesvol"
   else if (down && posV !== "succesvol") outcome = "niet_succesvol"
   else outcome = "onduidelijk"
-  return { outcome, final: latestKey === 56, at: latestKey, reasons }
+  return { outcome, final: latestKey === 56 || (latestKey === 28 && c.enough), at: latestKey, reasons }
 }
 
 export const UPDATE_RULE = `Geslaagd als de pagina op de zoekwoorden van deze kans duidelijk stijgt (${POSITION_RULE}) zonder minder klikken, of als de klikken uit Google minstens 20% (en minimaal 3) hoger liggen zonder dat de positie duidelijk zakt. Andersom is niet geslaagd; daartussen is geen duidelijk effect. Klikken worden gecorrigeerd voor groei of krimp van de hele site.`
@@ -122,8 +124,16 @@ export const OUTCOME_META: Record<UpdateOutcome, { label: string; tone: "success
 }
 
 // Volgende meetmoment (voor de kaart op het bord)
-export function nextMilestone(m: Pick<UpdateMeasure, "points">, changedAt: string) {
-  const d = UPDATE_MILESTONES.find(x => !m.points[`d${x}`])
+// Verlengd tot 56 dagen: na 28 dagen te weinig data
+export function updateNeeds56(m: Pick<UpdateMeasure, "points" | "baseline">) {
+  const p = m.points.d28
+  return !!p && !!m.baseline && !compare(m.baseline, p).enough
+}
+export function nextMilestone(m: Pick<UpdateMeasure, "points"> & { baseline?: UpdateMeasure["baseline"] }, changedAt: string) {
+  if (m.points.d28 && !updateNeeds56({ points: m.points, baseline: m.baseline ?? null })) return null
+  // Eerstvolgende meetpunt ná de laatste meting (een gemist tussenpunt wordt niet alsnog verwacht)
+  const last = Math.max(0, ...UPDATE_MILESTONES.filter(x => m.points[`d${x}`]))
+  const d = UPDATE_MILESTONES.find(x => x > last && !m.points[`d${x}`])
   return d ? { days: d, date: addDays(changedAt, d) } : null
 }
 
@@ -139,7 +149,7 @@ export function updateTry(i: { id: string; title: string; advice?: string | null
   const u = i.evals?.update
   if (!isPageUpdate(i) || i.status !== "gepubliceerd" || !u) return null
   const j = judgeUpdate(u)
-  const last = u.points.d56 || u.points.d28 || u.points.d14
+  const last = u.points.d56 || u.points.d28 || u.points.d14 || u.points.d7
   return {
     key: `content:${i.id}`, route: "inhoud", page: u.page, query: u.queries[0] || null, date: u.changed_at, outcome: u.outcome,
     summary: last && j.reasons.length ? j.reasons.find(r => r.startsWith("Positie") || r.startsWith("Klikken")) || null : null,

@@ -1,5 +1,6 @@
 "use client"
 
+import { articleDone } from "./plan"
 import { useCallback, useEffect, useState } from "react"
 import type { ColumnId } from "@/lib/workflow"
 import type { ContentIdea, IdeaStatus } from "./model"
@@ -23,16 +24,17 @@ export function useContentIdeas() {
 }
 
 // Waar een contentkans op het takenbord staat
-export function contentColumn(i: Pick<ContentIdea, "status" | "evals"> & { advice?: ContentIdea["advice"] }): ColumnId | null {
+export function contentColumn(i: Pick<ContentIdea, "status" | "evals"> & { advice?: ContentIdea["advice"]; origin?: ContentIdea["origin"]; published_at?: string | null; success_plan?: ContentIdea["success_plan"] }): ColumnId | null {
   const s: IdeaStatus = i.status
   if (s === "nieuw" || s === "later") return "beoordelen"
   if (s === "geaccepteerd" || s === "briefing") return "gepland"
   if (s === "concept") return "uitvoering"
   // Ingeleverd en in beoordeling, goedgekeurd (wacht op publicatie) en gepubliceerd (wordt gemeten)
   if (s === "review" || s === "goedgekeurd") return "evalueren"
-  // Bijgewerkte bestaande pagina: klaar na het eindoordeel van de voor/na-meting (56 dagen)
+  // Bijgewerkte bestaande pagina: klaar na het eindoordeel van de voor/na-meting (28 dagen, 56 bij verlenging)
   if (s === "gepubliceerd" && i.advice === "bijwerken") return i.evals?.update?.outcome ? "afgerond" : "evalueren"
-  if (s === "gepubliceerd") return i.evals?.d90 ? "afgerond" : "evalueren"
+  // Nieuw artikel: klaar na het eindoordeel (28 dagen, of 56 bij SEO-doel of te weinig data)
+  if (s === "gepubliceerd") return articleDone({ origin: i.origin || "actualiteit", published_at: i.published_at ?? null, evals: i.evals, success_plan: i.success_plan }) ? "afgerond" : "evalueren"
   if (s === "afgewezen") return "afgerond"
   return null // verlopen: niet op het bord
 }

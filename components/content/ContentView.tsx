@@ -147,15 +147,15 @@ function Capacity({ data, onSaved }: { data: ContentData; onSaved: () => void })
   )
 }
 
-// Wat werkt? Vergelijking van gepubliceerde content per invalshoek en vorm (30-dagenmeting)
+// Wat werkt? Vergelijking van gepubliceerde content per invalshoek en vorm (28-dagenmeting)
 function WhatWorks({ ideas }: { ideas: ContentIdea[] }) {
   // Alleen nieuwe artikelen; bijgewerkte pagina's worden apart gemeten (voor/na op dezelfde pagina)
-  const measured = ideas.filter(i => i.status === "gepubliceerd" && i.advice !== "bijwerken" && i.evals?.d30)
+  const measured = ideas.filter(i => i.status === "gepubliceerd" && i.advice !== "bijwerken" && i.evals?.d28)
   const group = (key: (i: ContentIdea) => string | null) => {
     const m = new Map<string, ContentIdea[]>()
     measured.forEach(i => { const k = key(i); if (k) m.set(k, [...(m.get(k) || []), i]) })
     return [...m.entries()].map(([k, list]) => {
-      const imp = list.reduce((s, i) => s + i.evals.d30!.impressions, 0), clicks = list.reduce((s, i) => s + i.evals.d30!.clicks, 0)
+      const imp = list.reduce((s, i) => s + i.evals.d28!.impressions, 0), clicks = list.reduce((s, i) => s + i.evals.d28!.clicks, 0)
       return { k, n: list.length, clicks: clicks / list.length, ctr: imp ? clicks / imp : 0 }
     }).sort((a, b) => b.clicks - a.clicks)
   }
@@ -175,7 +175,7 @@ function WhatWorks({ ideas }: { ideas: ContentIdea[] }) {
       </div>
       <div className="card-body">
         {!rows.length ? (
-          <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Nog geen gepubliceerde content met een 30-dagenmeting. Elk gepubliceerd artikel krijgt labels (invalshoek, vorm, dienst, regio) en wordt na 7, 30 en 90 dagen gemeten. Vanaf 5 artikelen per groep tonen we hier een vergelijking.</p>
+          <p className="muted" style={{ fontSize: "var(--fs-sm)" }}>Nog geen gepubliceerde content met een 28-dagenmeting. Elk gepubliceerd artikel krijgt labels (invalshoek, vorm, dienst, regio) en wordt na 7, 30 en 90 dagen gemeten. Vanaf 5 artikelen per groep tonen we hier een vergelijking.</p>
         ) : (
           <div className="table-wrap">
             <table className="table">

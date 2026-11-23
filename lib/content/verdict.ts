@@ -7,8 +7,8 @@ export type ArticleVerdict = { label: "Werkt" | "Werkt matig" | "Werkt (nog) nie
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0 }
 
 export function articleVerdict(idea: Pick<ContentIdea, "id" | "evals">, all: (Pick<ContentIdea, "id" | "status" | "evals"> & { advice?: ContentIdea["advice"] })[]): ArticleVerdict {
-  const key = idea.evals?.d90?.ga4 ? "d90" : idea.evals?.d30?.ga4 ? "d30" : null
-  if (!key) return { label: "Nog te vroeg", tone: "neutral", window: null, reasons: ["Het eerste oordeel volgt na 30 dagen: dan is er genoeg bezoek om iets te zeggen."] }
+  const key = idea.evals?.d56?.ga4 ? "d56" : idea.evals?.d28?.ga4 ? "d28" : null
+  if (!key) return { label: "Nog te vroeg", tone: "neutral", window: null, reasons: ["Het eerste oordeel volgt na 28 dagen: dan is er genoeg bezoek om iets te zeggen."] }
   const e = idea.evals[key] as Eval, g = e.ga4!
   const days = key.slice(1)
   const reasons: string[] = []
@@ -36,6 +36,6 @@ export function articleVerdict(idea: Pick<ContentIdea, "id" | "evals">, all: (Pi
   }
   if (g.ctaClicks) reasons.push(`${g.ctaClicks} klikken op de knop naar de energiescan.`)
   if (e.position !== null && e.position <= 10) reasons.push(`Staat in Google gemiddeld op positie ${String(e.position).replace(".", ",")}.`)
-  const label = score >= 2 ? "Werkt" : score >= 0 && (key === "d30" || score >= 1) ? "Werkt matig" : "Werkt (nog) niet"
+  const label = score >= 2 ? "Werkt" : score >= 0 && (key === "d28" || score >= 1) ? "Werkt matig" : "Werkt (nog) niet"
   return { label, tone: label === "Werkt" ? "success" : label === "Werkt matig" ? "warning" : "error", window: `na ${days} dagen`, reasons }
 }

@@ -3,6 +3,7 @@
 // Leest betrouwbare nieuwsbronnen, eigen zoekdata en een seizoenskalender en maakt daar
 // onderbouwde contentvoorstellen van. Leest alleen; publiceert nooit.
 
+import { needs56 } from "@/lib/content/plan"
 import { addDaysIso, articleGa4 } from "./conversion"
 import { getSupabase } from "./guard"
 import { type Item, parseMilieuCentraal, parseRss } from "@/lib/content/parse"
@@ -11,7 +12,7 @@ import { describe, overlaps, type Campaign } from "@/lib/campaigns"
 import { LAUNCH_DATES } from "@/lib/pages"
 import { learnFromFeedback, onlyApplicable } from "@/lib/content/feedback"
 import { coverageFor, coverageText, coverDocs } from "@/lib/content/coverage"
-import { baselineWindow, compare, isPageUpdate, judgeUpdate, pointWindow, UPDATE_MILESTONES, updateQueries, type SearchTotals, type UpdateMeasure, type UpdateSnapshot } from "@/lib/content/update"
+import { updateNeeds56, baselineWindow, compare, isPageUpdate, judgeUpdate, pointWindow, UPDATE_MILESTONES, updateQueries, type SearchTotals, type UpdateMeasure, type UpdateSnapshot } from "@/lib/content/update"
 import {
   type CapacityMode, type ContentIdea, type Impact, type KeywordRef, type Reliability, type SourceRef,
   impactOf, isForHouseholds, jaccard, relevanceOf, regionsIn, reliabilityOf, SCAN_SERVICE, servicesIn, tokens,
@@ -404,19 +405,19 @@ export async function scanContent() {
   }
 }
 
-// ── Metingen na publicatie (7, 30 en 90 dagen) ─────────────────────────────
+// ── Metingen na publicatie: 7, 14, 28 en (bij SEO-doel of te weinig data) 56 dagen ──
 
-const WINDOWS = [["d7", 7], ["d30", 30], ["d90", 90]] as const
+const WINDOWS = [["d7", 7], ["d14", 14], ["d28", 28], ["d56", 56]] as const
 
 export async function evaluatePublished() {
   const sb = getSupabase()
-  const { data } = await sb.from("content_ideas").select("id, published_url, published_at, evals, advice, keywords, target_page").eq("status", "gepubliceerd").not("published_at", "is", null)
+  const { data } = await sb.from("content_ideas").select("id, published_url, published_at, evals, advice, keywords, target_page, origin, success_plan").eq("status", "gepubliceerd").not("published_at", "is", null)
   const sc = serviceSearchConsole()
   const lastComplete = new Date(Date.now() - 3 * dayMs)
   let measured = 0, updates = 0
   let campaigns: Campaign[] | null = null
   for (const idea of data || []) {
-    // Bijgewerkte bestaande pagina: voor/na-experiment op dezelfde pagina (14, 28, 56 dagen)
+    // Bijgewerkte bestaande pagina: voor/na-experiment op dezelfde pagina (7, 14, 28; 56 bij verlenging)
     if (isPageUpdate(idea)) {
       if (!idea.published_url && !idea.target_page) continue
       if (campaigns === null) { const { data: c } = await sb.from("seo_campaigns").select("*"); campaigns = (c || []) as Campaign[] }
@@ -429,6 +430,8 @@ export async function evaluatePublished() {
     const start = new Date(idea.published_at + "T00:00:00Z")
     let changed = false
     for (const [key, days] of WINDOWS) {
+      // 56 dagen alleen bij een SEO-doel of te weinig data na 28 dagen
+      if (key === "d56" && !needs56({ origin: idea.origin, published_at: idea.published_at, evals, success_plan: idea.success_plan })) continue
       const end = new Date(start.getTime() + (days - 1) * dayMs)
       if (end > lastComplete) continue
       const path = toPath(idea.published_url)
@@ -436,7 +439,7 @@ export async function evaluatePublished() {
       // GA4 (bekeken, tijd op de pagina, aanvragen); ook achteraf aanvullen voor oudere metingen
       if (evals[key] && evals[key].ga4 === undefined) {
         try {
-          evals[key] = { ...evals[key], ga4: await articleGa4(path, s0, e0), ...(key === "d30" ? { ga4Before: await articleGa4(path, addDaysIso(s0, -days), addDaysIso(s0, -1)) } : {}) }
+          evals[key] = { ...evals[key], ga4: await articleGa4(path, s0, e0), ...(key === "d28" ? { ga4Before: await articleGa4(path, addDaysIso(s0, -days), addDaysIso(s0, -1)) } : {}) }
         } catch (e: any) { evals[key] = { ...evals[key], ga4: null, ga4Error: String(e?.message || e).slice(0, 200) } }
         changed = true
       }
@@ -451,7 +454,7 @@ export async function evaluatePublished() {
       let ga4: any = null, ga4Before: any = undefined, ga4Error: string | undefined
       try {
         ga4 = await articleGa4(path, s0, e0)
-        if (key === "d30") ga4Before = await articleGa4(path, addDaysIso(s0, -days), addDaysIso(s0, -1))
+        if (key === "d28") ga4Before = await articleGa4(path, addDaysIso(s0, -days), addDaysIso(s0, -1))
       } catch (e: any) { ga4Error = String(e?.message || e).slice(0, 200) }
       evals[key] = { impressions: imp, clicks, ctr: imp ? clicks / imp : 0, position: pos !== null ? Math.round(pos * 10) / 10 : null, measured_at: new Date().toISOString(), window: `${s0} – ${e0}`, ga4, ...(ga4Before !== undefined ? { ga4Before } : {}), ...(ga4Error ? { ga4Error } : {}) }
       changed = true; measured++
@@ -512,6 +515,8 @@ export async function measureUpdate(sc: ReturnType<typeof serviceSearchConsole>,
   for (const days of UPDATE_MILESTONES) {
     const key = `d${days}` as const
     if (m.points[key]) continue
+    // 56 dagen alleen als er na 28 dagen te weinig data was
+    if (days === 56 && !updateNeeds56(m)) break
     const w = pointWindow(changedAt, days)
     if (w.end > lastComplete) break
     const snap = await withGa4(path, w, await searchSnapshot(sc, path, m.queries, w))
@@ -527,7 +532,7 @@ export async function measureUpdate(sc: ReturnType<typeof serviceSearchConsole>,
   const j = judgeUpdate(m)
   if (j.final && j.outcome) {
     m.outcome = j.outcome
-    m.evidence = compare(m.baseline!, m.points.d56!).enough ? "telt mee" : "te weinig data"
+    m.evidence = compare(m.baseline!, (m.points.d56 || m.points.d28)!).enough ? "telt mee" : "te weinig data"
     changed = true
   }
   return changed ? m : null

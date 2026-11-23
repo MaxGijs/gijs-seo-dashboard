@@ -98,7 +98,7 @@ function ContentExperiments() {
       <EmptyState
         icon={<Newspaper />}
         title="Nog geen gepubliceerde content"
-        text="Zodra een artikel of contentkans als gepubliceerd wordt vastgelegd, verschijnt het hier en meet het dashboard automatisch hoe het presteert: een nieuw artikel na 7, 30 en 90 dagen, een bijgewerkte pagina vóór en na de aanpassing (14, 28 en 56 dagen)."
+        text="Zodra een artikel of contentkans als gepubliceerd wordt vastgelegd, verschijnt het hier en meet het dashboard automatisch hoe het presteert: na 7, 14 en 28 dagen (56 bij het doel SEO-groei of zichtbaarheid, of bij te weinig data); een bijgewerkte pagina vóór en na de aanpassing."
         action={<Link href="/content" className="btn btn-secondary btn-sm">Naar Content</Link>}
       />
     </div>
@@ -231,7 +231,7 @@ export default function ExperimentsView() {
           tone: "info" as StatusTone,
           text: `${plural(byKind("experiment").length, "experiment", "experimenten")}, ${plural(byKind("meting").length, "meting", "metingen")} zonder oordeel en ${plural(byKind("validatie").length, "validatie", "validaties")}. ${decided ? `${plural(decided, "experiment heeft", "experimenten hebben")} een eindoordeel.` : "Nog geen eindoordeel."}${famPoints.length ? ` ${plural(famPoints.length, "familie telt", "families tellen")} als één experiment.` : ""}`,
         }}
-        sub={tab === "content" ? "Gepubliceerde content en wat het oplevert, gemeten tegen het doel en de succesgrens die bij publicatie zijn vastgelegd. Meetmomenten: een nieuw artikel na 7, 30 en 90 dagen; een bijgewerkte pagina na 14, 28 en 56 dagen (voor en na)." : "Experiment = onzekere aanpassing met genoeg data. Meting = volgen zonder oordeel. Validatie = controleren of een technische oplossing werkt. Meetmomenten: na 7 dagen signalering (opnieuw gecrawld?), na 14 dagen een eerste beoordeling met vervolgadvies (voorlopig), na 28 dagen de eindmeting; 56 dagen alleen bij te weinig data. Vergeleken worden even lange perioden vóór en na de wijziging."} />
+        sub={tab === "content" ? "Gepubliceerde content en wat het oplevert, gemeten tegen het doel en de succesgrens die bij publicatie zijn vastgelegd. Meetmomenten: na 7 dagen signalering, na 14 dagen een eerste beoordeling, na 28 dagen het eindoordeel; 56 dagen bij het doel SEO-groei of zichtbaarheid, of bij te weinig data. Bijgewerkte pagina's worden vóór en na gemeten." : "Experiment = onzekere aanpassing met genoeg data. Meting = volgen zonder oordeel. Validatie = controleren of een technische oplossing werkt. Meetmomenten: na 7 dagen signalering (opnieuw gecrawld?), na 14 dagen een eerste beoordeling met vervolgadvies (voorlopig), na 28 dagen de eindmeting; 56 dagen alleen bij te weinig data. Vergeleken worden even lange perioden vóór en na de wijziging."} />
 
       <div className="seg" role="tablist" aria-label="SEO of content">
         <button role="tab" aria-selected={tab === "seo"} className={tab === "seo" ? "is-active" : ""} onClick={() => router.replace("/experimenten")}>SEO</button>

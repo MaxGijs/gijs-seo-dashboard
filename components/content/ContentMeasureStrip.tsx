@@ -8,10 +8,10 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowRight, CalendarClock, LineChart, Newspaper } from "lucide-react"
 import { Badge, MeasuringBadge } from "@/components/ui"
-import { dateShort, num, addDays } from "@/lib/format"
+import { dateShort, num } from "@/lib/format"
 import { serviceLabel, type ContentIdea } from "@/lib/content/model"
 import { isPageUpdate, nextMilestone } from "@/lib/content/update"
-import { CONTENT_GOALS, planVerdict } from "@/lib/content/plan"
+import { CONTENT_GOALS, latestArticleKey, nextArticlePoint, planVerdict } from "@/lib/content/plan"
 
 const SHOW = 8
 
@@ -21,8 +21,8 @@ function nextText(i: ContentIdea) {
     const n = nextMilestone(i.evals?.update || { points: {} }, i.published_at)
     return n ? `${n.days}-dagenmeting ${dateShort(n.date)}` : "Eindoordeel volgt"
   }
-  const next = !i.evals?.d7 ? 7 : !i.evals?.d30 ? 30 : 90
-  return `${next}-dagenmeting ${dateShort(addDays(i.published_at, next))}`
+  const n = nextArticlePoint(i)
+  return n ? `Dag ${n.days} (${n.label}) ${dateShort(n.date)}` : "Eindoordeel volgt"
 }
 
 // Laatste meting in één regel
@@ -33,7 +33,7 @@ function lastResult(i: ContentIdea): string | null {
     const p = key ? pts[key] : null
     return p ? `${num(p.page.clicks)} klikken · ${num(p.page.impressions)} vertoningen (na ${p.window.days} dagen)` : null
   }
-  const key = (["d90", "d30", "d7"] as const).find(k => i.evals?.[k])
+  const key = latestArticleKey(i)
   const e = key ? i.evals![key]! : null
   if (!e) return null
   const views = e.ga4?.views

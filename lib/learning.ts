@@ -151,7 +151,7 @@ export interface ContentFact { id?: string; title?: string; service: string | nu
   alreadyOnSite?: boolean  // afgewezen omdat het al op de site staat: zegt niets over het onderwerp zelf
   explained?: boolean      // afgewezen met een toelichting waarin een reden of onderwerp herkend is: telt via je feedback, niet voor de hele dienst
   advice?: string | null   // "bijwerken" = bestaande pagina; telt niet mee in vergelijkingen tussen artikelen
-  views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 30 dagen
+  views30?: number | null; leads30?: number | null; engagement30?: number | null   // GA4, eerste 28 dagen
   // Kenmerken van de eigen tekst (uit de ingeleverde PDF/Word)
   text?: { words: number; lengthBucket: "kort" | "middel" | "lang"; readable: boolean; kwIntro: boolean | null; kwCoverage: number | null; cta: boolean } | null }
 
@@ -265,7 +265,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
     out.push({
       key: `content|format=${format}`, source: "content",
       title: `${format} ${avg > avgAll ? "trekt meer bezoekers dan gemiddeld" : "trekt minder bezoekers dan gemiddeld"}`,
-      conclusion: `Gemiddeld ${Math.round(avg)} klikken na 30 dagen, tegen ${Math.round(avgAll)} voor alle gemeten publicaties (${list.length} van ${measured.length} publicaties).`,
+      conclusion: `Gemiddeld ${Math.round(avg)} klikken na 28 dagen, tegen ${Math.round(avgAll)} voor alle gemeten publicaties (${list.length} van ${measured.length} publicaties).`,
       evidence: { n: list.length },
       confidence: "middel",
       effect: { type: "info", text: "Alleen ter informatie: het systeem past dit nog niet zelf toe." },
@@ -298,7 +298,7 @@ export function computeLessons(input: { experiments: ExperimentFact[]; decisions
         out.push({
           key: `content|stijl|${m.key}|${t.key}=${v}`, source: "content",
           title: `${t.label(v)} ${better ? m.label : m.label.replace("meer", "minder").replace("langer", "korter")}`,
-          conclusion: `Gemiddeld ${Math.round(avg)} ${m.unit} in de eerste 30 dagen, tegen ${Math.round(avgT)} voor alle gemeten eigen teksten (${list.length} van ${withText.length}).`,
+          conclusion: `Gemiddeld ${Math.round(avg)} ${m.unit} in de eerste 28 dagen, tegen ${Math.round(avgT)} voor alle gemeten eigen teksten (${list.length} van ${withText.length}).`,
           evidence: { n: list.length },
           confidence: list.length >= 5 ? "middel" : "laag",
           effect: { type: "info", text: "Wordt meegegeven in de briefing via de stijlvoorbeelden van de best presterende artikelen." },

@@ -71,7 +71,7 @@ export function buildBriefing(idea: ContentIdea, learned: string[] = [], style: 
     style.examples.forEach((e, i) => {
       L.push("")
       const res = [e.views30 != null ? `${e.views30}× bekeken` : null, e.leads30 != null ? `${e.leads30} aanvragen` : null, e.clicks30 !== null ? `${e.clicks30} klikken uit Google` : null].filter(Boolean)
-      L.push(`VOORBEELD ${i + 1}: "${e.title}"${res.length ? ` (eerste 30 dagen: ${res.join(", ")})` : ""}. Begin van de tekst:`)
+      L.push(`VOORBEELD ${i + 1}: "${e.title}"${res.length ? ` (eerste 28 dagen: ${res.join(", ")})` : ""}. Begin van de tekst:`)
       L.push(`"""${e.excerpt}"""`)
     })
   }
@@ -109,9 +109,9 @@ export interface StyleGuide { measured: boolean; words: number; avgSentence: num
 export function styleGuideFrom(ideas: ContentIdea[], exclude?: string): StyleGuide | null {
   const own = ideas.filter(i => i.id !== exclude && i.text_check?.readable && i.text_check.stats && i.concept_final && ["review", "goedgekeurd", "gepubliceerd"].includes(i.status))
   if (!own.length) return null
-  const clicks = (i: ContentIdea) => i.evals?.d30?.clicks ?? null
+  const clicks = (i: ContentIdea) => i.evals?.d28?.clicks ?? null
   // Best presterend: eerst aanvragen, dan hoe vaak bekeken, dan Google-klikken
-  const score = (i: ContentIdea) => { const g = i.evals?.d30?.ga4; return (g?.measurement === "ok" ? (g.requests || 0) * 1000 : 0) + (g?.views ?? 0) + (clicks(i) ?? 0) / 1000 }
+  const score = (i: ContentIdea) => { const g = i.evals?.d28?.ga4; return (g?.measurement === "ok" ? (g.requests || 0) * 1000 : 0) + (g?.views ?? 0) + (clicks(i) ?? 0) / 1000 }
   const measured = own.filter(i => i.status === "gepubliceerd" && clicks(i) !== null)
   const pick = measured.length >= 2
     ? [...measured].sort((a, b) => score(b) - score(a)).slice(0, 2)
@@ -124,6 +124,6 @@ export function styleGuideFrom(ideas: ContentIdea[], exclude?: string): StyleGui
     avgSentence: avg(i => i.text_check!.stats!.avgSentence),
     headings: Math.round(avg(i => i.text_check!.stats!.headings)),
     kwIntro: pick.every(i => i.text_check!.features?.kwIntro !== false),
-    examples: pick.map(i => ({ title: i.title, excerpt: excerpt(i.concept_final!), clicks30: measured.length >= 2 ? clicks(i) : null, views30: measured.length >= 2 ? i.evals?.d30?.ga4?.views ?? null : null, leads30: measured.length >= 2 && i.evals?.d30?.ga4?.measurement === "ok" ? i.evals?.d30?.ga4?.requests ?? null : null })),
+    examples: pick.map(i => ({ title: i.title, excerpt: excerpt(i.concept_final!), clicks30: measured.length >= 2 ? clicks(i) : null, views30: measured.length >= 2 ? i.evals?.d28?.ga4?.views ?? null : null, leads30: measured.length >= 2 && i.evals?.d28?.ga4?.measurement === "ok" ? i.evals?.d28?.ga4?.requests ?? null : null })),
   }
 }

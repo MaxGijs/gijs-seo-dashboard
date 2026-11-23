@@ -3,10 +3,10 @@
 import Attachments from "@/components/Attachments"
 import ContentMergeSection from "./ContentMergeSection"
 import PageTimeline from "@/components/panel/PageTimeline"
-import { CELL_TEXT, cellState, comparablesFor, CONTENT_GOALS, dueDate, planVerdict, suggestGoal, suggestThreshold, type CellState, type ContentGoal } from "@/lib/content/plan"
+import { CELL_TEXT, cellState, comparablesFor, CONTENT_GOALS, dueDate, needs56, planVerdict, suggestGoal, suggestThreshold, type ArticleKey, type CellState, type ContentGoal } from "@/lib/content/plan"
 import { CONTENT_STEP } from "@/lib/content/useContent"
 import { articleVerdict } from "@/lib/content/verdict"
-import { compare, isPageUpdate, judgeUpdate, nextMilestone, OUTCOME_META, UPDATE_MILESTONES, UPDATE_RULE, type UpdatePoint } from "@/lib/content/update"
+import { compare, isPageUpdate, judgeUpdate, nextMilestone, OUTCOME_META, UPDATE_MILESTONES, UPDATE_RULE, updateNeeds56, type UpdatePoint } from "@/lib/content/update"
 import { ownerName } from "@/components/OwnerSelect"
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, HelpCircle, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
@@ -530,7 +530,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                 <>
                   <p style={{ fontSize: "var(--fs-sm)" }}>Gepubliceerd op {dateNl(idea.published_at)}: <a href={idea.published_url!} target="_blank" rel="noopener noreferrer">{idea.published_url!.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/, "")}</a></p>
                   <ArticleResults idea={idea} all={all} onPlan={isPageUpdate(idea) ? undefined : (p: PlanDraft) => act({ action: "plan", plan: { goal: p.goal, threshold: p.threshold, prediction: p.prediction === "" ? null : Number(p.prediction), comparables: comparablesFor(idea, all).map(c => c.id) } }, "Doel en succesgrens vastgelegd")} busy={busy} />
-                  {!isPageUpdate(idea) && <p className="field-hint">Waarom 7, 30 en 90 dagen en niet 14, 28 en 56 zoals bij SEO-experimenten? Een nieuw artikel moet eerst gevonden en geïndexeerd worden en bouwt daarna langzaam posities op. Na 7 dagen zie je of het geïndexeerd is, na 90 dagen hoe het presteert. Een aanpassing aan een bestaande pagina werkt sneller en wordt daarom na 56 dagen beoordeeld.</p>}
+                  <p className="field-hint">{isPageUpdate(idea) ? "Meetmomenten: 7 dagen (signalering), 14 dagen (eerste beoordeling) en 28 dagen (eindoordeel), telkens dezelfde pagina vóór en na de aanpassing. Bij te weinig data volgt nog een meting na 56 dagen." : "Meetmomenten na publicatie: 7 dagen (signalering: staat het in Google, eerste bezoekers), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindoordeel voor bereik en aanvragen). Bij het doel SEO-groei of zichtbaarheid, of bij te weinig data na 28 dagen, volgt nog een meting na 56 dagen: een nieuw artikel heeft 6 à 8 weken nodig om zijn plek in Google te vinden."}</p>
                   <PageTimeline paths={[(idea.published_url || "").replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "").replace(/(.)\/$/, "$1")]} title="Deze pagina bij Google" />
                 </>
               )}
@@ -740,7 +740,8 @@ export function UpdateResults({ idea }: { idea: ContentIdea }) {
   const changedAt = idea.published_at || null
   const j = m ? judgeUpdate(m) : null
   const next = changedAt ? nextMilestone(m || { points: {} }, changedAt) : null
-  const cols = UPDATE_MILESTONES.map(d => ({ d, p: m?.points[`d${d}`] }))
+  // 56 dagen alleen als de meting verlengd is (te weinig data na 28 dagen)
+  const cols = UPDATE_MILESTONES.filter(d => d !== 56 || !!m?.points.d56 || (!!m && updateNeeds56(m))).map(d => ({ d, p: m?.points[`d${d}`] }))
   const b = m?.baseline || null
   const cmp = (p: UpdatePoint) => (b ? compare(b, p) : null)
   const today = new Date().toISOString().slice(0, 10)
@@ -752,7 +753,7 @@ export function UpdateResults({ idea }: { idea: ContentIdea }) {
   return (
     <>
       <div className={`verdict-box tone-${tone}`}>
-        <p className="verdict-label">Werkte de aanpassing? <b>{label}</b>{j?.at ? <span className="subtle"> · na {j.at} dagen{j.final ? "" : " (eindoordeel na 56 dagen)"}</span> : null}</p>
+        <p className="verdict-label">Werkte de aanpassing? <b>{label}</b>{j?.at ? <span className="subtle"> · na {j.at} dagen{j.final ? "" : m && updateNeeds56(m) ? " (te weinig data: verlengd tot 56 dagen)" : " (eindoordeel na 28 dagen)"}</span> : null}</p>
         {j?.reasons.length ? <ul>{j.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
           : <p>{next && changedAt ? `Eerste meting op ${dateNl(next.date)} (${next.days} dagen na de aanpassing). ` : ""}Een bijgewerkte pagina meten we als experiment: dezelfde pagina vóór en na, niet vergeleken met nieuwe artikelen.</p>}
       </div>
@@ -783,14 +784,15 @@ function NewArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea; all
   const pv = planVerdict(idea, all)
   const [draft, setDraft] = useState<PlanDraft>(() => draftPlan(idea, all))
   const [editing, setEditing] = useState(false)
-  const keys = ["d7", "d30", "d90"] as const
+  // 7, 14 en 28 dagen; 56 alleen bij een SEO-doel of te weinig data na 28 dagen
   const ev = idea.evals || {}
-  const before = ev.d30?.ga4Before
+  const keys: ArticleKey[] = ["d7", "d14", "d28", ...(needs56(idea) || ev.d56 ? ["d56" as const] : [])]
+  const before = ev.d28?.ga4Before
   const showBefore = !!before && (idea.advice === "bijwerken" || before.views > 0)
-  const g = (k: (typeof keys)[number]) => ev[k]?.ga4
-  const due = (k: (typeof keys)[number]) => (idea.published_at ? dueDate(idea.published_at, k) : null)
+  const g = (k: ArticleKey) => ev[k]?.ga4
+  const due = (k: ArticleKey) => (idea.published_at ? dueDate(idea.published_at, k) : null)
   // Een cel met een waarde, of met de reden waarom er (nog) geen waarde is
-  const cell = (k: (typeof keys)[number], field: "gsc" | "position" | "ga4" | "ga4-extra" | "requests", get: (x: NonNullable<ContentIdea["evals"]["d7"]>) => number | null | undefined, show: (v: number) => React.ReactNode = v => num(v)) => {
+  const cell = (k: ArticleKey, field: "gsc" | "position" | "ga4" | "ga4-extra" | "requests", get: (x: NonNullable<ContentIdea["evals"]["d7"]>) => number | null | undefined, show: (v: number) => React.ReactNode = v => num(v)) => {
     const x = ev[k], val = x ? get(x) : null
     const st = cellState(idea, k, field, val)
     return <td className="num"><Cell state={st} due={due(k)}>{val !== null && val !== undefined ? show(val) : null}</Cell></td>
@@ -823,9 +825,9 @@ function NewArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea; all
         <ul className="verdict-more">{v.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
       </details>
       <table className="ptable results-table">
-        <thead><tr><th>Meting</th>{showBefore && <th className="num">30 d ervóór</th>}{keys.map(k => <th key={k} className="num">Na {k.slice(1)} d</th>)}</tr></thead>
+        <thead><tr><th>Meting</th>{showBefore && <th className="num">28 d ervóór</th>}{keys.map(k => <th key={k} className="num">Na {k.slice(1)} d</th>)}</tr></thead>
         <tbody>
-          <tr className="rt-group"><th colSpan={showBefore ? 5 : 4}>Bezoekers (GA4)</th></tr>
+          <tr className="rt-group"><th colSpan={keys.length + (showBefore ? 2 : 1)}>Bezoekers (GA4)</th></tr>
           <tr><th scope="row">Bekeken</th>{showBefore && <td className="num">{num(before!.views)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4", x => x.ga4?.views, v => <b>{num(v)}</b>)}</Fragment>)}</tr>
           <tr><th scope="row">Gem. tijd actief op de pagina</th>{showBefore && <td className="num">{dur(before!.engagementSec)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4", x => x.ga4?.engagementSec, v => dur(v))}</Fragment>)}</tr>
           <tr><th scope="row">Binnengekomen via dit artikel</th>{showBefore && <td className="num">{num(before!.landingSessions)}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4", x => x.ga4?.landingSessions)}</Fragment>)}</tr>
@@ -833,7 +835,7 @@ function NewArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea; all
           <tr><th scope="row">Klikt op de knop naar de energiescan</th>{showBefore && <td className="num">{before!.ctaClicks ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4-extra", x => x.ga4?.ctaClicks)}</Fragment>)}</tr>
           <tr><th scope="row">Energiescanaanvragen</th>{showBefore && <td className="num">{before!.requests ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "requests", x => x.ga4?.requests, v => <b>{num(v)}</b>)}</Fragment>)}</tr>
           <tr><th scope="row">Contactaanvragen</th>{showBefore && <td className="num">{before!.contacts ?? "—"}</td>}{keys.map(k => <Fragment key={k}>{cell(k, "ga4-extra", x => x.ga4?.contacts)}</Fragment>)}</tr>
-          <tr className="rt-group"><th colSpan={showBefore ? 5 : 4}>Google (Search Console)</th></tr>
+          <tr className="rt-group"><th colSpan={keys.length + (showBefore ? 2 : 1)}>Google (Search Console)</th></tr>
           <tr><th scope="row">Klikken</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, "gsc", x => x.clicks)}</Fragment>)}</tr>
           <tr><th scope="row">Vertoningen</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, "gsc", x => x.impressions)}</Fragment>)}</tr>
           <tr><th scope="row">Gem. positie</th>{showBefore && <td />}{keys.map(k => <Fragment key={k}>{cell(k, "position", x => x.position, v => pos(v))}</Fragment>)}</tr>
