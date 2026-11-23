@@ -61,6 +61,7 @@ export interface StatusOptions {
     hypothesis?: string
     targetPages?: string[]
     targetQueries?: string[]
+    changedPages?: string[]
     predicted?: { gain: number | null; low: number | null; high: number | null; metric: string } | null
   }
   ignoreRunning?: boolean       // waarschuwing over een lopende meting al gezien
@@ -427,6 +428,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
             hypothesis: opts.experiment.hypothesis,
             target_pages: opts.experiment.targetPages,
             target_queries: opts.experiment.targetQueries,
+            changed_pages: opts.experiment.changedPages,
             predicted: opts.experiment.predicted ?? null,
             // Eigen groepsnaam van samengevoegde kaarten wordt de naam van de familie in Experimenten
             group_title: task.merged?.length && task.signal.groupTitle ? task.signal.groupTitle : null,

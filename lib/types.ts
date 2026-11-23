@@ -158,6 +158,7 @@ export interface Experiment {
   created_at: string
   hypothesis?: string | null
   target_pages?: string[] | null
+  changed_pages?: string[] | null   // de echt aangepaste pagina's (los van de URL die Google toont)
   target_queries?: string[] | null
   predicted?: { gain: number | null; low: number | null; high: number | null; metric: string } | null
 }

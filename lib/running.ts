@@ -39,7 +39,8 @@ function taskTargets(task: Task) {
 
 function experimentTargets(e: Experiment) {
   const pages = new Set<string>(), queries = new Set<string>()
-  for (const p of [e.page, e.baseline?.targetPage, ...(e.target_pages || [])]) if (typeof p === "string" && p) pages.add(normPage(p))
+  const changed: string[] = e.changed_pages || []
+  for (const p of changed.length ? changed : [e.page, e.baseline?.targetPage, ...(e.target_pages || [])]) if (typeof p === "string" && p) pages.add(normPage(p))
   for (const q of [e.query, ...(e.target_queries || [])]) if (typeof q === "string" && q) queries.add(normQuery(q))
   return { pages, queries }
 }

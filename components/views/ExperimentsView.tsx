@@ -142,7 +142,8 @@ export const placeOf = (path?: string | null) => {
   if (seg[0] !== "regio" || seg.length < 2) return null
   return seg.length >= 3 ? `${cap(seg[seg.length - 1])} (${cap(seg[1])})` : cap(seg[1])
 }
-const pagesOf = (e: Experiment) => [...new Set([e.baseline?.targetPage, e.page, ...(e.target_pages || [])].filter((p): p is string => typeof p === "string" && !!p))]
+const changedOf = (e: Experiment): string[] => e.changed_pages || []
+const pagesOf = (e: Experiment) => { const c = changedOf(e); return [...new Set((c.length ? c : [e.baseline?.targetPage, e.page, ...(e.target_pages || [])]).filter((p): p is string => typeof p === "string" && !!p))] }
 function unitStatus(u: Unit): StatusKey {
   if (u.members.length === 1) return statusOf(u.members[0])
   if (u.members.every(m => m.outcome)) { const o = familyOutcome(u.members.map(m => m.outcome as Outcome)); return o === "succesvol" ? "positief" : o === "niet_succesvol" ? "negatief" : o === "onduidelijk" ? "neutraal" : "afgerond" }
@@ -157,7 +158,7 @@ function unitSignal(u: Unit) {
   const advice: Advice = sum.overall === "onvoldoende" ? "verder meten" : sum.overall === "positief" ? "behouden" : sum.overall === "negatief" ? "onderzoeken" : provisional ? "verder meten" : "opnieuw optimaliseren"
   return { ...sum, advice, measured: reps.length }
 }
-const searchText = (e: Experiment, t?: Task) => normalize([e.page, e.baseline?.targetPage, ...(e.target_pages || []), e.query, ...(e.target_queries || []), e.description, e.family_title, t?.signal.headline, placeOf(e.baseline?.targetPage || e.page)].filter(Boolean).join(" ").replace(/[-/]/g, " "))
+const searchText = (e: Experiment, t?: Task) => normalize([...changedOf(e), e.page, e.baseline?.targetPage, ...(e.target_pages || []), e.query, ...(e.target_queries || []), e.description, e.family_title, t?.signal.headline, ...pagesOf(e).map(placeOf)].filter(Boolean).join(" ").replace(/[-/]/g, " "))
 
 const unitQueries = (u: Unit) => [...new Set(u.members.flatMap(m => [m.query, ...(m.target_queries || [])]).filter((q): q is string => !!q))]
 
@@ -313,7 +314,7 @@ export default function ExperimentsView() {
                                   <tbody>{[...u.members].sort((x, y) => Number(hit(y)) - Number(hit(x))).map(m => {
                                     const t = byKey.get(m.advice_key)
                                     const b = m.baseline || {}
-                                    const url = (b.targetPage as string | undefined) || m.page
+                                    const url = pagesOf(m)[0] || null
                                     const bp = b.targetPage ? b.pairPosition : b.position
                                     const rep = latestReport(m)
                                     const g = (k: string) => rep?.rows.find(r => r.key === k)
@@ -324,7 +325,7 @@ export default function ExperimentsView() {
                                       <td>{t ? <button className="link-btn" onClick={() => openTask(t.key)}>{name}</button> : name}</td>
                                       <td className="small">{url || "—"}</td>
                                       <td className="small">{m.query ? `"${m.query}"` : "—"}</td>
-                                      <td className="small">{shown ? <>{shown.page}{rep!.ranking!.intendedShown === false && <span className="subtle" title="Google toont een andere URL dan de aangepaste pagina: een signaal om te onderzoeken, geen fout"> (andere URL)</span>}</> : <span className="subtle">nog niet gemeten</span>}</td>
+                                      <td className="small">{shown ? <>{shown.page}{rep!.ranking!.intendedShown === false && <span className="subtle" title="Google toont een andere URL dan de aangepaste pagina: een signaal om te onderzoeken, geen fout"> (andere URL)</span>}</> : b.targetPage ? <>{b.targetPage}{url && b.targetPage !== url && <span className="subtle" title="Bij de nulmeting toonde Google voor dit zoekwoord een andere URL dan de aangepaste pagina: een signaal om te onderzoeken, geen fout"> (bij nulmeting, andere URL)</span>}</> : <span className="subtle">nog niet gemeten</span>}</td>
                                       <td className="num small">{num(b.impressions ?? 0)} vert. · {num(b.clicks ?? 0)} kl. · {pct(b.ctr)} · {typeof bp === "number" ? `pos. ${pos(bp)}` : "pos. —"}</td>
                                       <td className="num small">{rep ? <>{num(g("impressions")?.after)} vert. · {num(g("clicks")?.after)} kl. · {pct(g("ctr")?.after)} · pos. {pos(g("position")?.after)}<span className="subtle"> (dag {rep.day})</span></> : <span className="subtle">{(() => { const n = nextMeasurement(m as any); return n ? `dag ${n.days}: ${dateShort(n.date)}` : "—" })()}</span>}</td>
                                       <td>{rep ? <Badge tone={SIGNAL[rep.effect].tone}>{SIGNAL[rep.effect].label}</Badge> : <Badge tone={STATUS[statusOf(m)].tone} dot>{STATUS[statusOf(m)].label}</Badge>}</td>

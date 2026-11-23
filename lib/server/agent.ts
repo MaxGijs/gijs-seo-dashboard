@@ -301,7 +301,7 @@ export const TOOLS: Tool[] = [
       await call(expPOST, `/api/experiments`, {
         advice_key: t.key, description: String(a.wat_aangepast).trim(),
         // Zelfde vastlegging als in het dashboard (lib/execute.ts), inclusief samengevoegde kaarten
-        ...(() => { const e = experimentFor(signal, detail, diag, rec.targetRow, site, String(a.wat_aangepast), (t.merged || []).map(m => m.signal)); return { baseline: e.baseline, hypothesis: e.hypothesis, target_pages: e.targetPages, target_queries: e.targetQueries, predicted: e.predicted } })(),
+        ...(() => { const e = experimentFor(signal, detail, diag, rec.targetRow, site, String(a.wat_aangepast), (t.merged || []).map(m => m.signal)); return { baseline: e.baseline, hypothesis: e.hypothesis, target_pages: e.targetPages, target_queries: e.targetQueries, changed_pages: e.changedPages, predicted: e.predicted } })(),
         query: signal.query ?? null,
         page: (rec.targetRow ? target : null) ?? (signal.kind === "dubbel" ? signal.page ?? null : signal.query ? null : signal.page ?? null),
       })

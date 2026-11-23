@@ -70,6 +70,7 @@ export async function POST(request: Request) {
         hypothesis: typeof hypothesis === "string" ? hypothesis.slice(0, 1000) : null,
         target_pages: Array.isArray(target_pages) ? target_pages.slice(0, 500).map(String) : null,
         target_queries: Array.isArray(target_queries) ? target_queries.slice(0, 50).map(String) : null,
+        changed_pages: Array.isArray(body.changed_pages) ? body.changed_pages.slice(0, 100).map(String) : null,
         predicted: predicted && typeof predicted === "object" ? predicted : null,
         changed_at: today,
       })

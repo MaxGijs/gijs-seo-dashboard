@@ -17,7 +17,9 @@ export const normPath = (p: string) => { let x = p.trim().replace(/^https?:\/\/[
 
 export function targetsOf(exp: any): { pages: string[]; queries: string[] } {
   const b = exp.baseline || {}
-  const pages = [...new Set([b.targetPage, exp.page, ...(exp.target_pages || [])].filter((p: unknown): p is string => typeof p === "string" && !!p).map(normPath))].slice(0, MAX_PAGES)
+  // Gemeten wordt de aangepaste pagina; de URL die Google toont (targetPage) is een apart, diagnostisch gegeven
+  const changed: string[] = (Array.isArray(exp.changed_pages) ? exp.changed_pages : []).filter((p: unknown) => typeof p === "string" && p)
+  const pages = [...new Set((changed.length ? changed : [b.targetPage, exp.page, ...(exp.target_pages || [])]).filter((p: unknown): p is string => typeof p === "string" && !!p).map(normPath))].slice(0, MAX_PAGES)
   const queries = [...new Set([exp.query, ...(exp.target_queries || [])].filter((q: unknown): q is string => typeof q === "string" && !!q).map((q: string) => q.trim().toLowerCase()))]
   return { pages, queries }
 }

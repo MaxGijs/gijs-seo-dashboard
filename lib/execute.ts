@@ -33,8 +33,10 @@ export function experimentFor(signal: Signal, detail: AdviceDetail | null, diag:
       ...(signal.overlap ? { overlapWith: signal.overlap } : {}),
     },
     hypothesis: `${diag.steps[0]?.title || signal.action || ""}. Verwacht: ${diag.importance.gainText.toLowerCase()}. ${diag.plan.success}`,
-    targetPages: uniq([...(signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) || [] : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x)), ...extraPages]),
+    targetPages: uniq([...(signal.kind === "eigen" && signal.page ? [signal.page] : []), ...(signal.kind === "techniek" ? signal.tech?.pages.map(p => p.path) || [] : [target, ...(signal.relatedPages || [])].filter((x): x is string => !!x)), ...extraPages]),
     targetQueries: uniq([...(signal.query ? [signal.query] : []), ...extraQueries]),
+    // De pagina('s) die echt zijn aangepast; baseline.targetPage blijft de URL die Google bij de nulmeting toonde
+    changedPages: uniq([...(signal.kind === "eigen" && signal.page ? [signal.page] : target ? [target] : signal.page ? [signal.page] : []), ...extraPages]),
     predicted: { gain: signal.estimate ? Math.round(signal.estimate.gain * 10) / 10 : null, low: signal.estimate?.low ?? null, high: signal.estimate?.high ?? null, metric: diag.successMetric },
   }
 }
