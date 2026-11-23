@@ -388,15 +388,18 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [keywords, prevKeywords, pages, overview, prevOverview]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setStatus = useCallback(async (task: Task, to: Status, opts: StatusOptions = {}) => {
+    let overlapAck: Signal["overlap"] | null = null
     if (!opts.ignoreRunning && columnOf(task.status) === "beoordelen" && (to === "goedgekeurd" || to === "in_uitvoering")) {
       const hits = runningMeasurements(task, experimentsRef.current)
       if (hits.length) {
         const goOn = await new Promise<boolean>(resolve => { runningResolve.current = resolve; setRunningWarning({ task, to, hits }) })
         setRunningWarning(null)
         if (!goOn) return false
+        // Toch uitvoeren: de overlap wordt vastgelegd op de kaart en later bij de meting
+        overlapAck = { at: today(), with: hits.slice(0, 5).map(h => ({ id: h.experiment.id, description: (h.experiment.family_title || h.experiment.description).slice(0, 140), on: h.on.slice(0, 3), changedAt: h.experiment.changed_at })) }
       }
     }
-    const snapshot: Signal = { ...task.signal }
+    const snapshot: Signal = { ...task.signal, ...(overlapAck ? { overlap: overlapAck } : {}) }
     try {
       const res = await getJson<{ row: AdviceRecord }>(`/api/advice`, {
         method: "POST",

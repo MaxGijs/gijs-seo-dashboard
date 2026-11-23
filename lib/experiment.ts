@@ -9,6 +9,9 @@
 // Een experiment start pas als experiment na een geschiktheidscontrole. Verwante aanpassingen
 // (zelfde beschrijving, zelfde dagen) vormen één experimentfamilie en tellen als één conclusie.
 
+import { MAX_SPREAD, MIN_IMPRESSIONS, nextCheckpoint } from "./measureLogic"
+export { MAX_SPREAD, MIN_IMPRESSIONS }
+
 export type ExpKind = "experiment" | "validatie" | "meting"
 export type Outcome = "succesvol" | "niet_succesvol" | "onduidelijk" | "onvoldoende_data" | "ongeldig" | "beinvloed" | "gevolgd"
 export type Tone = "good" | "problem" | "info" | "attention"
@@ -23,7 +26,7 @@ export const OUTCOME_META: Record<Outcome, { label: string; tone: Tone; decisive
   succesvol: { label: "Geslaagd", tone: "good", decisive: true, text: "Het succescriterium is gehaald." },
   niet_succesvol: { label: "Niet geslaagd", tone: "problem", decisive: true, text: "Het resultaat is even ver of verder achteruitgegaan." },
   onduidelijk: { label: "Geen duidelijk effect", tone: "info", decisive: false, text: "Genoeg data, maar de verandering valt binnen de normale schommeling." },
-  onvoldoende_data: { label: "Onvoldoende data", tone: "info", decisive: false, text: "Ook na verlengd meten (84 dagen) te weinig vertoningen voor een oordeel." },
+  onvoldoende_data: { label: "Onvoldoende data", tone: "info", decisive: false, text: "Ook na verlengd meten (56 dagen) te weinig gegevens voor een betrouwbare conclusie. Dit betekent niet dat de wijziging niet werkte." },
   ongeldig: { label: "Meting ongeldig", tone: "attention", decisive: false, text: "De doelpagina geeft een fout of verwijst door; wat gemeten is, zegt niets over de aanpassing." },
   beinvloed: { label: "Beïnvloed", tone: "attention", decisive: false, text: "Tijdens de meting veranderde er nog iets aan dezelfde pagina of hetzelfde zoekwoord." },
   gevolgd: { label: "Gevolgd", tone: "info", decisive: false, text: "Meting zonder oordeel: dit was geen zuiver experiment." },
@@ -45,10 +48,9 @@ export const goalOf = (metric: string | undefined | null) => GOALS[metric || "po
 export const VALIDATION_METRICS = new Set(["technisch", "indexering", "controle"])
 const SEARCH_METRICS = new Set(["position", "ctr", "consolidatie"])
 
-export const MIN_IMPRESSIONS = 100        // zelfde grens als "telt mee" bij het eindoordeel
 export const MIN_PAGE_AGE = 56            // opbouwfase van een nieuwe pagina (lib/pages.ts)
-export const MAX_SPREAD = 8               // posities verschil tussen de weken van de nulmeting
-export const EXTEND_DAYS = 84
+export const FINAL_DAYS = 28                // eindmeting
+export const EXTEND_DAYS = 56               // alleen bij verlenging (te weinig data, late verwerking, schommeling)
 
 export type CheckState = "ok" | "fout" | "onbekend"
 export interface Check { key: "data" | "leeftijd" | "doel" | "stabiel" | "een-wijziging" | "meetbaar"; label: string; state: CheckState; detail: string }
@@ -165,20 +167,22 @@ export function familyOutcome(outcomes: (Outcome | null)[]): Outcome | null {
 
 export interface FinalInput {
   kind: ExpKind
-  ageDays: number
+  day: number                     // bereikt meetmoment: 14, 28 of 56
   verdict: "succesvol" | "niet_succesvol" | "onduidelijk" | null   // volgens het succescriterium
   enoughData: boolean
   invalid: boolean
   influenced: boolean
+  extend: boolean                 // op dag 28 verlengd tot 56
 }
-// null = nog geen oordeel (verder meten)
+// null = nog geen oordeel (verder meten). Conclusie op dag 28; dag 56 alleen na verlenging.
 export function finalOutcome(i: FinalInput): Outcome | null {
   if (i.kind === "validatie") return i.verdict
-  if (i.kind === "meting") return i.ageDays >= 56 ? "gevolgd" : null
-  if (i.ageDays < 56) return null
+  if (i.kind === "meting") return i.day >= FINAL_DAYS ? "gevolgd" : null
+  if (i.day < FINAL_DAYS) return null
   if (i.invalid) return "ongeldig"
+  if (i.day < EXTEND_DAYS && i.extend) return null
   if (i.influenced) return "beinvloed"
-  if (!i.enoughData) return i.ageDays >= EXTEND_DAYS ? "onvoldoende_data" : null
+  if (!i.enoughData) return "onvoldoende_data"
   return i.verdict
 }
 
@@ -189,13 +193,29 @@ export function adviceStatusFor(o: Outcome): "succesvol" | "niet_succesvol" | "o
   return "onvoldoende_bewijs"
 }
 
-// Wanneer is de volgende meting? (14, 28, 56 en bij te weinig data 84 dagen)
-export function nextMeasurement(e: { changed_at: string; outcome: string | null; kind?: string | null; result_14d?: unknown; result_28d?: unknown; result_56d?: unknown; result_84d?: unknown }): { days: number; date: string } | null {
-  if (e.outcome) return null
-  const add = (d: number) => { const x = new Date(`${e.changed_at.slice(0, 10)}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10) }
-  if (!e.result_14d) return { days: 14, date: add(14) }
-  if (!e.result_28d) return { days: 28, date: add(28) }
-  if (!e.result_56d) return { days: 56, date: add(56) }
-  if (!e.result_84d) return { days: EXTEND_DAYS, date: add(EXTEND_DAYS) }
-  return null
+// Wanneer is de volgende meting? 7 (crawlcontrole), 14 (vroege indicatie), 28 (eindmeting), 56 alleen bij verlenging.
+// Datum = de dag waarop gemeten wordt (Search Console loopt een paar dagen achter).
+export function nextMeasurement(e: { changed_at: string; outcome: string | null; kind?: string | null; result_7d?: unknown; result_14d?: unknown; result_28d?: unknown; result_56d?: unknown; result_84d?: unknown }, today?: string): { days: number; date: string; label: string } | null {
+  const n = nextCheckpoint(e as any, today)
+  return n ? { days: n.day, date: n.date, label: n.label } : null
+}
+
+// ── Type wijziging (vastgelegd bij uitvoeren) ───────────────────────────────
+
+export type ChangeType = "kenniskaart" | "tekst" | "interne-link" | "metadata" | "technisch"
+export const CHANGE_TYPES: Record<ChangeType, string> = {
+  kenniskaart: "Kenniskaart",
+  tekst: "Tekst",
+  "interne-link": "Interne link",
+  metadata: "Metadata (title, description)",
+  technisch: "Technische SEO",
+}
+// Voorstel uit de beschrijving; de gebruiker kan het aanpassen
+export function inferChangeType(description: string, actionType?: string | null): ChangeType {
+  const d = description.toLowerCase()
+  if (/\bkaart(en)?\b|kenniskaart|blok met (een )?verwijzing/.test(d)) return "kenniskaart"
+  if (/interne? link|linkt? naar|gelinkt|verwijzing|doorlink/.test(d)) return "interne-link"
+  if (/\btitle\b|meta ?description|metadata|\bh1\b|snippet/.test(d) || actionType === "snippet") return "metadata"
+  if (/redirect|doorverwijz|404|sitemap|canonical|noindex|index|schema|laadtijd|techni/.test(d) || actionType === "technisch" || actionType === "indexering" || actionType === "consolidatie") return "technisch"
+  return "tekst"
 }

@@ -125,7 +125,7 @@ function routeSteps(route: Route, g: { type: string; prov: string | null }, n: n
   ]
 }
 
-const MEASURE = "Zet de taken op uitgevoerd zodra het staat: het dashboard meet elke pagina na 14, 28 en 56 dagen en leert welke aanpak werkt."
+const MEASURE = "Zet de taken op uitgevoerd zodra het staat: het dashboard meet elke pagina na 7, 14 en 28 dagen en leert welke aanpak werkt."
 
 // 1. Patronen in de open adviezen: veel van hetzelfde op dezelfde soort pagina's
 function groupAdvice(i: SiteAdviceInput): SiteAdvice[] {

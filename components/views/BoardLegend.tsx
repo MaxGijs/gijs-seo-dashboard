@@ -7,7 +7,7 @@ const STEPS = [
   { id: "beoordelen", label: "Te beoordelen", text: "Nieuwe signalen uit Search Console, GA4 en de nachtelijke controles, plus taken die je zelf toevoegt. Jij beslist: inplannen, uitstellen of afwijzen (met reden, daar leert het systeem van)." },
   { id: "gepland", label: "Gepland", text: "Goedgekeurd, nog niet begonnen. Wijs een eigenaar toe, zodat duidelijk is wie het oppakt." },
   { id: "uitvoering", label: "In uitvoering", text: "Iemand is ermee bezig. Gebruik de notitie voor tussenstanden (\"half af\", \"wacht op livegang\")." },
-  { id: "evalueren", label: "Evalueren", text: "Het staat live. Bij het verplaatsen vul je in wat je hebt aangepast; het systeem legt een nulmeting vast en meet zelf na 14, 28 en 56 dagen. Jij hoeft niets te doen." },
+  { id: "evalueren", label: "Evalueren", text: "Het staat live. Bij het verplaatsen vul je in wat je hebt aangepast; het systeem legt een nulmeting vast en meet zelf na 7 dagen (signalering), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindmeting). Jij hoeft niets te doen." },
   { id: "afgerond", label: "Afgerond", text: "Er is een oordeel: geslaagd, niet geslaagd, geen duidelijk effect of afgewezen. De uitkomst telt mee in \"Wat hebben we geleerd?\" en bepaalt welke adviezen later voorrang krijgen." },
 ]
 

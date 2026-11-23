@@ -7,7 +7,7 @@ export const COLUMNS: { id: ColumnId; label: string; hint: string }[] = [
   { id: "beoordelen", label: "Te beoordelen", hint: "Nieuwe signalen: inplannen, uitstellen of afwijzen" },
   { id: "gepland", label: "Gepland", hint: "Goedgekeurd, nog niet begonnen" },
   { id: "uitvoering", label: "In uitvoering", hint: "Je bent ermee bezig" },
-  { id: "evalueren", label: "Evalueren", hint: "Aangepast; metingen na 14, 28 en 56 dagen" },
+  { id: "evalueren", label: "Evalueren", hint: "Aangepast; metingen na 7, 14 en 28 dagen" },
   { id: "afgerond", label: "Afgerond", hint: "Beoordeeld of afgesloten" },
 ]
 

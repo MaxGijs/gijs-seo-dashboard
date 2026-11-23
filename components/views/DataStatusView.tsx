@@ -21,7 +21,7 @@ const JOB_META: Record<string, { label: string; what: string; maxAgeH: number }>
   inventaris: { label: "Pagina-inventaris", what: "Alle URL's uit de sitemap plus URL's die Google toont", maxAgeH: 30 },
   "http-controle": { label: "HTTP-controle", what: "Live statuscode en doorverwijzing van elke URL", maxAgeH: 30 },
   indexering: { label: "Indexeringscontrole", what: "URL-inspectie van Google (max. 2.000 per dag)", maxAgeH: 30 },
-  experimenten: { label: "Experimentmetingen", what: "Metingen na 14, 28 en 56 dagen", maxAgeH: 30 },
+  experimenten: { label: "Experimentmetingen", what: "Metingen na 7, 14 en 28 dagen (56 bij verlenging)", maxAgeH: 30 },
   actualiteiten: { label: "Contentkansen", what: "Nieuws van Rijksoverheid en Milieu Centraal, webtrends (maandag), zoekdata en seizoen", maxAgeH: 30 },
   "content-metingen": { label: "Contentmetingen", what: "Gepubliceerde artikelen na 7, 30 en 90 dagen", maxAgeH: 30 },
 }

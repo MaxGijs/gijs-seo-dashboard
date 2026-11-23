@@ -2,6 +2,7 @@
 // chat in de Claude-app. Alles loopt via de bestaande API-handlers, zodat de regels (statussen,
 // meting, eigenaar) precies gelijk blijven aan wat het dashboard doet.
 
+import { nextMeasurement } from "@/lib/experiment"
 import { GET as gscGET } from "@/app/api/gsc/route"
 import { GET as trendsGET } from "@/app/api/trends/route"
 import { GET as adviceGET, POST as advicePOST } from "@/app/api/advice/route"
@@ -155,8 +156,8 @@ export const TOOLS: Tool[] = [
       const ideas = (content?.ideas || []).filter((i: any) => i.status === "nieuw").slice(0, 5)
       const byKey = new Map(ws.tasks.map(t => [t.key, t]))
       const metingen = ws.experiments.map(e => {
-        const step = ([[14, "result_14d"], [28, "result_28d"], [56, "result_56d"]] as const).find(([, k]) => !e[k])
-        return { e, date: step ? addDays(e.changed_at, step[0]) : null }
+        const n = nextMeasurement(e as any)
+        return { e, date: n ? n.date : null }
       }).filter(x => x.date && byKey.has(x.e.advice_key)).sort((a, b) => a.date! < b.date! ? -1 : 1).slice(0, 5)
       return {
         datum: today(),
@@ -284,7 +285,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "taak_uitgevoerd", title: "Taak uitgevoerd melden", readOnly: false,
-    description: "Meld dat een taak is uitgevoerd. Legt de nulmeting vast en start de meting (na 14, 28 en 56 dagen). Vraag de gebruiker eerst wat er precies is aangepast en roep dit pas aan als het werk echt live staat.",
+    description: "Meld dat een taak is uitgevoerd. Legt de nulmeting vast en start de meting (na 7 dagen (signalering), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindmeting; 56 alleen bij te weinig data)). Vraag de gebruiker eerst wat er precies is aangepast en roep dit pas aan als het werk echt live staat.",
     inputSchema: { type: "object", properties: { key: str("De key van de taak"), wat_aangepast: str("Wat er concreet is aangepast, bijvoorbeeld 'interne links vanaf /regio/overijssel naar /regio/overijssel/borne toegevoegd'") }, required: ["key", "wat_aangepast"] },
     run: async a => {
       const ws = await loadWorkspace()
@@ -305,7 +306,7 @@ export const TOOLS: Tool[] = [
         page: (rec.targetRow ? target : null) ?? (signal.kind === "dubbel" ? signal.page ?? null : signal.query ? null : signal.page ?? null),
       })
       invalidate()
-      return { ok: true, key: t.key, kolom: "Evalueren", gemeten_op: diag.plan.label, nulmeting: diag.plan.baselineText, geslaagd_als: diag.plan.success, metingen: [14, 28, 56].map(d => addDays(today(), d)) }
+      return { ok: true, key: t.key, kolom: "Evalueren", gemeten_op: diag.plan.label, nulmeting: diag.plan.baselineText, geslaagd_als: diag.plan.success, metingen: [7, 14, 28].map(d => addDays(today(), d)), eindmeting_verlengd_tot_56_bij_te_weinig_data: true }
     },
   },
   {
@@ -490,7 +491,7 @@ async function diagnose(ws: Workspace, t: Task) {
 export const INSTRUCTIONS = `Dit is het Gijs-dashboard van groeninjestraat.nl (verduurzaming van woningen in Overijssel en Gelderland).
 Het takenbord heeft vijf kolommen: Te beoordelen → Gepland → In uitvoering → Evalueren → Afgerond.
 - Begin met "vandaag" als iemand vraagt wat er moet gebeuren; gebruik "taak_bekijken" voor de stappen van één taak.
-- Elke uitgevoerde aanpassing wordt gemeten (na 14, 28 en 56 dagen). Meld een taak pas als uitgevoerd ("taak_uitgevoerd") als de gebruiker bevestigt dat het live staat, en vraag wat er precies is aangepast.
+- Elke uitgevoerde aanpassing wordt gemeten na 7 dagen (signalering), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindmeting; 56 alleen bij te weinig data). Na 14 dagen is er een voorlopige beoordeling, geen eindoordeel. Meld een taak pas als uitgevoerd ("taak_uitgevoerd") als de gebruiker bevestigt dat het live staat, en vraag wat er precies is aangepast.
 - Eigen taken hebben een doel: seo (gemeten in Google), conversie (gemeten op energiescanaanvragen in GA4) of overig. Kies conversie voor alles rond leads en gebruiksgemak.
 - Afwijzen vraagt een reden: het systeem leert daarvan.
 - Wordt er een brief, flyer of andere offline actie verstuurd? Leg die vast met "campagne_toevoegen", zodat metingen er rekening mee houden.

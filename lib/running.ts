@@ -1,15 +1,20 @@
-// Loopt er al een meting op dezelfde pagina of hetzelfde zoekwoord?
-// Wie opnieuw iets aanpast terwijl de vorige aanpassing nog wordt gemeten, kan niet meer zien
-// of die vorige aanpassing heeft geholpen. Daarom waarschuwen we bij plannen of uitvoeren.
+// Loopt er al een meting op dezelfde pagina?
+// Wie opnieuw iets aanpast terwijl de vorige aanpassing nog wordt gemeten, kan minder goed zien of die
+// vorige aanpassing heeft geholpen. Daarom waarschuwen we bij plannen of uitvoeren; we blokkeren niet.
+// Een taak op een andere pagina gaat gewoon door, ook bij hetzelfde zoekwoord. Alleen metingen zonder
+// pagina vergelijken we op zoekwoord.
 
 import type { Experiment, Task } from "./types"
-import { EXTEND_DAYS, nextMeasurement } from "./experiment"
+import { nextMeasurement } from "./experiment"
+import { EARLY_DAY, EXTENDED_DAY, FINAL_DAY, measureDate } from "./measureLogic"
 
 export interface RunningHit {
   experiment: Experiment
   on: string[]            // waarop de overlap zit: pagina's en/of zoekwoorden
   next: string | null     // volgende meetdatum
-  end: string             // datum van het eindoordeel (56 dagen, of 84 bij verlengd)
+  firstAssessment: string // dag 14: eerste beoordeling
+  assessed: boolean       // eerste beoordeling is er al
+  end: string             // eindmeting (dag 28, of 56 bij verlenging)
   sameCard: boolean       // meting hoort bij deze kaart zelf
 }
 
@@ -20,7 +25,6 @@ const normPage = (p: string) => {
 }
 const normQuery = (q: string) => q.trim().toLowerCase().replace(/\s+/g, " ")
 
-const addDays = (date: string, d: number) => { const x = new Date(`${date.slice(0, 10)}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10) }
 
 function taskTargets(task: Task) {
   const all = [task, ...(task.merged || [])]
@@ -49,19 +53,20 @@ export function runningMeasurements(task: Task, experiments: Experiment[], today
     if (e.kind === "validatie") continue
     const next = nextMeasurement(e as any)
     if (!next) continue
-    const end = addDays(e.changed_at, e.result_56d ? EXTEND_DAYS : 56)
-    if (end < today) continue
+    const extended = !!(e.result_28d && (e.result_28d.report?.extend || e.result_28d.extend))
+    const end = measureDate(e.changed_at, extended ? EXTENDED_DAY : FINAL_DAY)
     const x = experimentTargets(e)
     const sameCard = t.keys.has(e.advice_key)
-    const on = [
-      ...[...x.pages].filter(p => t.pages.has(p) && p !== "/"),
-      ...[...x.queries].filter(q => t.queries.has(q)).map(q => `"${q}"`),
-    ]
+    const on = x.pages.size
+      ? [...x.pages].filter(p => t.pages.has(p) && p !== "/")
+      : [...x.queries].filter(q => t.queries.has(q)).map(q => `"${q}"`)
     if (!sameCard && !on.length) continue
-    hits.push({ experiment: e, on, next: next.date, end, sameCard })
+    hits.push({ experiment: e, on, next: next.date, end, sameCard, firstAssessment: measureDate(e.changed_at, EARLY_DAY), assessed: !!e.result_14d })
   }
   return hits.sort((a, b) => b.end.localeCompare(a.end))
 }
 
-// Tot wanneer wachten: het laatste eindoordeel van de overlappende metingen
-export const waitUntil = (hits: RunningHit[]) => hits.reduce((m, h) => (h.end > m ? h.end : m), "")
+// Tot wanneer wachten: tot de eerste beoordeling (dag 14) van alle overlappende metingen;
+// is die er al, dan tot de eindmeting
+export const waitUntil = (hits: RunningHit[]) => hits.reduce((m, h) => { const d = h.assessed ? h.end : h.firstAssessment; return d > m ? d : m }, "")
+export const waitsForFirst = (hits: RunningHit[]) => hits.some(h => !h.assessed)

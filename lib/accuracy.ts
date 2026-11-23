@@ -1,8 +1,9 @@
 // Hoe nauwkeurig is de voorspelling? Per experiment: voorspelde winst (clicks per 28 dagen, met
 // bandbreedte) tegen de gemeten winst (gecorrigeerd voor sitebrede groei). Alleen eindmetingen
-// (56 dagen) met genoeg vertoningen tellen mee in de cijfers; tussenmetingen zijn "voorlopig".
+// (dag 28, of 56 na verlenging) met genoeg vertoningen tellen mee in de cijfers; tussenmetingen zijn "voorlopig".
 // Dit verandert niets aan de voorspelling of de meting zelf: het vergelijkt alleen wat er al staat.
 
+import { conclusionOf } from "./measureLogic"
 import type { Experiment } from "./types"
 
 export type Hit = "binnen" | "boven" | "onder"
@@ -56,13 +57,15 @@ export function bandOf(e: Experiment, predicted: number): { low: number; high: n
 export function accuracyRow(e: Experiment, subject: string): AccuracyRow | null {
   const predicted = e.predicted?.gain ?? e.baseline?.predictedGain
   if (typeof predicted !== "number" || !Number.isFinite(predicted)) return null
-  const final = !!e.result_56d
-  const m = e.result_56d || e.result_28d || e.result_14d
+  // Definitief = de conclusie (dag 28, of 56 na verlenging); dag 14 is voorlopig
+  const concl = conclusionOf(e)
+  const final = !!concl
+  const m = concl?.result || e.result_56d || e.result_28d || e.result_14d
   const actual = m?.actualGainCorrected
   if (!m || typeof actual !== "number" || !Number.isFinite(actual)) return null
   const { low, high, fromModel } = bandOf(e, predicted)
   const hit: Hit = actual < low ? "onder" : actual > high ? "boven" : "binnen"
-  const enough = e.result_56d?.evidence !== "te weinig data"
+  const enough = m?.evidence !== "te weinig data"
   return {
     id: e.id, adviceKey: e.advice_key, subject, predicted: round(predicted), low, high, bandFromModel: fromModel,
     actual: round(actual), error: round(actual - predicted), hit, final,

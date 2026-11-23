@@ -48,7 +48,7 @@ export default function AccuracyCard() {
   if (!a.rows.length) return (
     <section className="card accuracy" aria-labelledby="acc-title">
       <div className="card-head"><div><h2 className="card-title" id="acc-title"><Target aria-hidden />Hoe goed klopt de voorspelling?</h2></div></div>
-      <div className="card-body"><p className="muted small" style={{ margin: 0 }}>Nog geen experiment met een voorspelling én een meting. Na de eerste meting (14 dagen) zie je hier per taak wat er voorspeld werd en wat het werkelijk opleverde; na de eindmeting (56 dagen) telt het mee in de nauwkeurigheid.</p></div>
+      <div className="card-body"><p className="muted small" style={{ margin: 0 }}>Nog geen experiment met een voorspelling én een meting. Na de eerste meting (14 dagen) zie je hier per taak wat er voorspeld werd en wat het werkelijk opleverde; na de eindmeting (28 dagen, of 56 bij verlenging) telt het mee in de nauwkeurigheid.</p></div>
     </section>
   )
 
@@ -150,7 +150,7 @@ export default function AccuracyCard() {
             <li><b>Richting van de fout:</b> zit de voorspelling structureel te hoog (te optimistisch) of te laag? Een fout die steeds dezelfde kant op gaat, kun je corrigeren.</li>
             <li><b>Beter dan niets voorspellen?</b> {a.skill === null ? "Nog niet te berekenen." : `${a.skill > 0 ? "Ja" : "Nee"}: de voorspelling zit ${Math.abs(Math.round(a.skill * 100))}% ${a.skill > 0 ? "dichter bij" : "verder van"} de uitkomst dan wanneer je "geen effect" zou voorspellen.`}{a.realisation !== null && ` Samen leverde het ${Math.round(a.realisation * 100)}% op van wat voorspeld was.`}</li>
             <li><b>Betrouwbaarheid:</b> onder {LEVELS.indicatief} eindmetingen zegt dit nog niets; vanaf {LEVELS.indicatief} is het indicatief en vanaf {LEVELS.bruikbaar} bruikbaar om doelen op te baseren. Eén experiment met veel verkeer kan het gemiddelde sterk bepalen.</li>
-            <li><b>Wat telt mee:</b> alleen de eindmeting na 56 dagen van zoekwoorden met minstens 100 vertoningen. {a.excluded.length ? `${a.excluded.length} ${a.excluded.length === 1 ? "eindmeting telt" : "eindmetingen tellen"} niet mee door te weinig vertoningen.` : ""} Tussenmetingen staan erbij als voorlopig.</li>
+            <li><b>Wat telt mee:</b> alleen de eindmeting (28 dagen, of 56 na verlenging) met minstens 100 vertoningen. {a.excluded.length ? `${a.excluded.length} ${a.excluded.length === 1 ? "eindmeting telt" : "eindmetingen tellen"} niet mee door te weinig vertoningen.` : ""} Tussenmetingen staan erbij als voorlopig.</li>
             <li><b>Let op:</b> seizoen, nieuws of een update van Google kunnen de uitkomst beïnvloeden. De meting corrigeert voor de groei van de hele site, niet voor alles.</li>
           </ul>
         </details>

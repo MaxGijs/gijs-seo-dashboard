@@ -1,5 +1,9 @@
 "use client"
 
+import { MeasurementReport, MeasureTimeline } from "@/components/panel/MeasurementReport"
+import { conclusionOf } from "@/lib/measureLogic"
+import ChangeTypeSelect from "@/components/panel/ChangeTypeSelect"
+import { inferChangeType, type ChangeType } from "@/lib/experiment"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle, ArrowLeft, CalendarClock, CheckCircle2, Clock, Copy, ExternalLink,
@@ -15,7 +19,7 @@ import { reconcile } from "@/lib/contract"
 import { experimentFor, siteBaselineOf } from "@/lib/execute"
 import MergeSection from "./MergeSection"
 import PageTimeline from "./PageTimeline"
-import { KIND_META as EXP_KIND, OUTCOME_META as EXP_OUTCOME } from "@/lib/experiment"
+import { KIND_META as EXP_KIND } from "@/lib/experiment"
 import { columnOf, groupMembers, groupName, memberLabel } from "@/lib/workflow"
 import { addDays, dateLong, dateShort, num, pct, pos, today } from "@/lib/format"
 import { Alert, Badge, Breakable, IntentBadge, KindLabel, PriorityMeter, Skeleton, Sparkline, StatusBadge } from "@/components/ui"
@@ -50,6 +54,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
   const [mode, setMode] = useState<Mode>(null)
   const [busy, setBusy] = useState(false)
   const [text, setText] = useState("")
+  const [changeType, setChangeType] = useState<ChangeType | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [promptText, setPromptText] = useState("")
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -172,7 +177,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
     const seen = new Set<string>()
     const same = experiments.filter(e => (e.kind || "experiment") === "experiment" && e.baseline?.actionType === diag.actionType && e.advice_key !== task.key)
       .filter(e => { const k = e.family_id || e.id; if (seen.has(k)) return false; seen.add(k); return true })
-    const done = same.filter(e => (e.outcome === "succesvol" || e.outcome === "niet_succesvol" || e.outcome === "onduidelijk") && e.result_56d?.evidence !== "te weinig data")
+    const done = same.filter(e => (e.outcome === "succesvol" || e.outcome === "niet_succesvol" || e.outcome === "onduidelijk") && conclusionOf(e)?.result.evidence !== "te weinig data")
     const ok = done.filter(e => e.outcome === "succesvol").length
     if (!same.length) return `Nog geen eerdere experimenten van het type "${diag.plan.label.toLowerCase()}". Deze schatting steunt alleen op de doorklik per positie.`
     if (!done.length) return `${same.length} eerder${same.length === 1 ? " experiment" : "e experimenten"} van dit type ${same.length === 1 ? "loopt" : "lopen"} nog; er is nog geen uitkomst om op te leunen.`
@@ -491,6 +496,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               <label className="field-label" htmlFor="exec-desc">Wat heb je aangepast?</label>
               <textarea id="exec-desc" className="textarea" value={text} onChange={e => { setText(e.target.value); setFormError(null) }}
                 placeholder={diag.steps[0] ? `Bijvoorbeeld: ${diag.steps[0].title.toLowerCase()}` : "Beschrijf de aanpassing"} autoFocus />
+              <ChangeTypeSelect id="exec-type" description={text} value={changeType} onChange={setChangeType} />
               {formError && <p className="field-error">{formError}</p>}
               <p className="field-hint">
                 Nulmeting die wordt vastgelegd: {diag.plan.baselineText}{signal.kind !== "techniek" && signal.metrics.position ? ` (nu positie ${pos(signal.metrics.position)}, ${num(signal.metrics.impressions)} vertoningen, ${num(signal.metrics.clicks)} clicks${rec!.targetRow ? `; ${target} zelf op positie ${pos(rec!.targetRow.position)}` : ""})` : ""}. {diag.plan.success}
@@ -499,7 +505,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
                 <button className="btn btn-primary btn-sm" disabled={busy || blocked} onClick={() => {
                   if (!text.trim()) { setFormError("Beschrijf kort wat je hebt aangepast, zodat je later weet wat er gemeten wordt."); return }
-                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text, (task.merged || []).map(m => m.signal)) }, "Uitgevoerd. De meting is gestart.")
+                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text, (task.merged || []).map(m => m.signal), changeType || inferChangeType(text, diag.actionType)) }, "Uitgevoerd. De meting is gestart (signalering na 7 dagen, eerste beoordeling na 14, eindmeting na 28).")
                 }}>Opslaan en meting starten</button>
               </div>
             </div>
@@ -621,33 +627,12 @@ function gainLabel(e: Estimate) {
 function capitalizeFirst(t: string) { return t ? t[0].toUpperCase() + t.slice(1) : t }
 
 function ExperimentSummary({ exp }: { exp: Experiment }) {
-  const base = exp.baseline || {}
-  const basePos = base.position ?? base.positionNow
-  const milestones: { label: string; days: number; data: Record<string, any> | null }[] = [
-    { label: "14 dagen", days: 14, data: exp.result_14d },
-    { label: "28 dagen", days: 28, data: exp.result_28d },
-    { label: "56 dagen", days: 56, data: exp.result_56d },
-  ]
   return (
     <div className="card" style={{ padding: 14 }}>
-      <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.kind && exp.kind !== "experiment" && <Badge tone="neutral">{EXP_KIND[exp.kind].label}</Badge>}{exp.outcome && <Badge tone={exp.outcome === "succesvol" ? "success" : exp.outcome === "niet_succesvol" ? "error" : "neutral"}>{EXP_OUTCOME[exp.outcome].label}</Badge>}</div>
+      <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.kind && exp.kind !== "experiment" && <Badge tone="neutral">{EXP_KIND[exp.kind].label}</Badge>}</div>
       <p style={{ fontSize: "var(--fs-sm)", marginBottom: 10 }}>{exp.description}</p>
-      <div className="exp-measures">
-        <div className="measure"><p className="measure-label">Nulmeting</p>
-          {["technisch", "indexering"].includes(base.successMetric)
-            ? <><p className="measure-value">{num(base.count ?? base.paths?.length)} URL&apos;s</p><p className="measure-sub">bij uitvoeren</p></>
-            : <><p className="measure-value">pos. {pos(base.targetPage ? base.pairPosition ?? basePos : basePos)}</p><p className="measure-sub">{base.targetPage ? `${base.targetPage.split("/").pop()} · ` : ""}{num(base.clicks)} clicks / 28 d</p></>}
-        </div>
-        {milestones.map(m => m.data ? (
-          <div className="measure" key={m.label}><p className="measure-label">{m.label}</p>
-            {typeof m.data.position === "number"
-              ? <><p className="measure-value">pos. {pos(m.data.position)}</p><p className="measure-sub">{num(m.data.clicks)} clicks / {m.data.sampleDays ?? 7} d</p></>
-              : <><p className="measure-value">{m.data.summary?.split(" · ")[0] ?? "gemeten"}</p><p className="measure-sub">{m.data.summary?.split(" · ").slice(1).join(" · ")}</p></>}
-          </div>
-        ) : (
-          <div className="measure is-pending" key={m.label}><p className="measure-label">{m.label}</p><p className="measure-value subtle">—</p><p className="measure-sub">{dateShort(addDays(exp.changed_at, m.days))}</p></div>
-        ))}
-      </div>
+      <MeasureTimeline e={exp} />
+      <div style={{ marginTop: 10 }}><MeasurementReport e={exp} compact /></div>
     </div>
   )
 }

@@ -6,7 +6,8 @@ import { logged } from "@/lib/server/synclog"
 import { LAUNCH_DATES } from "@/lib/pages"
 import { recomputeLessons } from "@/lib/server/learning"
 import { readChecks } from "@/lib/server/checks"
-import { positionVerdict } from "@/lib/measure"
+import { measureScoped, targetsOf } from "@/lib/server/scopedMeasure"
+import { CRAWL_DAY, crawlState, EARLY_DAY, evaluate, EXTENDED_DAY, FINAL_DAY, LAG, NOT_ENOUGH, outcomeFromReport } from "@/lib/measureLogic"
 import { addDaysIso, conversionVerdict, conversionWindows } from "@/lib/server/conversion"
 import { adviceStatusFor, finalOutcome, MIN_IMPRESSIONS, type ExpKind, type Outcome } from "@/lib/experiment"
 
@@ -43,47 +44,6 @@ async function context(supabase: any, exp: any) {
 }
 
 // ── Metingen per soort aanpassing ───────────────────────────────────────────
-
-// Zoekwoord, pagina of zoekwoord-paginacombinatie, live uit Search Console (laatste 7 dagen,
-// zelfde vertraging als de rest van het dashboard). Valt terug op de dagelijkse snapshots.
-async function measureSearch(supabase: any, query: string | null, page: string | null): Promise<Result | null> {
-  const win = dateWindow(7, 0)
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON && (query || page)) {
-    try {
-      const filters: any[] = []
-      if (query) filters.push({ dimension: "query", operator: "equals", expression: query })
-      if (page) filters.push({ dimension: "page", operator: "equals", expression: toUrl(page) })
-      const rows = await gscQuery(serviceSearchConsole(), { ...win, dimensions: query ? ["query"] : ["page"], dimensionFilterGroups: [{ filters }], rowLimit: 1 })
-      const r = rows[0]
-      const scope = query && page ? "zoekwoord-pagina" : query ? "zoekwoord" : "pagina"
-      // 28 dagen, voor de vergelijking met de nulmeting (die ook over 28 dagen gaat)
-      let clicks28: number | null = null, impressions28: number | null = null
-      try {
-        const r28 = await gscQuery(serviceSearchConsole(), { ...dateWindow(28, 0), dimensions: query ? ["query"] : ["page"], dimensionFilterGroups: [{ filters }], rowLimit: 1 })
-        clicks28 = r28[0]?.clicks ?? 0; impressions28 = r28[0]?.impressions ?? 0
-      } catch { /* alleen weekcijfers */ }
-      if (!r) return { measuredAt: today(), window: win, scope, position: null, impressions: 0, clicks: 0, ctr: 0, sampleDays: 7, clicks28, impressions28, summary: "Geen vertoningen in de meetweek" }
-      return {
-        measuredAt: today(), window: win, scope, sampleDays: 7, clicks28, impressions28,
-        position: Math.round(r.position * 10) / 10, impressions: r.impressions, clicks: r.clicks, ctr: Math.round(r.ctr * 1000) / 1000,
-        summary: `positie ${r.position.toFixed(1).replace(".", ",")} · ${r.impressions} vertoningen (7 d)`,
-      }
-    } catch { /* terugvallen op snapshots */ }
-  }
-  if (!query && !page) return null
-  const table = query ? "seo_daily_keywords" : "seo_daily_pages"
-  const { data } = await supabase.from(table).select("position, impressions, clicks, ctr")
-    .eq(query ? "query" : "page", query || toUrl(page!)).gte("snapshot_date", daysAgo(7))
-  if (!data?.length) return null
-  const imp = data.reduce((s: number, r: any) => s + r.impressions, 0)
-  const clicks = data.reduce((s: number, r: any) => s + r.clicks, 0)
-  const position = data.reduce((s: number, r: any) => s + r.position * Math.max(r.impressions, 1), 0) / data.reduce((s: number, r: any) => s + Math.max(r.impressions, 1), 0)
-  return {
-    measuredAt: today(), scope: query ? "zoekwoord" : "pagina", sampleDays: data.length, source: "snapshot",
-    position: Math.round(position * 10) / 10, impressions: imp, clicks, ctr: imp ? Math.round((clicks / imp) * 1000) / 1000 : 0,
-    summary: `positie ${position.toFixed(1).replace(".", ",")} · ${imp} vertoningen (${data.length} d)`,
-  }
-}
 
 async function pageRows(supabase: any, paths: string[]) {
   const rows: any[] = []
@@ -147,23 +107,175 @@ async function measureConsolidation(supabase: any, exp: any): Promise<{ result: 
   return { result, final: ok ? "succesvol" : bad ? "niet_succesvol" : "onduidelijk" }
 }
 
-function finalSearchVerdict(exp: any, m: Result): Verdict | null {
-  const b = exp.baseline || {}
-  if (b.successMetric === "ctr") {
-    if (typeof b.ctr !== "number" || typeof m.ctr !== "number") return null
-    const improved = m.ctr >= Math.max(b.ctr * 1.2, b.ctr + 0.002)
-    return improved ? "succesvol" : m.ctr < b.ctr * 0.8 ? "niet_succesvol" : "onduidelijk"
-  }
-  // Positie: bij een zoekwoord met doelpagina vergelijken we de zoekwoord-paginacombinatie
-  // (verscheen de doelpagina bij de nulmeting nog niet voor het zoekwoord, dan geldt positie 100 als start)
-  const pair = !!(exp.query && exp.page && b.targetPage)
-  const base = pair ? (typeof b.pairPosition === "number" ? b.pairPosition : 100) : (b.position ?? b.positionNow)
-  if (typeof base !== "number" || typeof m.position !== "number") return null
-  return positionVerdict(base, m.position)
+// ── Eén experiment: welke meetmomenten zijn aan de beurt? ─────────────────────
+
+const V = 2   // meetlogica 7/14/28(/56); resultaten zonder v zijn van de oude 14/28/56/84-logica
+const isNew = (r: any) => !!r && (r.v === V || !!r.report)
+
+// Andere aanpassingen aan dezelfde pagina in de meetperiode (buiten de eigen familie). Een wijziging op een
+// andere pagina telt niet, ook niet bij hetzelfde zoekwoord; zonder pagina vergelijken we op zoekwoord.
+async function otherChangesFor(supabase: any, exp: any, until: string) {
+  const { pages, queries } = targetsOf(exp)
+  const { data } = await supabase.from("seo_experiments").select("id, description, query, page, target_pages, target_queries, baseline, family_id, changed_at, kind").gt("changed_at", exp.changed_at).lte("changed_at", until).neq("id", exp.id)
+  const fam = exp.family_id || exp.id
+  return ((data || []) as any[]).filter(o => (o.family_id || o.id) !== fam && o.kind !== "validatie").filter(o => {
+    const t = targetsOf(o)
+    return pages.length ? t.pages.some(p => pages.includes(p) && p !== "/") : !t.pages.length && t.queries.some(q => queries.includes(q))
+  }).map(o => `${String(o.description || "").split("\n")[0].slice(0, 90)} (${o.changed_at})`)
 }
 
-// GET /api/cron/experiment-eval — dagelijks: meet experimenten na 14, 28 en 56 dagen,
-// met het succescriterium dat bij de soort aanpassing hoort.
+async function crawlFor(supabase: any, exp: any) {
+  const { pages } = targetsOf(exp)
+  const rows = pages.length ? await pageRows(supabase, pages) : []
+  const byPath = new Map(rows.map((r: any) => [r.path, r]))
+  return crawlState(exp.changed_at, pages.map(p => ({ path: p, lastCrawl: (byPath.get(p) as any)?.last_crawl_time ?? null })))
+}
+
+async function evaluateOne(supabase: any, exp: any): Promise<{ measured: number; finalized: number }> {
+  // Hele kalenderdagen sinds de wijziging (de nachtelijke run telt de dag van vandaag mee)
+  const ageDays = Math.round((new Date(`${today()}T12:00:00Z`).getTime() - new Date(`${exp.changed_at.slice(0, 10)}T12:00:00Z`).getTime()) / 86400000)
+  const metric: string = exp.baseline?.successMetric || "position"
+  const kind: ExpKind = exp.kind || "experiment"
+  const search = metric === "position" || metric === "ctr"
+  const due = (d: number) => ageDays >= (d === CRAWL_DAY ? d : d + LAG)
+  const update: Record<string, any> = {}
+  let measured = 0
+
+  // Dag 7: heeft Google de gewijzigde pagina's opnieuw gecrawld? Nog geen oordeel.
+  if (!exp.result_7d && !exp.result_14d && due(CRAWL_DAY) && ageDays < EARLY_DAY + LAG) {
+    const crawl = await crawlFor(supabase, exp)
+    update.result_7d = { v: V, measuredAt: today(), crawl, summary: crawl.state === "onbekend" ? "Crawlstatus nog onbekend" : `${crawl.crawled} van ${crawl.total} pagina's opnieuw gecrawld` }
+    measured++
+  }
+
+  // Meetmomenten 14, 28 en (bij verlenging) 56
+  const plan: number[] = []
+  if (due(EARLY_DAY) && !exp.result_14d) plan.push(EARLY_DAY)
+  if (due(FINAL_DAY) && !isNew(exp.result_28d)) plan.push(FINAL_DAY)
+  let decided: { day: number; verdict: Verdict | null; enough: boolean; extend: boolean; influenced: boolean } | null = null
+
+  const step = async (day: number) => {
+    const col = `result_${day}d`
+    const legacy = exp[col] && !isNew(exp[col]) ? { legacy: exp[col] } : {}
+    const ctx = await context(supabase, exp)
+    let r: Record<string, any>
+    let verdict: Verdict | null = null, enough = true, extend = false, influenced = false
+    if (search) {
+      const [scoped, crawl, otherChanges] = [await measureScoped(exp, day, metric as "position" | "ctr"), await crawlFor(supabase, exp), await otherChangesFor(supabase, exp, addDaysIso(exp.changed_at, day))]
+      const env = ctx.confounders.filter(c => !c.startsWith("Sitebrede"))
+      const report = evaluate({ day, metric: metric as "position" | "ctr", changedAt: exp.changed_at, scoped, crawl, otherChanges, context: env, kind })
+      const a = scoped?.after
+      const clicks28 = scoped ? Math.round((scoped.after.clicks * 28) / scoped.afterWindow.days * 10) / 10 : null
+      r = {
+        v: V, measuredAt: today(), report, scoped, crawl, ...ctx, ...legacy,
+        scope: scoped?.scope ?? null, sampleDays: day,
+        position: scoped?.main.after ?? a?.position ?? null, impressions: a?.impressions ?? 0, clicks: a?.clicks ?? 0, ctr: a?.ctr ?? 0,
+        clicks28, impressions28: scoped ? Math.round((scoped.after.impressions * 28) / scoped.afterWindow.days) : null,
+        summary: report.headline,
+      }
+      // Voorspeld versus werkelijk (klikken per 28 dagen, gecorrigeerd voor sitebrede groei)
+      if (typeof clicks28 === "number" && typeof exp.baseline?.clicks === "number") {
+        const corrected = ctx.site.growth ? clicks28 / ctx.site.growth : clicks28
+        r.actualGain = Math.round((clicks28 - exp.baseline.clicks) * 10) / 10
+        r.actualGainCorrected = Math.round((corrected - exp.baseline.clicks) * 10) / 10
+        r.predictedGain = exp.predicted?.gain ?? exp.baseline?.predictedGain ?? null
+      }
+      verdict = outcomeFromReport(report)
+      enough = report.effect !== "onvoldoende"
+      extend = report.extend
+      influenced = otherChanges.length > 0
+      if (report.final) r.evidence = enough && !influenced ? "telt mee" : "te weinig data"
+    } else if (metric === "conversie") {
+      // Even lange periode vóór en na de aanpassing (niet over de dag van de aanpassing zelf)
+      try {
+        const before = { start: addDaysIso(exp.changed_at, -day), end: addDaysIso(exp.changed_at, -1) }
+        const after = { start: addDaysIso(exp.changed_at, 1), end: addDaysIso(exp.changed_at, day) }
+        const { measurement, windows } = await conversionWindows([before, after], exp.page)
+        const [b, a] = windows
+        let v = conversionVerdict(b, a, measurement)
+        const { data: camps } = await supabase.from("seo_campaigns").select("*")
+        const hit = ((camps || []) as Campaign[]).filter(c => overlaps(c, before.start, after.end))
+        if (hit.length) { influenced = true; v = { verdict: v.verdict, reason: `Beïnvloed: in de meetperiode liep ${hit.map(describe).join("; ")}.` } }
+        const thin = /Te weinig aanvragen|Geen aanvraaggegevens|klopt nog niet/.test(v.reason)
+        enough = !thin
+        extend = day === FINAL_DAY && thin
+        r = { v: V, measuredAt: today(), scope: "conversie", before: b, after: a, measurement: measurement.status, extend, ...ctx, ...legacy, summary: `${a.requests ?? "—"} aanvragen in ${a.sessions} sessies (was ${b.requests ?? "—"} in ${b.sessions}) · ${extend ? NOT_ENOUGH : v.reason}` }
+        if (day >= FINAL_DAY) verdict = v.verdict
+      } catch (e: any) {
+        enough = false; extend = day === FINAL_DAY
+        r = { v: V, measuredAt: today(), scope: "conversie", extend, ...legacy, summary: `Meting mislukt: ${e?.message || "GA4 niet bereikbaar"}` }
+      }
+    } else if (metric === "controle") {
+      const open = await readChecks(true).catch(() => null)
+      const still = open ? open.some(c => c.id === exp.baseline?.checkId) : true
+      r = { v: V, measuredAt: today(), scope: "controle", ...legacy, summary: still ? "Probleem nog aanwezig" : "Probleem niet meer gevonden" }
+      if (open && !still) verdict = "succesvol"
+      else if (day >= FINAL_DAY) verdict = "niet_succesvol"
+    } else if (metric === "technisch") {
+      const t = await measureTechnical(supabase, exp)
+      r = { v: V, ...t.result, ...legacy }
+      if (t.verdict) verdict = t.verdict
+      else if (day >= FINAL_DAY) verdict = "niet_succesvol"
+    } else if (metric === "indexering") {
+      const t = await measureIndexing(supabase, exp)
+      extend = !t.verdict && day === FINAL_DAY
+      r = { v: V, ...t.result, extend, ...legacy, summary: `${t.result.summary}${extend ? " · nog niet alles geïndexeerd; meting verlengd tot 56 dagen" : ""}` }
+      if (t.verdict) verdict = t.verdict
+      else if (day >= EXTENDED_DAY) verdict = "niet_succesvol"
+    } else if (metric === "consolidatie") {
+      const t = await measureConsolidation(supabase, exp)
+      const thin = t.result.mainImpressions === null || (t.result.sumBefore ?? 0) < MIN_IMPRESSIONS
+      enough = !thin
+      extend = day === FINAL_DAY && thin
+      r = { v: V, ...t.result, extend, ...ctx, ...legacy }
+      if (day >= FINAL_DAY && !extend) verdict = t.final
+    } else {
+      r = { v: V, measuredAt: today(), ...legacy, summary: "Geen meting nodig" }
+    }
+    update[col] = r
+    measured++
+    // Validaties mogen eerder klaar zijn (bv. alles hersteld na 14 dagen)
+    if (day >= FINAL_DAY || kind === "validatie") decided = { day, verdict, enough, extend, influenced }
+    return r
+  }
+
+  for (const d of plan) await step(d)
+  // Verlengd (nu of eerder) en de 56 dagen zijn om
+  const r28 = update.result_28d || exp.result_28d
+  const extended = !!(r28 && isNew(r28) && (r28.report?.extend || r28.extend))
+  if (extended && due(EXTENDED_DAY) && !isNew(exp.result_56d)) await step(EXTENDED_DAY)
+
+  // Eindoordeel volgens de soort (validaties op hun controle, metingen zonder oordeel)
+  let finalized = 0
+  const d = decided as { day: number; verdict: Verdict | null; enough: boolean; extend: boolean; influenced: boolean } | null
+  if (d) {
+    let invalid = false
+    if (kind === "experiment" && !(d.day === FINAL_DAY && d.extend)) {
+      const target = exp.baseline?.targetPage || exp.page
+      if (target) {
+        const [row] = await pageRows(supabase, [target])
+        invalid = !!row && ((row.http_status ?? 0) >= 400 || (!!row.http_final_path && row.http_final_path !== target))
+      }
+    }
+    const outcome: Outcome | null = finalOutcome({ kind, day: d.day, verdict: d.verdict, enoughData: d.enough, invalid, influenced: d.influenced, extend: d.extend })
+    if (outcome) {
+      update.outcome = outcome
+      const status = adviceStatusFor(outcome)
+      if (status) {
+        await supabase.from("seo_advice_status").update({ status, updated_at: new Date().toISOString() }).eq("advice_key", exp.advice_key)
+        finalized++
+      }
+    }
+  }
+  if (Object.keys(update).length) {
+    const { error } = await supabase.from("seo_experiments").update(update).eq("id", exp.id)
+    if (error) throw error
+  }
+  return { measured, finalized }
+}
+
+// GET /api/cron/experiment-eval — dagelijks: crawlcontrole na 7 dagen, vroege indicatie na 14,
+// eindmeting na 28 en alleen bij verlenging na 56 dagen (zie lib/measureLogic.ts).
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization")
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -174,126 +286,26 @@ export async function GET(request: Request) {
   }
 
   const supabase = getSupabase()
-  const results = { checked: 0, measured: 0, finalized: 0 }
+  const results: { checked: number; measured: number; finalized: number; errors?: string[] } = { checked: 0, measured: 0, finalized: 0 }
 
   try {
     const { data: experiments, error } = await supabase
       .from("seo_experiments")
       .select("*")
       .is("outcome", null)
-      .lte("changed_at", daysAgo(14))
+      .lte("changed_at", daysAgo(CRAWL_DAY))
     if (error) throw error
 
     for (const exp of experiments || []) {
       results.checked++
-      const ageDays = Math.floor((Date.now() - new Date(exp.changed_at).getTime()) / 86400000)
-      const metric: string = exp.baseline?.successMetric || "position"
-      const kind: ExpKind = exp.kind || "experiment"
-      // 84 dagen alleen bij een experiment dat na 56 dagen nog te weinig data had (verlengd meten)
-      const steps = [[14, "result_14d"], [28, "result_28d"], [56, "result_56d"], ...(kind === "experiment" && exp.result_56d ? [[84, "result_84d"]] : [])] as [number, string][]
-      const milestones = steps.filter(([d, col]) => ageDays >= d && !exp[col])
-      if (!milestones.length) continue
-      const update: Record<string, any> = {}
-      let verdict: Verdict | null = null
-      let influenced = false
-
-      for (const [days, col] of milestones) {
-        if (metric === "conversie") {
-          // Even lange periode vóór en na de aanpassing (niet over de dag van de aanpassing zelf)
-          try {
-            const before = { start: addDaysIso(exp.changed_at, -days), end: addDaysIso(exp.changed_at, -1) }
-            const after = { start: addDaysIso(exp.changed_at, 1), end: addDaysIso(exp.changed_at, days) }
-            const { measurement, windows } = await conversionWindows([before, after], exp.page)
-            const [b, a] = windows
-            let v = conversionVerdict(b, a, measurement)
-            // Een offline campagne in één van beide periodes maakt de vergelijking onbetrouwbaar
-            const { data: camps } = await supabase.from("seo_campaigns").select("*")
-            const hit = ((camps || []) as Campaign[]).filter(c => overlaps(c, before.start, after.end))
-            if (hit.length) { influenced = true; v = { verdict: v.verdict, reason: `Beïnvloed: in de meetperiode liep ${hit.map(describe).join("; ")}.` } }
-            update[col] = { measuredAt: today(), scope: "conversie", before: b, after: a, measurement: measurement.status, summary: `${a.requests ?? "—"} aanvragen in ${a.sessions} sessies (was ${b.requests ?? "—"} in ${b.sessions}) · ${v.reason}` }
-            if (days >= 56) verdict = v.verdict
-          } catch (e: any) {
-            update[col] = { measuredAt: today(), scope: "conversie", summary: `Meting mislukt: ${e?.message || "GA4 niet bereikbaar"}` }
-          }
-        } else if (metric === "controle") {
-          const open = await readChecks(true).catch(() => null)
-          const still = open ? open.some(c => c.id === exp.baseline?.checkId) : true
-          update[col] = { measuredAt: today(), scope: "controle", summary: still ? "Probleem nog aanwezig" : "Probleem niet meer gevonden" }
-          if (open && !still) verdict = "succesvol"
-          else if (days >= 28) verdict = "niet_succesvol"
-        } else if (metric === "technisch") {
-          const { result, verdict: v } = await measureTechnical(supabase, exp)
-          update[col] = result
-          // Technisch: geslaagd zodra alles hersteld is; eindoordeel na 28 dagen
-          if (v) verdict = v
-          else if (days >= 28) verdict = "niet_succesvol"
-        } else if (metric === "indexering") {
-          const { result, verdict: v } = await measureIndexing(supabase, exp)
-          update[col] = result
-          if (v) verdict = v
-          else if (days >= 56) verdict = "niet_succesvol"
-        } else if (metric === "consolidatie") {
-          const { result, final } = await measureConsolidation(supabase, exp)
-          update[col] = result
-          if (days >= 56) verdict = final
-        } else if (metric === "geen") {
-          update[col] = { measuredAt: today(), summary: "Geen meting nodig" }
-        } else {
-          const m = await measureSearch(supabase, exp.query, exp.page)
-          if (m) {
-            update[col] = m
-            if (days >= 56) verdict = finalSearchVerdict(exp, m)
-          }
-        }
-        if (update[col]) {
-          const ctx = await context(supabase, exp)
-          update[col] = { ...update[col], ...ctx }
-          // Voorspeld versus werkelijk (alleen bij zoekmetingen, gecorrigeerd voor sitebrede groei)
-          const r = update[col]
-          if (typeof r.clicks28 === "number" && typeof exp.baseline?.clicks === "number") {
-            const corrected = ctx.site.growth ? r.clicks28 / ctx.site.growth : r.clicks28
-            r.actualGain = Math.round((r.clicks28 - exp.baseline.clicks) * 10) / 10
-            r.actualGainCorrected = Math.round((corrected - exp.baseline.clicks) * 10) / 10
-            r.predictedGain = exp.predicted?.gain ?? exp.baseline?.predictedGain ?? null
-          }
-          if (days >= 56) {
-            // Leerbewijs alleen bij voldoende volume (zoekmetingen) of een harde technische uitkomst
-            // (conversie en samenvoegen hebben een eigen regel voor te weinig data)
-            const enough = !["position", "ctr"].includes(metric) || Math.max(exp.baseline?.impressions ?? 0, r.impressions28 ?? 0) >= MIN_IMPRESSIONS
-            r.evidence = enough ? "telt mee" : "te weinig data"
-          }
-          results.measured++
-        }
+      try {
+        const done = await evaluateOne(supabase, exp)
+        results.measured += done.measured
+        results.finalized += done.finalized
+      } catch (e: any) {
+        // Eén mislukte meting mag de rest niet tegenhouden; volgende nacht opnieuw
+        results.errors = [...(results.errors || []), `${exp.id}: ${e?.message || "onbekende fout"}`].slice(0, 10)
       }
-
-      // Eindoordeel volgens de soort: validaties op hun controle, metingen zonder oordeel, experimenten
-      // pas met genoeg data en een zuivere meting (anders verder meten tot 84 dagen of geen oordeel)
-      const lastCol = milestones[milestones.length - 1][1]
-      const last = update[lastCol]
-      const enoughData = !!last && (last.evidence ? last.evidence === "telt mee" : !["position", "ctr"].includes(metric))
-      let invalid = false
-      if (kind === "experiment" && ageDays >= 56) {
-        const target = exp.baseline?.targetPage || exp.page
-        if (target) {
-          const [row] = await pageRows(supabase, [target])
-          invalid = !!row && ((row.http_status ?? 0) >= 400 || (!!row.http_final_path && row.http_final_path !== target))
-        }
-        // Andere aanpassing op dezelfde pagina of hetzelfde zoekwoord tijdens de meting (buiten de eigen familie)
-        const { data: others } = await supabase.from("seo_experiments").select("id, query, page, target_pages, family_id, changed_at, kind").gt("changed_at", exp.changed_at).neq("id", exp.id)
-        const fam = exp.family_id || exp.id
-        influenced = influenced || (others || []).some((o: any) => (o.family_id || o.id) !== fam && o.kind !== "validatie" &&
-          ((exp.query && o.query === exp.query) || (target && [o.page, ...(o.target_pages || [])].includes(target))))
-      }
-      const outcome: Outcome | null = finalOutcome({ kind, ageDays, verdict, enoughData, invalid, influenced })
-      if (outcome) {
-        update.outcome = outcome
-        const status = adviceStatusFor(outcome)
-        if (status) {
-          await supabase.from("seo_advice_status").update({ status, updated_at: new Date().toISOString() }).eq("advice_key", exp.advice_key)
-          results.finalized++
-        }
-      }
-      if (Object.keys(update).length) await supabase.from("seo_experiments").update(update).eq("id", exp.id)
     }
 
     await logged("experimenten", async () => results)

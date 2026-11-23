@@ -24,7 +24,8 @@ export interface MeasureUpdate {
 }
 
 const FRESH_DAYS = 14
-const SEO_STEPS = [[14, "result_14d"], [28, "result_28d"], [56, "result_56d"], [84, "result_84d"]] as const
+// 7 crawlcontrole, 14 vroege indicatie, 28 eindmeting, 56 alleen bij verlenging (84: oude metingen)
+const SEO_STEPS = [[7, "result_7d"], [14, "result_14d"], [28, "result_28d"], [56, "result_56d"], [84, "result_84d"]] as const
 const toneOf = (o: string | null | undefined): MeasureUpdate["tone"] => (o === "succesvol" ? "goed" : o === "niet_succesvol" ? "slecht" : "neutraal")
 
 export function measureUpdates(tasks: Task[], ideas: ContentIdea[], now = today()): MeasureUpdate[] {
@@ -37,13 +38,16 @@ export function measureUpdates(tasks: Task[], ideas: ContentIdea[], now = today(
         const r = (e as any)[col] as { measuredAt?: string; summary?: string } | null
         const date = (r?.measuredAt || "").slice(0, 10)
         if (!r || !date || date < since) continue
-        // Eindoordeel bij de laatste meting die er is (56, of 84 dagen bij verlengd meten)
+        // Eindoordeel bij de laatste meting die er is (28, of 56 bij verlengd meten)
         const last = SEO_STEPS.filter(([, c]) => (e as any)[c]).pop()?.[0]
         const final = d === last && !!e.outcome
         out.push({
           key: `exp:${e.id}:${d}`, date, title, milestone: d, final, taskKey: t.key,
           tone: final ? toneOf(e.outcome) : "neutraal",
-          text: final ? `Eindoordeel: ${EXP_OUTCOME[e.outcome!].label.toLowerCase()}. ${r.summary || ""}`.trim() : `${r.summary || "Gemeten"}.`,
+          text: final ? `Eindoordeel: ${EXP_OUTCOME[e.outcome!].label.toLowerCase()}. ${r.summary || ""}`.trim()
+            : d === 7 ? `Crawlcontrole: ${(r.summary || "gecontroleerd").toLowerCase()}. Nog geen oordeel.`
+            : d === 14 ? `Voorlopig: ${(r.summary || "gemeten").replace(/\.$/, "")}.`
+            : `${(r.summary || "Gemeten").replace(/\.$/, "")}.`,
         })
       }
     }

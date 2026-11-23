@@ -113,6 +113,7 @@ export interface Signal {
   reminder?: { date: string; link: string | null }  // herinnering: komt op deze datum terug
   mergedInto?: string         // samengevoegd met deze kaart (status "samengevoegd")
   mergedFrom?: Status         // status vóór het samenvoegen, voor "Splitsen"
+  overlap?: { at: string; with: { id: string; description: string; on: string[]; changedAt: string }[] }  // bewust uitgevoerd terwijl op dezelfde pagina een meting liep
   groupTitle?: string         // hoofdkaart: eigen naam voor de samengevoegde groep (bv. "Warmtepompartikel op regiopagina's")
 }
 
@@ -142,9 +143,10 @@ export interface Experiment {
   description: string
   changed_at: string
   baseline: Record<string, any>
-  result_14d: Record<string, any> | null
+  result_7d?: Record<string, any> | null     // crawlcontrole (geen oordeel)
+  result_14d: Record<string, any> | null    // vroege indicatie (voorlopig)
   result_28d: Record<string, any> | null
-  result_56d: Record<string, any> | null
+  result_56d: Record<string, any> | null    // alleen bij verlenging
   result_84d?: Record<string, any> | null
   outcome: "succesvol" | "niet_succesvol" | "onduidelijk" | "onvoldoende_data" | "ongeldig" | "beinvloed" | "gevolgd" | null
   kind?: "experiment" | "validatie" | "meting"

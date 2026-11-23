@@ -92,7 +92,7 @@ export default function LearnedView() {
       {!data ? <Skeleton height={160} /> : (
         <>
           <Section id="bewezen" title="Bewezen lessen uit experimenten" sub="Alleen uit afgeronde experimenten met genoeg data. Validaties en metingen zonder oordeel tellen niet mee; een experimentfamilie telt als één experiment." icon={<FlaskConical aria-hidden />}>
-            {proven.length ? proven.map(card) : <p className="muted small">Nog geen. Een bewezen les ontstaat pas uit afgeronde experimenten: na 56 dagen, met minstens 100 vertoningen. Tot die tijd beïnvloeden alleen jullie voorkeuren de volgorde.</p>}
+            {proven.length ? proven.map(card) : <p className="muted small">Nog geen. Een bewezen les ontstaat pas uit afgeronde experimenten: na de eindmeting (28 dagen, of 56 bij verlenging), met minstens 100 vertoningen. Tot die tijd beïnvloeden alleen jullie voorkeuren de volgorde.</p>}
           </Section>
 
           <Section id="voorkeuren" title="Voorkeuren uit jullie feedback" sub="Uit afwijzingen en toelichtingen. Dit is wat jullie willen, geen bewezen SEO-effect. Eén afwijzing is een voorstel; pas bij een tweede vergelijkbare afwijzing, of als je hem bevestigt, verandert er iets." icon={<MessageSquareText aria-hidden />}>
@@ -151,7 +151,8 @@ function Stat({ label, value }: { label: string; value?: number }) {
 const RULES: [string, string][] = [
   ["Experiment, validatie of meting", "Een aanpassing is pas een experiment als er genoeg data is (minstens 100 vertoningen in 28 dagen), de pagina uit de opbouwfase is (56 dagen), de doelpagina klopt, de nulmeting stabiel is en er geen andere wijziging op dezelfde pagina loopt. Anders wordt hij gevolgd zonder oordeel. Technische controles zijn validaties."],
   ["Experimentfamilies", "Eén aanpassing op meerdere pagina's (zelfde beschrijving, binnen 3 dagen) is één experiment met meerdere meetpunten. Het telt één keer mee bij lessen en nauwkeurigheid; verschillen per pagina blijven zichtbaar."],
-  ["Eindoordeel", "Na 56 dagen: geslaagd, niet geslaagd of geen duidelijk effect. Te weinig data: verder meten tot 84 dagen, daarna \"onvoldoende data\". Doelpagina kapot of doorverwezen: \"meting ongeldig\". Een andere wijziging op dezelfde pagina of hetzelfde zoekwoord: \"beïnvloed\"."],
+  ["Meetmomenten", "Na 7 dagen: heeft Google de pagina opnieuw gecrawld (geen oordeel). Na 14 dagen: eerste beoordeling met signaal en vervolgadvies, voorlopig. Na 28 dagen: eindmeting en conclusie. Alleen bij te weinig data, late verwerking door Google of sterke schommeling: verlengd tot 56 dagen."],
+  ["Eindoordeel", "Na 28 dagen (of 56 na verlenging): positief effect, geen duidelijk effect of mogelijk negatief effect. Te weinig data na 56 dagen: \"onvoldoende data\", nooit \"niet gewerkt\". Doelpagina kapot of doorverwezen: \"meting ongeldig\". Een andere wijziging aan dezelfde pagina in de meetperiode: \"beïnvloed\"."],
   ["Staat al op de site", "Nieuws dat inhoudelijk op een bestaande pagina of eerder afgewezen kans lijkt, wordt niet opnieuw als nieuw artikel voorgesteld maar als \"bestaande pagina bijwerken\"."],
   ["Verouderde tekst en refresh", "Een zin met een verlopen jaartal, nieuws over een regeling die de pagina noemt, of minstens 30% minder vertoningen geeft een refresh-melding. Die verloopt niet vanzelf."],
   ["Voorkeuren uit feedback", "Eén afwijzing is een voorstel. Pas vanaf twee vergelijkbare afwijzingen, of na bevestiging, verandert de score (×0,85 per keer, nooit lager dan ×0,5). Een onderwerp telt alleen als het in de titel van de kans staat. Verkeerd gekoppeld nieuws telt nergens mee."],

@@ -1,5 +1,6 @@
 "use client"
 
+import { nextMeasurement } from "@/lib/experiment"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -96,8 +97,8 @@ function cardMeta(t: Task) {
   if (col === "evalueren") {
     const e = t.experiments[0]
     if (e) {
-      const next = !e.result_14d ? 14 : !e.result_28d ? 28 : !e.result_56d ? 56 : null
-      return { icon: <CalendarClock aria-hidden />, text: next ? `${next}-dagenmeting ${dateShort(addDays(e.changed_at, next))}` : "Alle metingen binnen" }
+      const next = nextMeasurement(e as any)
+      return { icon: <CalendarClock aria-hidden />, text: next ? `Dag ${next.days} (${next.label}) ${dateShort(next.date)}` : "Alle metingen binnen" }
     }
     return { icon: <CalendarClock aria-hidden />, text: "Wordt gemeten" }
   }

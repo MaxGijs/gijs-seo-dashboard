@@ -1656,3 +1656,50 @@ tr.is-picked td { background: var(--accent-050); }
 .rw-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
 .rw-list li { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid var(--warning-dot); border-radius: 6px; background: var(--surface-card); }
 .rw-list .link-btn { justify-self: start; }
+.change-type { display: grid; gap: 4px; margin: 8px 0 4px; max-width: 320px; }
+
+/* Meetresultaat (experimenten en takenpaneel) */
+.mr { display: grid; gap: 8px; min-width: 0; }
+.mr-head, .mr-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mr-headline { margin: 0; font-size: var(--fs-md, 16px); font-weight: 700; color: var(--text-heading); }
+.mr-expl, .mr-next { margin: 0; font-size: var(--fs-sm); }
+.mr-next { padding: 8px 10px; border-radius: var(--radius-md); background: var(--accent-050); }
+.mr-table td:first-child { font-weight: 600; }
+.mr-evidence { margin: 0; display: grid; gap: 4px; font-size: var(--fs-sm); }
+.mr-evidence div { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 8px; }
+.mr-evidence dt { color: var(--text-subtle); font-weight: 600; }
+.mr-evidence dd { margin: 0; }
+.mr-period { margin: 0; }
+.mr-overlap { margin: 0; font-size: var(--fs-sm); padding: 6px 10px; border-left: 3px solid var(--warning-dot); background: var(--warning-bg); border-radius: 4px; }
+.mr-more summary { cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--accent-700); }
+.mr-more ul { margin: 4px 0 8px; padding-left: 18px; font-size: var(--fs-sm); }
+.mr-sub { margin: 10px 0 2px; font-size: var(--fs-xs); font-weight: 700; color: var(--text-subtle); }
+.mr-timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.mr-timeline li { display: grid; gap: 1px; padding: 8px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: var(--grey-050); font-size: var(--fs-xs); min-width: 0; }
+.mr-timeline li.is-done { background: var(--surface-card); border-color: var(--border); }
+.mr-timeline li.is-optional { opacity: .65; border-style: dashed; }
+.mr-tl-day { color: var(--text-subtle); font-weight: 600; }
+.mr-tl-label { font-weight: 700; color: var(--text-heading); }
+.mr-tl-text { overflow-wrap: anywhere; }
+.mr-facts { margin: 0 0 10px; display: grid; gap: 4px; font-size: var(--fs-sm); }
+.mr-facts div { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 8px; }
+.mr-facts dt { color: var(--text-subtle); font-weight: 600; }
+.mr-facts dd { margin: 0; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.exp-search { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; max-width: 420px; position: relative; }
+.exp-search svg { position: absolute; left: 10px; width: 16px; height: 16px; color: var(--text-subtle); }
+.exp-search .input { padding-left: 32px; }
+@media (max-width: 720px) {
+  .mr-timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mr-evidence div, .mr-facts div { grid-template-columns: 1fr; gap: 0; }
+}
+/* Kansen bij offline campagnes */
+.campaign-themes { border: 0; padding: 0; margin: 0; }
+.campaign-themes .chip { cursor: pointer; }
+.camp-opp-group + .camp-opp-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.camp-opp-camp { margin: 0 0 8px; font-size: var(--fs-sm); }
+.camp-opp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.camp-opp-list li { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); display: grid; gap: 4px; }
+.camp-opp-list p { margin: 0; }
+.camp-opp-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.camp-opp-title { font-weight: 700; color: var(--text-heading); }
+.camp-opp-sugg { font-size: var(--fs-sm); padding: 8px 10px; background: var(--accent-050); border-radius: var(--radius-md); }

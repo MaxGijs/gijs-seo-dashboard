@@ -29,7 +29,7 @@ export function routeOf(e: Pick<Experiment, "description" | "hypothesis">) {
 
 export function toTries(exps: Experiment[]): RouteTry[] {
   return exps.filter(e => !['conversie', 'controle', 'geen'].includes(e.baseline?.successMetric as string)).map(e => {
-    const last = e.result_56d || e.result_28d || e.result_14d
+    const last = e.result_56d || e.result_28d || e.result_14d   // laatste meting (56 alleen bij verlenging)
     const page = (e.baseline?.targetPage as string | undefined) || e.page || e.target_pages?.[0] || null
     return {
       key: e.advice_key, route: routeOf(e), page, query: e.query, date: e.changed_at, outcome: e.outcome,
