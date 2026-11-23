@@ -11,6 +11,7 @@ export const kindLabel = (k: string) => CAMPAIGN_KINDS.find(x => x.id === k)?.la
 export interface Campaign {
   id: string; name: string; kind: CampaignKind; start_date: string; end_date: string | null
   regions: string[]; amount: number | null; landing_page: string | null; note: string | null
+  themes?: string[] | null; housing?: "nieuwbouw" | "bestaand" | "gemengd" | null
   created_by: string | null; created_at: string
 }
 
