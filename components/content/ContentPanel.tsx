@@ -517,19 +517,19 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
               {step === 5 ? (
                 <div className="inline-form">
                   <p style={{ fontSize: "var(--fs-sm)" }}>{isPageUpdate(idea)
-                    ? "Het dashboard past de site nooit zelf aan. Werk de pagina bij en leg hier vast welke pagina en op welke dag de nieuwe versie live ging; daarna wordt dezelfde pagina vóór en na vergeleken (na 14, 28 en 56 dagen)."
-                    : "Het dashboard publiceert nooit zelf. Plaats het artikel op de site en leg hier vast waar en wanneer; daarna start de meting na 7, 30 en 90 dagen."}</p>
+                    ? "Het dashboard past de site nooit zelf aan. Werk de pagina bij en leg hier vast welke pagina en op welke dag de nieuwe versie live ging; daarna wordt dezelfde pagina vóór en na vergeleken (na 7, 14 en 28 dagen)."
+                    : "Het dashboard publiceert nooit zelf. Plaats het artikel op de site en leg hier vast waar en wanneer; daarna start de meting na 7, 14 en 28 dagen (56 bij het doel SEO-groei of zichtbaarheid)."}</p>
                   <div className="modal-row">
                     <div><label className="field-label" htmlFor="cp-url">URL op groeninjestraat.nl</label><input id="cp-url" className="input" style={{ width: "100%" }} value={pubUrl} onChange={e => setPubUrl(e.target.value)} placeholder="https://www.groeninjestraat.nl/kennis/…" /></div>
                     <div><label className="field-label" htmlFor="cp-date">{isPageUpdate(idea) ? "Datum dat de nieuwe versie live ging" : "Publicatiedatum"}</label><input id="cp-date" type="date" className="input" style={{ width: "100%" }} value={pubDate} max={new Date().toISOString().slice(0, 10)} onChange={e => setPubDate(e.target.value)} /></div>
                   </div>
                   {!isPageUpdate(idea) && <PlanFields idea={idea} all={all} plan={plan} setPlan={setPlan} />}
-                  <div className="inline-form-actions"><button className="btn btn-primary btn-sm" disabled={busy || !pubUrl || (!isPageUpdate(idea) && !(plan.threshold > 0))} onClick={() => act({ action: "publish", url: pubUrl, date: pubDate, ...(isPageUpdate(idea) ? {} : { plan: { goal: plan.goal, threshold: plan.threshold, prediction: plan.prediction === "" ? null : Number(plan.prediction), comparables: comparablesFor(idea, all).map(c => c.id) } }) }, isPageUpdate(idea) ? "Vastgelegd als bijgewerkt; voor/na-meting gestart" : "Vastgelegd als gepubliceerd; meting gestart")}>{isPageUpdate(idea) ? "Vastleggen als bijgewerkt" : "Vastleggen als gepubliceerd"}</button></div>
+                  <div className="inline-form-actions"><button className="btn btn-primary btn-sm" disabled={busy || !pubUrl || (!isPageUpdate(idea) && !planValid(plan))} onClick={() => act({ action: "publish", url: pubUrl, date: pubDate, ...(isPageUpdate(idea) ? {} : { plan: planBody(idea, all, plan) }) }, isPageUpdate(idea) ? "Vastgelegd als bijgewerkt; voor/na-meting gestart" : "Vastgelegd als gepubliceerd; meting gestart")}>{isPageUpdate(idea) ? "Vastleggen als bijgewerkt" : "Vastleggen als gepubliceerd"}</button></div>
                 </div>
               ) : (
                 <>
                   <p style={{ fontSize: "var(--fs-sm)" }}>Gepubliceerd op {dateNl(idea.published_at)}: <a href={idea.published_url!} target="_blank" rel="noopener noreferrer">{idea.published_url!.replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/, "")}</a></p>
-                  <ArticleResults idea={idea} all={all} onPlan={isPageUpdate(idea) ? undefined : (p: PlanDraft) => act({ action: "plan", plan: { goal: p.goal, threshold: p.threshold, prediction: p.prediction === "" ? null : Number(p.prediction), comparables: comparablesFor(idea, all).map(c => c.id) } }, "Doel en succesgrens vastgelegd")} busy={busy} />
+                  <ArticleResults idea={idea} all={all} onPlan={isPageUpdate(idea) ? undefined : (p: PlanDraft) => act({ action: "plan", plan: planBody(idea, all, p) }, p.threshold === null ? "Doel vastgelegd (zonder succesgrens)" : "Doel en succesgrens vastgelegd")} busy={busy} />
                   <p className="field-hint">{isPageUpdate(idea) ? "Meetmomenten: 7 dagen (signalering), 14 dagen (eerste beoordeling) en 28 dagen (eindoordeel), telkens dezelfde pagina vóór en na de aanpassing. Bij te weinig data volgt nog een meting na 56 dagen." : "Meetmomenten na publicatie: 7 dagen (signalering: staat het in Google, eerste bezoekers), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindoordeel voor bereik en aanvragen). Bij het doel SEO-groei of zichtbaarheid, of bij te weinig data na 28 dagen, volgt nog een meting na 56 dagen: een nieuw artikel heeft 6 à 8 weken nodig om zijn plek in Google te vinden."}</p>
                   <PageTimeline paths={[(idea.published_url || "").replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "").replace(/(.)\/$/, "$1")]} title="Deze pagina bij Google" />
                 </>
@@ -703,26 +703,35 @@ export function ArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea;
 }
 
 // ── Doel en succesgrens ─────────────────────────────────────────────────────
-export interface PlanDraft { goal: ContentGoal; threshold: number; prediction: string }
+// Succesgrens optioneel: null = alleen volgen (standaard zolang er weinig verkeer is)
+export interface PlanDraft { goal: ContentGoal; threshold: number | null; prediction: string }
 function draftPlan(idea: ContentIdea, all: ContentIdea[]): PlanDraft {
   const goal = idea.success_plan?.goal || suggestGoal(idea)
-  return { goal, threshold: idea.success_plan?.threshold ?? suggestThreshold(goal, comparablesFor(idea, all)).threshold, prediction: idea.success_plan?.prediction != null ? String(idea.success_plan.prediction) : "" }
+  return { goal, threshold: idea.success_plan ? idea.success_plan.threshold ?? null : null, prediction: idea.success_plan?.prediction != null ? String(idea.success_plan.prediction) : "" }
 }
+const planBody = (idea: ContentIdea, all: ContentIdea[], p: PlanDraft) => ({ goal: p.goal, threshold: p.threshold, prediction: p.prediction === "" ? null : Number(p.prediction), comparables: comparablesFor(idea, all).map(c => c.id) })
+const planValid = (p: PlanDraft) => p.threshold === null || p.threshold > 0
 function PlanFields({ idea, all, plan, setPlan }: { idea: ContentIdea; all: ContentIdea[]; plan: PlanDraft; setPlan: (p: PlanDraft) => void }) {
   const g = CONTENT_GOALS[plan.goal]
   const sug = suggestThreshold(plan.goal, comparablesFor(idea, all))
+  const withLimit = plan.threshold !== null
   return (
     <div className="plan-fields" role="group" aria-labelledby="pl-title">
-      <p className="plan-title" id="pl-title">Wanneer is dit artikel geslaagd?</p>
+      <p className="plan-title" id="pl-title">Doel van dit artikel</p>
       <div className="modal-row modal-row-3">
         <div><label className="field-label" htmlFor="pl-goal">Primair doel</label>
-          <select id="pl-goal" className="select" value={plan.goal} onChange={e => { const goal = e.target.value as ContentGoal; setPlan({ ...plan, goal, threshold: suggestThreshold(goal, comparablesFor(idea, all)).threshold }) }}>
+          <select id="pl-goal" className="select" value={plan.goal} onChange={e => { const goal = e.target.value as ContentGoal; setPlan({ ...plan, goal, threshold: plan.threshold === null ? null : suggestThreshold(goal, comparablesFor(idea, all)).threshold }) }}>
             {(Object.keys(CONTENT_GOALS) as ContentGoal[]).map(k => <option key={k} value={k}>{CONTENT_GOALS[k].label}</option>)}
           </select></div>
-        <div><label className="field-label" htmlFor="pl-thr">Geslaagd bij minstens</label><input id="pl-thr" type="number" min={1} className="input" value={plan.threshold || ""} onChange={e => setPlan({ ...plan, threshold: Number(e.target.value) })} /></div>
+        <div>
+          <label className="plan-check"><input type="checkbox" checked={withLimit} onChange={e => setPlan({ ...plan, threshold: e.target.checked ? sug.threshold : null })} /><span>Succesgrens <span className="subtle">(optioneel)</span></span></label>
+          {withLimit
+            ? <><label className="sr-only" htmlFor="pl-thr">Geslaagd bij minstens</label><input id="pl-thr" type="number" min={1} className="input" value={plan.threshold || ""} onChange={e => setPlan({ ...plan, threshold: e.target.value === "" ? 0 : Number(e.target.value) })} aria-describedby="pl-hint" /></>
+            : <p className="subtle small" style={{ margin: "6px 0 0" }}>Nog geen grens: het artikel wordt gevolgd.</p>}
+        </div>
         <div><label className="field-label" htmlFor="pl-pred">Verwachting <span className="subtle">(optioneel)</span></label><input id="pl-pred" type="number" min={0} className="input" value={plan.prediction} onChange={e => setPlan({ ...plan, prediction: e.target.value })} /></div>
       </div>
-      <p className="field-hint">{g.text} Meetwaarde: {g.metric.toLowerCase()} na {g.window.slice(1)} dagen. Voorgestelde grens: {sug.threshold} ({sug.basis}).</p>
+      <p className="field-hint" id="pl-hint">{g.text} Meetwaarde: {g.metric.toLowerCase()} na {g.window.slice(1)} dagen.{withLimit ? ` Geslaagd bij minstens het ingevulde aantal; voorstel: ${sug.threshold} (${sug.basis}).` : " Zonder grens zie je de cijfers en de vergelijking met andere artikelen, maar geen geslaagd of niet geslaagd. Een grens kun je later altijd nog vastleggen."}</p>
     </div>
   )
 }
@@ -803,21 +812,21 @@ function NewArticleResults({ idea, all, onPlan, busy }: { idea: ContentIdea; all
     <>
       {pv ? (
         <div className={`verdict-box tone-${pv.tone}`} data-verdict="plan">
-          <p className="verdict-label">Geslaagd volgens het doel? <b>{pv.label}</b></p>
+          <p className="verdict-label">{pv.label === "Gevolgd" ? "Hoe doet het artikel het?" : "Geslaagd volgens het doel?"} <b>{pv.label}</b></p>
           <ul>{pv.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
-          {onPlan && !editing && <button className="link-btn" onClick={() => setEditing(true)}>Doel of grens aanpassen</button>}
+          {onPlan && !editing && <button className="link-btn" onClick={() => setEditing(true)}>{idea.success_plan?.threshold == null ? "Doel aanpassen of succesgrens vastleggen" : "Doel of grens aanpassen"}</button>}
         </div>
       ) : (
-        <div className="verdict-box tone-warning" data-verdict="geen-plan">
-          <p className="verdict-label"><b>Nog geen doel en succesgrens vastgelegd.</b></p>
-          <p>Zonder doel zeggen de cijfers niet of het artikel geslaagd is: een informatief nieuwsartikel kan slagen zonder aanvraag. Leg het doel vast; dat wordt als "achteraf vastgelegd" gemarkeerd.</p>
-          {onPlan && !editing && <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>Doel en succesgrens vastleggen</button>}
+        <div className="verdict-box tone-neutral" data-verdict="geen-plan">
+          <p className="verdict-label"><b>Gevolgd</b> <span className="subtle">· zonder doel of succesgrens</span></p>
+          <p>De cijfers staan hieronder, met de vergelijking met andere artikelen. Een doel of succesgrens is optioneel; leg die vast zodra je weet wat goed is.</p>
+          {onPlan && !editing && <button className="link-btn" onClick={() => setEditing(true)}>Doel of succesgrens vastleggen (optioneel)</button>}
         </div>
       )}
       {editing && onPlan && (
         <div className="inline-form">
           <PlanFields idea={idea} all={all} plan={draft} setPlan={setDraft} />
-          <div className="inline-form-actions"><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Annuleren</button><button className="btn btn-primary btn-sm" disabled={busy || !(draft.threshold > 0)} onClick={() => { onPlan(draft); setEditing(false) }}>Vastleggen</button></div>
+          <div className="inline-form-actions"><button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Annuleren</button><button className="btn btn-primary btn-sm" disabled={busy || !planValid(draft)} onClick={() => { onPlan(draft); setEditing(false) }}>Vastleggen</button></div>
         </div>
       )}
       <details className="evidence-details" open={!pv}>

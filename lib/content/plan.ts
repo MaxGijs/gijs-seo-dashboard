@@ -29,7 +29,7 @@ export interface SuccessPlan {
   goal: ContentGoal
   window: Window
   prediction: number | null
-  threshold: number
+  threshold: number | null     // optioneel: zonder grens wordt het artikel gevolgd, zonder geslaagd/niet geslaagd
   comparables: string[]        // ids van vergelijkbare artikelen bij het vastleggen
   setAt: string
   setBy?: string | null
@@ -121,7 +121,7 @@ export const latestArticleKey = (i: Pick<ContentIdea, "evals">): ArticleKey | nu
 
 // ── Oordeel volgens het plan ─────────────────────────────────────────────────
 
-export interface PlanVerdict { label: "Geslaagd" | "Niet geslaagd" | "Nog te vroeg" | "Meetmethode ontbreekt"; tone: "success" | "error" | "neutral" | "warning"; reasons: string[] }
+export interface PlanVerdict { label: "Geslaagd" | "Niet geslaagd" | "Nog te vroeg" | "Meetmethode ontbreekt" | "Gevolgd"; tone: "success" | "error" | "neutral" | "warning"; reasons: string[] }
 
 export function planVerdict(idea: IdeaLite & Pick<ContentIdea, "success_plan">, all: IdeaLite[], today = new Date().toISOString().slice(0, 10)): PlanVerdict | null {
   const p = idea.success_plan
@@ -132,7 +132,10 @@ export function planVerdict(idea: IdeaLite & Pick<ContentIdea, "success_plan">, 
   const extended = win === "d28" && thin(idea.evals?.d28)
   const key: Window = extended ? "d56" : win
   const e = idea.evals?.[key]
-  const reasons: string[] = [`Doel: ${g.label.toLowerCase()}. Geslaagd bij minstens ${p.threshold} ${g.unit} na ${key.slice(1)} dagen${p.prediction !== null ? ` (verwacht: ${p.prediction})` : ""}.${p.afterwards ? " Achteraf vastgelegd." : ""}`]
+  const free = p.threshold === null || p.threshold === undefined
+  const reasons: string[] = [free
+    ? `Doel: ${g.label.toLowerCase()}, gemeten als ${g.metric.toLowerCase()} na ${key.slice(1)} dagen. Bewust zonder succesgrens: het artikel wordt gevolgd${p.prediction !== null ? ` (verwacht: ${p.prediction})` : ""}.`
+    : `Doel: ${g.label.toLowerCase()}. Geslaagd bij minstens ${p.threshold} ${g.unit} na ${key.slice(1)} dagen${p.prediction !== null ? ` (verwacht: ${p.prediction})` : ""}.${p.afterwards ? " Achteraf vastgelegd." : ""}`]
   const comps = comparablesFor(idea, all).map(c => metricValue(c.evals?.[key], p.goal)).filter((v): v is number => v !== null)
   const med = comps.length ? median(comps) : null
   if (!e) {
@@ -143,9 +146,13 @@ export function planVerdict(idea: IdeaLite & Pick<ContentIdea, "success_plan">, 
   if (v === null || (p.goal === "aanvragen" && e.ga4?.measurement !== "ok" && !(e.ga4?.contacts))) {
     return { label: "Meetmethode ontbreekt", tone: "warning", reasons: [...reasons, p.goal === "aanvragen" ? "De meting van aanvragen in GA4 werkt nog niet goed; een nul zou hier niets zeggen." : "GA4 kon voor deze periode niet worden gelezen."] }
   }
-  const ok = v >= p.threshold
   reasons.push(`Gemeten: ${v} ${g.unit}.`)
-  if (med !== null) reasons.push(`Vergelijkbare artikelen (${comps.length}): mediaan ${Math.round(med)} ${g.unit}.`)
+  if (med !== null) reasons.push(`Vergelijkbare artikelen (${comps.length}): mediaan ${Math.round(med)} ${g.unit}${free ? ` (dit artikel zit ${v > med * 1.2 ? "erboven" : v < med * 0.8 ? "eronder" : "rond het midden"})` : ""}.`)
   else reasons.push("Nog geen vergelijkbare artikelen met een meting.")
+  if (free) {
+    reasons.push("Zonder succesgrens geen geslaagd of niet geslaagd. Leg een grens vast zodra er genoeg verkeer is om te weten wat goed is.")
+    return { label: "Gevolgd", tone: "neutral", reasons }
+  }
+  const ok = v >= p.threshold!
   return { label: ok ? "Geslaagd" : "Niet geslaagd", tone: ok ? "success" : "error", reasons }
 }

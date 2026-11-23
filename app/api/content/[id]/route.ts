@@ -24,12 +24,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const cleanPlan = (raw: any, by: string, afterwards: boolean): SuccessPlan | string => {
     const goal = raw?.goal as ContentGoal
     if (!goal || !(goal in CONTENT_GOALS)) return "Kies een primair doel."
-    const threshold = Number(raw?.threshold)
-    if (!Number.isFinite(threshold) || threshold <= 0) return "Vul een succesgrens groter dan 0 in."
+    // Succesgrens is optioneel: leeg = alleen volgen
+    const threshold = raw?.threshold === null || raw?.threshold === undefined || raw?.threshold === "" ? null : Number(raw.threshold)
+    if (threshold !== null && (!Number.isFinite(threshold) || threshold <= 0)) return "Een succesgrens moet groter dan 0 zijn (of laat hem leeg)."
     const prediction = raw?.prediction === null || raw?.prediction === undefined || raw?.prediction === "" ? null : Number(raw.prediction)
     if (prediction !== null && (!Number.isFinite(prediction) || prediction < 0)) return "De verwachting moet een getal zijn."
     const comparables = Array.isArray(raw?.comparables) ? raw.comparables.filter((x: unknown) => typeof x === "string").slice(0, 20) : []
-    return { goal, window: CONTENT_GOALS[goal].window, threshold: Math.round(threshold), prediction: prediction === null ? null : Math.round(prediction), comparables, setAt: now, setBy: by, ...(afterwards ? { afterwards: true } : {}) }
+    return { goal, window: CONTENT_GOALS[goal].window, threshold: threshold === null ? null : Math.round(threshold), prediction: prediction === null ? null : Math.round(prediction), comparables, setAt: now, setBy: by, ...(afterwards ? { afterwards: true } : {}) }
   }
 
   const feedbackFrom = (tags: unknown, note?: unknown) => {

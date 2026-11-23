@@ -62,11 +62,11 @@ export default function ContentMeasureStrip({ ideas, all, onOpen }: { ideas: Con
             <button key={i.id} className="card site-card content-measure-card interactive" role="listitem" onClick={() => onOpen(i.id)}>
               <span className="site-card-top">
                 <span className="kind-label tone-info"><Newspaper aria-hidden />{isPageUpdate(i) ? "Bijgewerkte pagina" : "Nieuw artikel"}</span>
-                {v && v.label !== "Nog te vroeg" ? <Badge tone={v.tone === "success" ? "success" : v.tone === "error" ? "error" : v.tone === "warning" ? "warning" : "neutral"}>{v.label}</Badge> : <MeasuringBadge />}
+                {v && v.label !== "Nog te vroeg" && v.label !== "Gevolgd" ? <Badge tone={v.tone === "success" ? "success" : v.tone === "error" ? "error" : v.tone === "warning" ? "warning" : "neutral"}>{v.label}</Badge> : <MeasuringBadge />}
               </span>
               <span className="site-card-title" title={i.title}>{i.title}</span>
               <span className="subtle small">{isPageUpdate(i) ? `${i.target_page} · ` : ""}{serviceLabel(i.service)} · {i.published_at ? `${isPageUpdate(i) ? "bijgewerkt" : "gepubliceerd"} ${dateShort(i.published_at)}` : "gepubliceerd"}</span>
-              {i.success_plan && <span className="small">Doel: {CONTENT_GOALS[i.success_plan.goal].label.toLowerCase()} · geslaagd bij {num(i.success_plan.threshold)} {CONTENT_GOALS[i.success_plan.goal].unit}</span>}
+              {i.success_plan && <span className="small">Doel: {CONTENT_GOALS[i.success_plan.goal].label.toLowerCase()} · {i.success_plan.threshold == null ? "zonder succesgrens" : `geslaagd bij ${num(i.success_plan.threshold)} ${CONTENT_GOALS[i.success_plan.goal].unit}`}</span>}
               <span className="small">{res || <span className="subtle">Nog geen meting binnen</span>}</span>
               <span className="subtle small site-card-plan"><CalendarClock aria-hidden className="inline-icon" />{nextText(i)}</span>
             </button>
