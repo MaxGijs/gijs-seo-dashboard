@@ -15,6 +15,7 @@ import ReminderDialog from "@/components/reminders/ReminderDialog"
 import BulkExecuteDialog from "./BulkExecuteDialog"
 import MergeDialog from "./MergeDialog"
 import SiteAdviceStrip from "@/components/siteadvice/SiteAdviceStrip"
+import ContentMeasureStrip from "@/components/content/ContentMeasureStrip"
 import BoardLegend from "./BoardLegend"
 import { CONTENT_STEP, contentColumn, useContentIdeas } from "@/lib/content/useContent"
 import { type ContentIdea, effectiveScore, ORIGIN_META, serviceLabel } from "@/lib/content/model"
@@ -149,6 +150,8 @@ export default function TasksView() {
     })
     const ideas: Entry[] = (content.ideas || []).flatMap(i => {
       const col = contentColumn(i)
+      // Gepubliceerde content die gemeten wordt staat onder het bord (Content in meting), niet in Evalueren
+      if (col === "evalueren" && i.status === "gepubliceerd") return []
       const old = col === "evalueren" && i.status === "gepubliceerd" && !!i.published_at && i.published_at.slice(0, 10) < cutoff
       return col ? [{ kind: "content" as const, key: `content:${i.id}`, col, prio: i.priority || "middel", dim: i.status === "later", date: i.updated_at, old, i }] : []
     })
@@ -166,6 +169,15 @@ export default function TasksView() {
       (!n || normalize(e.kind === "seo" ? `${e.t.signal.query || ""} ${e.t.signal.page || ""} ${e.t.signal.headline}` : `${e.i.title} ${e.i.service || ""} ${e.i.target_page || ""}`).includes(n))
     )
   }, [entries, type, prio, text, owner, me])
+
+  // Content in meting: zelfde filters als het bord (zoeken, eigenaar, soort)
+  const measuringContent = useMemo(() => {
+    if (type !== "alle" && type !== "content") return []
+    const n = normalize(text)
+    return (content.ideas || []).filter(i => contentColumn(i) === "evalueren" && i.status === "gepubliceerd")
+      .filter(i => owner === "alle" || (owner === "niemand" ? !i.owner : owner === "ik" ? i.owner === me : i.owner === owner))
+      .filter(i => !n || normalize(`${i.title} ${i.service || ""} ${i.target_page || ""}`).includes(n))
+  }, [content.ideas, type, text, owner, me])
 
   const typeCounts = useMemo(() => Object.fromEntries(TYPE_FILTERS.map(f => [
     f.id, f.id === "alle" ? entries.length : f.id === "content" ? entries.filter(e => e.kind === "content").length : entries.filter(e => e.kind === "seo" && f.kinds.includes(e.t.signal.kind)).length,
@@ -466,6 +478,8 @@ export default function TasksView() {
       )}
       {/* Onder het bord: grote adviezen die veel pagina's of de hele site raken */}
       <SiteAdviceStrip />
+      {/* Daaronder: gepubliceerde content die nu gemeten wordt */}
+      <ContentMeasureStrip ideas={measuringContent} all={content.ideas || []} onOpen={setOpenIdea} />
       {adding && <AddTaskDialog onClose={() => setAdding(false)} />}
       {reminding && <ReminderDialog onClose={() => setReminding(false)} />}
       {bulk && <BulkExecuteDialog tasks={running} onClose={() => setBulk(false)} />}

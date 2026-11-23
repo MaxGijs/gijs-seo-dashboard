@@ -1703,3 +1703,12 @@ tr.is-picked td { background: var(--accent-050); }
 .camp-opp-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .camp-opp-title { font-weight: 700; color: var(--text-heading); }
 .camp-opp-sugg { font-size: var(--fs-sm); padding: 8px 10px; background: var(--accent-050); border-radius: var(--radius-md); }
+/* Content in meting (onder de grote adviezen) */
+.content-strip { margin-top: 20px; }
+.content-measure-card { text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.content-measure-card .inline-icon { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+.content-measure-more { align-items: center; justify-content: center; font: inherit; font-weight: 600; color: var(--accent-700); cursor: pointer; }
+.content-measure-card .kind-label { display: inline-flex; align-items: center; gap: 4px; }
+.content-measure-card .kind-label svg { width: 13px; height: 13px; flex: none; }
+.content-measure-card .site-card-plan { display: flex; align-items: center; gap: 4px; }
+.content-measure-card .site-card-plan .inline-icon { margin: 0; flex: none; }
