@@ -386,6 +386,7 @@ export default function TasksView() {
                           <span className="kind-label tone-info"><Newspaper aria-hidden />Content · {ORIGIN_META[i.origin].label}</span>
                           {i.status === "afgewezen" ? <RejectedBadge /> : isNew ? <NewBadge /> : isMeasuring ? <MeasuringBadge /> : c.id === "beoordelen" ? <PriorityMeter priority={en.prio} /> : null}
                         </span>
+                        {(() => { const n = (content.ideas || []).filter(x => x.merged_into === i.id && x.status === "samengevoegd").length; return n ? <span className="merged-banner"><Layers aria-hidden />Samengevoegd · {n + 1} ideeën, één artikel</span> : null })()}
                         <span className="tcard-title">{i.title}</span>
                         <span className="tcard-sub clamp2">{i.advice === "bijwerken" ? `${i.target_page} bijwerken` : i.format} · {serviceLabel(i.service)}</span>
                         {(i.note || i.decision_note) && <span className="tcard-note" title={(i.note || i.decision_note)!}><StickyNote aria-hidden /><span>{i.note || i.decision_note}</span></span>}

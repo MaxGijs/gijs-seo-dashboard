@@ -8,7 +8,7 @@ import type { UpdateMeasure } from "./update"
 export type Origin = "actualiteit" | "trend" | "zoekdata" | "seizoen" | "handmatig" | "prestatie"
 export type IdeaStatus =
   | "nieuw" | "geaccepteerd" | "briefing" | "concept" | "review" | "goedgekeurd" | "gepubliceerd"
-  | "later" | "afgewezen" | "verlopen"
+  | "later" | "afgewezen" | "verlopen" | "samengevoegd"
 export type Impact = "regelgeving" | "subsidie" | "kosten" | "net" | "advies" | "overig"
 export type Angle = "probleemgericht" | "negatief" | "positief" | "neutraal"
 export type Advice = "nieuw" | "bijwerken" | "samenvoegen" | "niets"
@@ -58,6 +58,8 @@ export interface ContentIdea {
   target_page: string | null
   covered_by?: import("./coverage").Coverage | null   // staat dit (of iets vergelijkbaars) al op de site?
   related_pages: string[]
+  merged_into?: string | null           // samengevoegd in deze kans
+  merge_backup?: Record<string, any> | null
   keywords: KeywordRef[]
   sources: SourceRef[]
   impact: Impact | null
@@ -109,6 +111,7 @@ export const STATUS_META: Record<IdeaStatus, { label: string; step: number }> = 
   later: { label: "Later opnieuw bekijken", step: -1 },
   afgewezen: { label: "Afgewezen", step: -1 },
   verlopen: { label: "Verlopen", step: -1 },
+  samengevoegd: { label: "Samengevoegd", step: -1 },
 }
 
 export const ORIGIN_META: Record<Origin, { label: string }> = {

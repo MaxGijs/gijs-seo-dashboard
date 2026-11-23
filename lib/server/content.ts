@@ -374,7 +374,7 @@ export async function scanContent() {
     ])
     const skip = new Set<string>()
     for (const e of ctx.existing) {
-      const open = !["afgewezen", "verlopen"].includes(e.status) && !(e.status === "gepubliceerd" && (e.published_at || "") < recent)
+      const open = !["afgewezen", "verlopen", "samengevoegd"].includes(e.status) && !(e.status === "gepubliceerd" && (e.published_at || "") < recent)
       if (open && e.target_page) skip.add(e.target_page)
     }
     for (const x of exps || []) for (const p of [x.page, ...((x.baseline?.paths as string[]) || [])]) if (p) skip.add(toPath(p))

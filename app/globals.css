@@ -1712,3 +1712,10 @@ tr.is-picked td { background: var(--accent-050); }
 .content-measure-card .kind-label svg { width: 13px; height: 13px; flex: none; }
 .content-measure-card .site-card-plan { display: flex; align-items: center; gap: 4px; }
 .content-measure-card .site-card-plan .inline-icon { margin: 0; flex: none; }
+/* Contentkansen samenvoegen */
+.idea-card { position: relative; }
+.idea-card.is-pickable { cursor: pointer; outline: 2px dashed var(--accent-200); outline-offset: -2px; }
+.idea-card.is-picked { outline: 2px solid var(--accent-600); background: var(--accent-050); }
+.idea-card.is-unpickable { opacity: .5; cursor: not-allowed; }
+.idea-card .idea-check { position: absolute; top: 10px; right: 10px; }
+.idea-card .merged-banner { align-self: flex-start; }

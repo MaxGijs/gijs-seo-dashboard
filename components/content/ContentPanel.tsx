@@ -1,6 +1,7 @@
 "use client"
 
 import Attachments from "@/components/Attachments"
+import ContentMergeSection from "./ContentMergeSection"
 import PageTimeline from "@/components/panel/PageTimeline"
 import { CELL_TEXT, cellState, comparablesFor, CONTENT_GOALS, dueDate, planVerdict, suggestGoal, suggestThreshold, type CellState, type ContentGoal } from "@/lib/content/plan"
 import { CONTENT_STEP } from "@/lib/content/useContent"
@@ -225,6 +226,8 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
               </table>
             </div>
           </section>
+
+          <ContentMergeSection idea={idea} all={all} onUpdate={onUpdate} />
 
           <section className="psec" aria-labelledby="cp-why">
             <h3 className="psec-title" id="cp-why"><span className="psec-num">1</span>Aanleiding en bronnen</h3>

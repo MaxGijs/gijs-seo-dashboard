@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, Globe, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingDown, TrendingUp } from "lucide-react"
+import { AlertCircle, ArrowDown, ArrowUp, CalendarDays, Globe, Layers, Lightbulb, Newspaper, Plus, RefreshCw, Search, Sparkles, StickyNote, TrendingDown, TrendingUp } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge, EmptyState, PageHeader, Skeleton, type StatusTone } from "@/components/ui"
 import { num, pct } from "@/lib/format"
@@ -12,6 +12,8 @@ import {
   ORIGIN_META, STATUS_META, serviceLabel,
 } from "@/lib/content/model"
 import AddIdeaDialog from "./AddIdeaDialog"
+import ContentMergeDialog from "./ContentMergeDialog"
+import { canMerge } from "@/lib/content/merge"
 
 export interface SourceRow { id: string; name: string; publisher: string; region: string | null; status: "actief" | "storing" | "geblokkeerd" | "web"; lastOk: string | null; lastError: string | null; failedRuns: number; itemsLastRun: number | null; new24h: number; relevant30d: number; why?: string }
 
@@ -73,12 +75,13 @@ export function scoreTone(s: number) {
   return s >= 65 ? "high" : s >= 45 ? "mid" : "low"
 }
 
-function IdeaCard({ idea, onOpen }: { idea: ContentIdea; onOpen: () => void }) {
+function IdeaCard({ idea, onOpen, merged = [], selecting, picked, pickable }: { idea: ContentIdea; onOpen: () => void; merged?: ContentIdea[]; selecting?: boolean; picked?: boolean; pickable?: boolean }) {
   const s = effectiveScore(idea)
   const src = newestSource(idea)
   const production = STATUS_META[idea.status].step > 0
   return (
-    <button className={`card idea-card${idea.note ? " has-note" : ""}`} onClick={onOpen} title={idea.title}>
+    <button className={`card idea-card${idea.note ? " has-note" : ""}${selecting ? (pickable ? " is-pickable" : " is-unpickable") : ""}${picked ? " is-picked" : ""}`} onClick={onOpen} title={idea.title} disabled={selecting && !pickable} aria-pressed={selecting ? !!picked : undefined}>
+      {selecting && pickable && <span className="tcard-check idea-check" aria-hidden>{picked ? "✓" : ""}</span>}
       <span className={`idea-score score-${scoreTone(s)}`} title={idea.score_override !== null ? `Score aangepast door een medewerker (berekend: ${idea.score})` : "Score van 0 tot 100"}>
         <strong>{s}</strong><small>{idea.score_override !== null ? "aangepast" : "score"}</small>
       </span>
@@ -92,7 +95,9 @@ function IdeaCard({ idea, onOpen }: { idea: ContentIdea; onOpen: () => void }) {
           {idea.covered_by && !production && idea.status !== "verlopen" && <Badge tone="warning">Staat al op de site</Badge>}
           {idea.status === "verlopen" && <Badge tone="neutral" title={idea.decision_note || undefined}>Automatisch gearchiveerd</Badge>}
         </span>
+        {merged.length > 0 && <span className="merged-banner"><Layers aria-hidden />Samengevoegd · {merged.length + 1} ideeën, één artikel</span>}
         <span className="idea-title">{idea.title}</span>
+        {merged.length > 0 && <span className="merged-names">{merged.slice(0, 3).map(m => <span key={m.id}>+ {m.title}</span>)}{merged.length > 3 ? <span>en nog {merged.length - 3}</span> : null}</span>}
         <span className="idea-why">{idea.why_now}</span>
         {idea.note && <span className="tcard-note" title={idea.note}><StickyNote aria-hidden /><span>{idea.note}</span></span>}
         <span className="idea-meta">
@@ -262,6 +267,12 @@ export default function ContentView() {
   const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [scanning, setScanning] = useState(false)
+  // Samenvoegen: kansen kiezen met vinkjes, dan één artikel van maken
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [merging, setMerging] = useState(false)
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()) }
+  const togglePick = (id: string) => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   const load = useCallback(async () => {
     try {
@@ -309,6 +320,15 @@ export default function ContentView() {
     return { tone: (late ? "problem" : best >= 70 ? "attention" : "good") as StatusTone, text: `${text}.` }
   }, [data])
   // Twee rijen: nieuwe artikelen apart van het bijwerken van bestaande pagina's
+  const childrenOf = useMemo(() => {
+    const m = new Map<string, ContentIdea[]>()
+    for (const i of data?.ideas || []) if (i.status === "samengevoegd" && i.merged_into) m.set(i.merged_into, [...(m.get(i.merged_into) || []), i])
+    return m
+  }, [data])
+  const card = (i: ContentIdea) => (
+    <IdeaCard key={i.id} idea={i} merged={childrenOf.get(i.id) || []} selecting={selecting} picked={picked.has(i.id)} pickable={canMerge(i)}
+      onOpen={() => (selecting ? (canMerge(i) && togglePick(i.id)) : router.push(`/content/${i.id}`))} />
+  )
   const newArticles = useMemo(() => list.filter(i => i.advice !== "bijwerken"), [list])
   const pageUpdates = useMemo(() => list.filter(i => i.advice === "bijwerken"), [list])
 
@@ -320,6 +340,7 @@ export default function ContentView() {
           <button className="btn btn-secondary btn-sm" onClick={scan} disabled={scanning || !data}>
             <RefreshCw aria-hidden style={scanning ? { animation: "spin 1s linear infinite" } : undefined} />{scanning ? "Bronnen lezen…" : "Nu zoeken naar kansen"}
           </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => (selecting ? stopSelecting() : setSelecting(true))} disabled={!data} aria-pressed={selecting}><Layers aria-hidden />Samenvoegen</button>
           <button className="btn btn-primary btn-sm" onClick={() => setAdding(true)}><Plus aria-hidden />Idee toevoegen</button>
         </>} />
 
@@ -361,13 +382,13 @@ export default function ContentView() {
               <section className="content-row" aria-labelledby="row-articles">
                 <h2 className="content-row-title" id="row-articles">Artikelen<span className="chip-count">{newArticles.length}</span></h2>
                 {newArticles.length ? (
-                  <div className="idea-list">{newArticles.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
+                  <div className="idea-list">{newArticles.map(card)}</div>
                 ) : <p className="muted small">Geen artikelen in deze lijst.</p>}
               </section>
               <section className="content-row" aria-labelledby="row-updates">
                 <h2 className="content-row-title" id="row-updates">Bestaande pagina's bijwerken<span className="chip-count">{pageUpdates.length}</span></h2>
                 {pageUpdates.length ? (
-                  <div className="idea-list">{pageUpdates.map(i => <IdeaCard key={i.id} idea={i} onOpen={() => router.push(`/content/${i.id}`)} />)}</div>
+                  <div className="idea-list">{pageUpdates.map(card)}</div>
                 ) : <p className="muted small">Niets om bij te werken in deze lijst.</p>}
               </section>
             </div>
@@ -390,6 +411,21 @@ export default function ContentView() {
         </>
       )}
 
+      {selecting && (
+        <div className="select-bar" role="region" aria-label="Samenvoegen">
+          <span><b>{picked.size}</b> {picked.size === 1 ? "kans" : "kansen"} gekozen. Kies de ideeën die samen één artikel worden (alleen kansen waar nog niet aan geschreven is).</span>
+          <button className="btn btn-ghost btn-sm" onClick={stopSelecting}>Annuleren</button>
+          <button className="btn btn-primary btn-sm" disabled={picked.size < 2} onClick={() => setMerging(true)}><Layers aria-hidden />Samenvoegen</button>
+        </div>
+      )}
+      {merging && data && (
+        <ContentMergeDialog ideas={data.ideas.filter(i => picked.has(i.id))} onClose={() => setMerging(false)}
+          onDone={(main, ids) => {
+            setData(d => (d ? { ...d, ideas: d.ideas.map(i => (i.id === main.id ? main : ids.includes(i.id) ? { ...i, status: "samengevoegd" as const, merged_into: main.id } : i)) } : d))
+            setMerging(false); stopSelecting()
+            toast(`${ids.length + 1} kansen samengevoegd tot "${main.title}"`)
+          }} />
+      )}
       {adding && data && <AddIdeaDialog services={data.services} onClose={() => setAdding(false)} onAdded={idea => { setData(d => (d ? { ...d, ideas: [idea, ...d.ideas] } : d)); setTab("beoordelen"); router.push(`/content/${idea.id}`) }} />}
     </>
   )
