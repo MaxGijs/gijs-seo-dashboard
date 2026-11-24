@@ -9,7 +9,10 @@ import { isBrandQuery } from "./signals"
 import { placeIn, prettyPlace } from "./intent"
 import { SCAN_SERVICE, SERVICE_TERMS, serviceLabel, servicesIn } from "./content/model"
 
-export const NEAR_MIN_IMPRESSIONS = 10
+// Ook een paar vertoningen op pagina 2 is interessant: op pagina 1 wordt dat alleen maar meer.
+// Onder NEAR_FEW schommelt de gemiddelde positie nog sterk; dat staat erbij.
+export const NEAR_MIN_IMPRESSIONS = 5
+export const NEAR_FEW = 10
 
 export interface NearRow {
   q: string

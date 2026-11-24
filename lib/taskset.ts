@@ -13,6 +13,7 @@ export interface TaskInputs {
   keywords: GscRow[]; prevKeywords: GscRow[]; pages: GscRow[]; streaks: Streak[]
   inventory: PageRow[]; ga4Pages: any[] | null; records: AdviceRecord[]; lessons: Lesson[]; checks: DataCheck[]; experiments: Experiment[]
   contentTries?: RouteTry[]   // bijgewerkte pagina's uit Content (route "inhoud")
+  longKeywords?: GscRow[]     // tot 1000 zoekwoorden: cijfers voor vastgezette zoekwoorden buiten de top 250
 }
 
 export function signalsFrom(d: TaskInputs, ctrModel: CtrModel): Signal[] {
@@ -29,7 +30,7 @@ export function signalsFrom(d: TaskInputs, ctrModel: CtrModel): Signal[] {
   const feedback = feedbackAll.filter(f => (counts.get(groupKey(f)) || 0) >= PREFERENCE_MIN || confirmed.has(groupKey(f)))
   // Zelf op de takenlijst gezette zoekwoorden (SEO-kansen › Bijna op pagina 1) blijven actuele kaarten
   const pinned = d.records.filter(r => r.advice_key.startsWith("kans:") && !["afgewezen", "onvoldoende_bewijs"].includes(r.status)).map(r => r.advice_key)
-  return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: [...toTries(d.experiments), ...(d.contentTries || [])], pinned }, ctrModel)
+  return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: [...toTries(d.experiments), ...(d.contentTries || [])], pinned, pinnedRows: d.longKeywords }, ctrModel)
 }
 
 export function sortByPriority(a: Task, b: Task) {

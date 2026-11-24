@@ -104,6 +104,9 @@ interface WorkspaceValue {
   // basis (laatste 28 dagen)
   keywords: GscRow[]
   prevKeywords: GscRow[]
+  // Lange lijst (tot 1000 zoekwoorden, ook met weinig vertoningen): voor Bijna op pagina 1. Laadt na de rest.
+  longKeywords: GscRow[] | null
+  longPrevKeywords: GscRow[] | null
   pages: GscRow[]
   overview: GscRow[]
   prevOverview: GscRow[]
@@ -184,6 +187,8 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [storageError, setStorageError] = useState<string | null>(null)
   const [keywords, setKeywords] = useState<GscRow[]>([])
   const [prevKeywords, setPrevKeywords] = useState<GscRow[]>([])
+  const [longKeywords, setLongKeywords] = useState<GscRow[] | null>(null)
+  const [longPrevKeywords, setLongPrevKeywords] = useState<GscRow[] | null>(null)
   const [pages, setPages] = useState<GscRow[]>([])
   const [overview, setOverview] = useState<GscRow[]>([])
   const [prevOverview, setPrevOverview] = useState<GscRow[]>([])
@@ -277,13 +282,24 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     return () => { cancelled = true }
   }, [reloadTick])
 
+  // Lange lijst los van de rest, zodat het dashboard er niet op wacht
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      getJson(`/api/gsc?type=keywords&days=28&limit=1000&order=impressions`),
+      getJson(`/api/gsc?type=keywords&days=28&offset=28&limit=1000&order=impressions`),
+    ]).then(([a, b]) => { if (!cancelled) { setLongKeywords(a.rows || []); setLongPrevKeywords(b.rows || []) } })
+      .catch(() => { if (!cancelled) { setLongKeywords(null); setLongPrevKeywords(null) } })
+    return () => { cancelled = true }
+  }, [reloadTick])
+
   const ctrModel = useMemo(() => buildCtrModel(keywords), [keywords])
   const signals = useMemo(
     () => {
       if (loading) return []
-      return signalsFrom({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, lessons, checks, experiments, contentTries }, ctrModel)
+      return signalsFrom({ keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, lessons, checks, experiments, contentTries, longKeywords: longKeywords || undefined }, ctrModel)
     },
-    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments, contentTries]
+    [loading, keywords, prevKeywords, pages, streaks, inventory, ga4Pages, records, ctrModel, lessons, checks, experiments, contentTries, longKeywords]
   )
   const tasks = useMemo(() => mergeTasks(signals, records, experiments), [signals, records, experiments])
 
@@ -661,7 +677,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   }, [tasks])
 
   const pinKeywords = useCallback(async (queries: string[], groupTitle?: string | null) => {
-    const rows = queries.map(q => keywords.find(k => k.keys[0] === q)).filter((k): k is GscRow => !!k)
+    const rows = queries.map(q => keywords.find(k => k.keys[0] === q) || longKeywords?.find(k => k.keys[0] === q)).filter((k): k is GscRow => !!k)
     if (!rows.length) return false
     const asTask = (k: GscRow): Task => ({ key: signalKey("kans", k.keys[0]), signal: kansSignal(k, ctrModel), status: "nieuw", note: null, snoozeUntil: null, snoozed: false, current: true, updatedAt: null, experiments: [] })
     // Bestaande kaart (Te beoordelen) gebruiken; wat al gepland of gemeten wordt, blijft waar het is
@@ -693,7 +709,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
       toast(`Op Mijn taken zetten mislukt: ${e?.message || "onbekende fout"}`, "error")
       return false
     }
-  }, [keywords, ctrModel, taskForQuery, saveRecord, mergeTasksInto, toast])
+  }, [keywords, longKeywords, ctrModel, taskForQuery, saveRecord, mergeTasksInto, toast])
 
   const splitTask = useCallback(async (child: Task) => {
     try {
@@ -733,7 +749,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const value: WorkspaceValue = {
     user,
     loading, error, authError, storageError,
-    keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
+    keywords, prevKeywords, longKeywords, longPrevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
     setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, pinKeywords, taskForQuery, setGroupTitle, runningWarning, answerRunningWarning, addReminder, snoozeReminder, openTask,

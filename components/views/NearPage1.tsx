@@ -9,7 +9,7 @@ import { ArrowDown, ArrowUp, Layers, Minus, Plus } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { regionSegments } from "@/lib/intent"
 import { toPath } from "@/lib/signals"
-import { nearGroups, nearPage1, type NearGroup, type NearRow } from "@/lib/nearPage1"
+import { NEAR_FEW, NEAR_MIN_IMPRESSIONS, nearGroups, nearPage1, type NearGroup, type NearRow } from "@/lib/nearPage1"
 import { num, pos } from "@/lib/format"
 import { StatusBadge } from "@/components/ui"
 import type { Task } from "@/lib/types"
@@ -24,13 +24,14 @@ function Move({ r }: { r: NearRow }) {
 }
 
 export default function NearPage1() {
-  const { loading, keywords, prevKeywords, pages, inventory, taskForQuery, pinKeywords, openTask } = useWorkspace()
+  const { loading, keywords, prevKeywords, longKeywords, longPrevKeywords, pages, inventory, taskForQuery, pinKeywords, openTask } = useWorkspace()
   const [more, setMore] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const rows = useMemo(() => {
     const regions = regionSegments([...pages.map(p => toPath(p.keys[0])), ...inventory.map(p => p.path)])
-    return nearPage1(keywords, prevKeywords, regions)
-  }, [keywords, prevKeywords, pages, inventory])
+    // De lange lijst (tot 1000 zoekwoorden) zodra hij binnen is; tot die tijd de top 250
+    return nearPage1(longKeywords || keywords, longPrevKeywords || prevKeywords, regions)
+  }, [keywords, prevKeywords, longKeywords, longPrevKeywords, pages, inventory])
   const groups = useMemo(() => nearGroups(rows), [rows])
   if (loading || !rows.length) return null
 
@@ -46,7 +47,7 @@ export default function NearPage1() {
     <section className="card near-p1" aria-labelledby="near-p1-title">
       <div className="near-p1-head">
         <h2 className="section-title" id="near-p1-title">Bijna op pagina 1<span className="chip-count">{rows.length}</span></h2>
-        <p className="section-sub">Zoekwoorden op positie 11–20 met minstens 10 vertoningen in 28 dagen. {onList} staan al op Mijn taken; zet de rest erop als je ermee aan de slag wilt.</p>
+        <p className="section-sub">Zoekwoorden op positie 11–20 (pagina 2) met minstens {NEAR_MIN_IMPRESSIONS} vertoningen in 28 dagen. {onList} staan al op Mijn taken; zet de rest erop als je ermee aan de slag wilt.</p>
       </div>
 
       {open.length > 0 && (
@@ -79,7 +80,7 @@ export default function NearPage1() {
               const t: Task | null = taskOf(r.q)
               return (
                 <tr key={r.q}>
-                  <th scope="row" className="near-p1-q">{r.q}<span className="near-p1-mob subtle">{num(r.impressions)} vertoningen · {num(r.clicks)} klikken</span></th>
+                  <th scope="row" className="near-p1-q">{r.q}{r.impressions < NEAR_FEW && <span className="near-few" title={`Minder dan ${NEAR_FEW} vertoningen: de positie kan nog flink schommelen`}>weinig data</span>}<span className="near-p1-mob subtle">{num(r.impressions)} vertoningen · {num(r.clicks)} klikken</span></th>
                   <td className="num near-pos"><b>{pos(r.position)}</b><Move r={r} /></td>
                   <td className="num near-p1-wide">{num(r.impressions)}</td>
                   <td className="num near-p1-wide">{num(r.clicks)}</td>

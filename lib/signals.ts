@@ -96,6 +96,7 @@ export interface SignalInput {
   checks?: DataCheck[]     // metingen of koppelingen die niet goed werken (controletaken)
   tries?: RouteTry[]       // eerder geprobeerde routes per pagina/zoekwoord (uit experimenten)
   pinned?: string[]        // zelf op de takenlijst gezet (bv. "bijna op pagina 1"): blijft een actuele taak
+  pinnedRows?: GscRow[]    // cijfers van vastgezette zoekwoorden buiten de top 250 (lange lijst)
 }
 
 // Inspanning en wijzigingsrisico per soort signaal (in het zijpaneel verfijnd per aanpassing)
@@ -243,7 +244,8 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
   // 4. Kansen: net onder of net buiten pagina 1
   const kansDrafts: Draft[] = []
   const pinned = new Set(input.pinned || [])
-  for (const k of input.keywords) {
+  const extra = (input.pinnedRows || []).filter(r => !kwMap.has(r.keys[0]) && pinned.has(signalKey("kans", r.keys[0])))
+  for (const k of [...input.keywords, ...extra]) {
     const q = k.keys[0]
     if (covered.has(q) || k.position < 8.5 || k.position > 20 || k.impressions < (pinned.has(signalKey("kans", q)) ? 5 : 20)) continue
     kansDrafts.push(kansDraft(k, model))
