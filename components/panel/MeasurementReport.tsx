@@ -8,7 +8,7 @@ import { useState } from "react"
 import { Badge } from "@/components/ui"
 import { dateShort, num, pct, pos } from "@/lib/format"
 import { ADVICE, CRAWL_DAY, EARLY_DAY, EXTENDED_DAY, FINAL_DAY, measureDate, SIGNAL, STATUS, latestReport, statusOf, summarizeSignals, type Report, type Row } from "@/lib/measureLogic"
-import { CHANGE_TYPES, type ChangeType } from "@/lib/experiment"
+import { CHANGE_TYPES, changeTypesOf } from "@/lib/experiment"
 import type { Experiment } from "@/lib/types"
 
 const LEVEL: Record<string, "success" | "warning" | "neutral"> = { hoog: "success", redelijk: "neutral", laag: "warning" }
@@ -201,12 +201,12 @@ function LongText({ text, lines = 3 }: { text: string; lines?: number }) {
 }
 
 export function ExperimentFacts({ e, pages }: { e: Experiment; pages: string[] }) {
-  const ct = e.baseline?.changeType as ChangeType | undefined
+  const cts = changeTypesOf(e.baseline)
   const rows = pageRows(e, pages)
   const queries = [...new Set([e.query, ...(e.target_queries || [])].filter((q): q is string => !!q))]
   return (
     <dl className="mr-facts">
-      <div><dt>Wat is aangepast</dt><dd>{ct && CHANGE_TYPES[ct] ? <span className="mr-type"><Badge tone="neutral">{CHANGE_TYPES[ct]}</Badge></span> : null}<LongText text={e.description} /></dd></div>
+      <div><dt>Wat is aangepast</dt><dd>{cts.length ? <span className="mr-type">{cts.map(t => <Badge key={t} tone="neutral">{CHANGE_TYPES[t]}</Badge>)}</span> : null}<LongText text={e.description} /></dd></div>
       {e.hypothesis && <div><dt>Waarom (hypothese en doel)</dt><dd><LongText text={e.hypothesis} lines={2} /></dd></div>}
       <div><dt>Pagina&apos;s</dt><dd>
         {rows.length ? (

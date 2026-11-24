@@ -1838,3 +1838,14 @@ tr.is-picked td { background: var(--accent-050); }
 }
 /* Langere kolomnamen: koppen even hoog houden */
 .board .col-head { min-height: 62px; }
+
+/* Type wijziging: meerdere soorten tegelijk */
+.change-type { max-width: none; }
+.change-type-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ct-chip { border: 1px solid var(--border); background: var(--white); color: var(--text); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.ct-chip:hover:not(:disabled) { border-color: var(--green-700); }
+.ct-chip.is-on { background: var(--success-bg); border-color: var(--green-700); color: var(--green-800); font-weight: 600; }
+.ct-chip.is-on::before { content: "✓ "; }
+.ct-chip:disabled { cursor: default; opacity: 1; }
+.ct-chip:focus-visible { outline: 2px solid var(--green-700); outline-offset: 2px; }
+.mr-type { display: inline-flex; flex-wrap: wrap; gap: 4px; }

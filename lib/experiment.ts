@@ -238,5 +238,14 @@ export function liveDateIn(text: string): string | null {
   return isNaN(Date.parse(d)) ? null : d
 }
 
-export interface Correction { at: string; by?: string; from: { changed_at: string; description: string; changed_pages?: string[] | null; changeType?: string | null } }
+export interface Correction { at: string; by?: string; from: { changed_at: string; description: string; changed_pages?: string[] | null; changeType?: string | null; changeTypes?: string[] } }
 export const correctionsOf = (e: { baseline?: Record<string, any> | null }): Correction[] => (Array.isArray(e.baseline?.correction) ? e.baseline!.correction : [])
+
+// Meerdere soorten tegelijk (bv. tekst én interne link). changeType blijft de eerste (oude metingen),
+// changeTypes de volledige lijst.
+export function changeTypesOf(b: { changeType?: unknown; changeTypes?: unknown } | null | undefined): ChangeType[] {
+  const list = Array.isArray(b?.changeTypes) ? (b!.changeTypes as unknown[]) : b?.changeType ? [b.changeType] : []
+  return [...new Set(list.filter((t): t is ChangeType => typeof t === "string" && t in CHANGE_TYPES))]
+}
+export const changeTypesLabel = (types: ChangeType[]) => types.map(t => CHANGE_TYPES[t]).join(" + ")
+export const changeTypeFields = (types: ChangeType[]) => ({ changeType: types[0], changeTypes: types })

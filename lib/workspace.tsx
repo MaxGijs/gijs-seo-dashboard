@@ -140,7 +140,7 @@ interface WorkspaceValue {
   // Zoekwoorden zelf op Mijn taken zetten (Bijna op pagina 1); meerdere tegelijk worden één kaart
   pinKeywords: (queries: string[], groupTitle?: string | null) => Promise<boolean>
   // Verkeerd ingevulde opzet van een meting corrigeren (alleen vóór het eerste meetpunt)
-  correctExperiment: (id: string, patch: { description?: string; changed_at?: string; changed_pages?: string[]; change_type?: string }) => Promise<string | null>
+  correctExperiment: (id: string, patch: { description?: string; changed_at?: string; changed_pages?: string[]; change_types?: string[] }) => Promise<string | null>
   taskForQuery: (q: string) => Task | null
   setGroupTitle: (main: Task, title: string | null) => Promise<boolean>
   runningWarning: RunningWarning | null
@@ -672,7 +672,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [records, saveRecord, toast])
 
-  const correctExperiment = useCallback(async (id: string, patch: { description?: string; changed_at?: string; changed_pages?: string[]; change_type?: string }) => {
+  const correctExperiment = useCallback(async (id: string, patch: { description?: string; changed_at?: string; changed_pages?: string[]; change_types?: string[] }) => {
     try {
       const res = await getJson<{ experiment: Experiment; replaced?: string; unchanged?: boolean }>(`/api/experiments`, {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }),

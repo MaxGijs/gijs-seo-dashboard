@@ -6,7 +6,7 @@ import type { RouteTry } from "@/lib/routes"
 import { prepareStart } from "@/lib/server/experimentStart"
 import { baselineAt, normPath } from "@/lib/server/scopedMeasure"
 import { addDaysIso } from "@/lib/measureLogic"
-import { CHANGE_TYPES } from "@/lib/experiment"
+import { CHANGE_TYPES, changeTypeFields, changeTypesOf, type ChangeType } from "@/lib/experiment"
 
 // GET /api/experiments — gelogde experimenten (optioneel gefilterd op advice_key)
 export async function GET(request: Request) {
@@ -140,7 +140,7 @@ export async function DELETE(request: Request) {
 }
 
 // PUT /api/experiments — opzet corrigeren (verkeerd ingevuld), alleen vóór het eerste meetpunt.
-// Body: { id, description?, changed_at?, changed_pages?, change_type? }
+// Body: { id, description?, changed_at?, changed_pages?, change_types? (of change_type) }
 // De opzet is onveranderlijk zodra hij is vastgelegd (databaseregel). Corrigeren vervangt daarom de
 // meting door een nieuwe regel met de juiste opzet, net als "stap terug" en opnieuw starten. Bij een
 // andere live-datum wordt de nulmeting opnieuw opgehaald over de 28 dagen vóór die datum. Wat er stond,
@@ -168,14 +168,16 @@ export async function PUT(request: Request) {
     if (!description) return bad("Omschrijving is verplicht")
     const pages = body.changed_pages === undefined ? old.changed_pages
       : (Array.isArray(body.changed_pages) ? body.changed_pages : []).map((p: unknown) => normPath(String(p))).filter((p: string) => p.startsWith("/")).slice(0, 100)
-    const changeType = body.change_type === undefined ? old.baseline?.changeType : String(body.change_type)
-    if (changeType && !(changeType in CHANGE_TYPES)) return bad("Onbekend soort wijziging")
+    const asked = Array.isArray(body.change_types) ? body.change_types.map(String) : body.change_type !== undefined ? [String(body.change_type)] : null
+    if (asked && (!asked.length || asked.some((t: string) => !(t in CHANGE_TYPES)))) return bad("Onbekend soort wijziging")
+    const oldTypes = changeTypesOf(old.baseline)
+    const types = asked ? [...new Set(asked)] as ChangeType[] : oldTypes
     const dateChanged = date !== old.changed_at
-    if (!dateChanged && description === old.description && JSON.stringify(pages || []) === JSON.stringify(old.changed_pages || []) && changeType === old.baseline?.changeType) {
+    if (!dateChanged && description === old.description && JSON.stringify(pages || []) === JSON.stringify(old.changed_pages || []) && types.join() === oldTypes.join()) {
       return NextResponse.json({ ok: true, experiment: old, unchanged: true })
     }
 
-    const baseline = { ...(old.baseline || {}), ...(changeType ? { changeType } : {}) }
+    const baseline = { ...(old.baseline || {}), ...(types.length ? changeTypeFields(types) : {}) }
     if (dateChanged) {
       // Nulmeting over de 28 dagen vóór de juiste datum; lukt dat niet, dan niets wijzigen (anders meet hij verkeerd)
       const fresh = await baselineAt({ ...old, changed_pages: pages }, date)
@@ -184,7 +186,7 @@ export async function PUT(request: Request) {
     }
     const who = guard.session.user?.name || guard.session.user?.email || "medewerker"
     baseline.correction = [...(Array.isArray(old.baseline?.correction) ? old.baseline.correction : []),
-      { at: new Date().toISOString(), by: who, from: { changed_at: old.changed_at, description: old.description, changed_pages: old.changed_pages, changeType: old.baseline?.changeType ?? null, ...(dateChanged ? { baseline: old.baseline } : {}) } }]
+      { at: new Date().toISOString(), by: who, from: { changed_at: old.changed_at, description: old.description, changed_pages: old.changed_pages, changeType: old.baseline?.changeType ?? null, changeTypes: oldTypes, ...(dateChanged ? { baseline: old.baseline } : {}) } }]
 
     // Zelfde id houden (koppelingen, open detail): oude regel weg, gecorrigeerde regel erin. Lukt het
     // invoegen niet, dan komt de oude regel ongewijzigd terug.

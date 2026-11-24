@@ -55,7 +55,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
   const [mode, setMode] = useState<Mode>(null)
   const [busy, setBusy] = useState(false)
   const [text, setText] = useState("")
-  const [changeType, setChangeType] = useState<ChangeType | null>(null)
+  const [changeType, setChangeType] = useState<ChangeType[] | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [promptText, setPromptText] = useState("")
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -505,7 +505,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode(null); setText("") }}>Annuleren</button>
                 <button className="btn btn-primary btn-sm" disabled={busy || blocked} onClick={() => {
                   if (!text.trim()) { setFormError("Beschrijf kort wat je hebt aangepast, zodat je later weet wat er gemeten wordt."); return }
-                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text, (task.merged || []).map(m => m.signal), changeType || inferChangeType(text, diag.actionType)) }, "Uitgevoerd. De meting is gestart (signalering na 7 dagen, eerste beoordeling na 14, eindmeting na 28).")
+                  run("uitgevoerd", { experiment: experimentFor(signal, detail, diag, rec!.targetRow, siteBaseline, text, (task.merged || []).map(m => m.signal), changeType?.length ? changeType : inferChangeType(text, diag.actionType)) }, "Uitgevoerd. De meting is gestart (signalering na 7 dagen, eerste beoordeling na 14, eindmeting na 28).")
                 }}>Opslaan en meting starten</button>
               </div>
             </div>

@@ -6,7 +6,8 @@
 import { useEffect, useState } from "react"
 import { History, PencilLine, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import { canCorrect, CHANGE_TYPES, correctionsOf, inferChangeType, liveDateIn, type ChangeType } from "@/lib/experiment"
+import { canCorrect, changeTypesLabel, changeTypesOf, correctionsOf, inferChangeType, liveDateIn, type ChangeType } from "@/lib/experiment"
+import ChangeTypeSelect from "./ChangeTypeSelect"
 import { addDaysIso, measureDate, CRAWL_DAY } from "@/lib/measureLogic"
 import { dateLong, dateShort, today } from "@/lib/format"
 import type { Experiment } from "@/lib/types"
@@ -34,7 +35,7 @@ export function CorrectionNote({ e }: { e: Experiment }) {
         {list.map((c, i) => (
           <li key={i}>
             <span className="subtle small">{dateShort(c.at)} · daarvoor stond er:</span>
-            <span className="small">Live-datum {dateLong(c.from.changed_at)}{c.from.changeType ? ` · ${CHANGE_TYPES[c.from.changeType as ChangeType] || c.from.changeType}` : ""}{c.from.changed_pages?.length ? ` · ${c.from.changed_pages.join(", ")}` : ""}</span>
+            <span className="small">Live-datum {dateLong(c.from.changed_at)}{changeTypesOf(c.from).length ? ` · ${changeTypesLabel(changeTypesOf(c.from))}` : ""}{c.from.changed_pages?.length ? ` · ${c.from.changed_pages.join(", ")}` : ""}</span>
             <span className="small clamp2" title={c.from.description}>{c.from.description}</span>
           </li>
         ))}
@@ -48,7 +49,7 @@ function CorrectDialog({ e, onClose }: { e: Experiment; onClose: () => void }) {
   const [date, setDate] = useState(e.changed_at)
   const [desc, setDesc] = useState(e.description)
   const [pages, setPages] = useState((e.changed_pages || []).join("\n"))
-  const [type, setType] = useState<ChangeType>((e.baseline?.changeType as ChangeType) || inferChangeType(e.description))
+  const [types, setTypes] = useState<ChangeType[]>(() => { const t = changeTypesOf(e.baseline); return t.length ? t : [inferChangeType(e.description)] })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -64,7 +65,7 @@ function CorrectDialog({ e, onClose }: { e: Experiment; onClose: () => void }) {
   const save = async () => {
     setBusy(true); setError(null)
     const list = pages.split(/[\n,]+/).map(p => p.trim()).filter(Boolean)
-    const err = await correctExperiment(e.id, { description: desc.trim(), changed_at: date, changed_pages: list, change_type: type })
+    const err = await correctExperiment(e.id, { description: desc.trim(), changed_at: date, changed_pages: list, change_types: types })
     if (err) { setError(err); setBusy(false) } else onClose()
   }
 
@@ -97,10 +98,7 @@ function CorrectDialog({ e, onClose }: { e: Experiment; onClose: () => void }) {
           <textarea id="xcorr-pages" className="textarea" rows={3} value={pages} disabled={busy} onChange={ev => setPages(ev.target.value)} placeholder="/regio/gelderland/arnhem" />
           <p className="field-hint">Hierop wordt gemeten.</p>
 
-          <label className="field-label" htmlFor="xcorr-type">Type wijziging</label>
-          <select id="xcorr-type" className="select" value={type} disabled={busy} onChange={ev => setType(ev.target.value as ChangeType)} style={{ maxWidth: 320 }}>
-            {(Object.keys(CHANGE_TYPES) as ChangeType[]).map(k => <option key={k} value={k}>{CHANGE_TYPES[k]}</option>)}
-          </select>
+          <ChangeTypeSelect id="xcorr-type" description={desc} value={types} onChange={v => v && setTypes(v)} disabled={busy} />
 
           {error && <p className="field-error">{error}</p>}
           <div className="inline-form-actions" style={{ marginTop: 14 }}>

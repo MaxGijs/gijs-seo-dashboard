@@ -31,7 +31,7 @@ export default function BulkExecuteDialog({ tasks, onClose }: { tasks: Task[]; o
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose, busy])
 
-  const [changeType, setChangeType] = useState<ChangeType | null>(null)
+  const [changeType, setChangeType] = useState<ChangeType[] | null>(null)
   const chosen = useMemo(() => tasks.filter(t => picked.has(t.key)), [tasks, picked])
   const allOn = picked.size === tasks.length
   const toggle = (k: string) => setPicked(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n })
@@ -44,7 +44,7 @@ export default function BulkExecuteDialog({ tasks, onClose }: { tasks: Task[]; o
     const out: Result[] = []
     // Eén voor één: elke taak haalt zijn eigen live cijfers op voor de nulmeting
     for (const t of chosen) {
-      const prep = await prepareExecution(t, { getDetail, ctrModel, listWindow, pages, signalCount: signals.length, overview }, text, changeType || inferChangeType(text))
+      const prep = await prepareExecution(t, { getDetail, ctrModel, listWindow, pages, signalCount: signals.length, overview }, text, changeType?.length ? changeType : inferChangeType(text))
       if (!prep.ok) { out.push({ key: t.key, ok: false, reason: prep.reason }) }
       else {
         const ok = await setStatus({ ...t, signal: prep.signal }, "uitgevoerd", { note: t.note, experiment: prep.experiment })

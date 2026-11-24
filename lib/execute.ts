@@ -2,7 +2,7 @@
 // en "Meerdere afronden" op het bord (meerdere taken met dezelfde toelichting), zodat de
 // nulmeting, hypothese en doelpagina's overal precies hetzelfde worden vastgelegd.
 
-import { inferChangeType, type ChangeType } from "./experiment"
+import { changeTypeFields, inferChangeType, type ChangeType } from "./experiment"
 import type { AdviceDetail, Signal, Task } from "./types"
 import type { GscRow } from "./types"
 import { baselineFrom, buildDiagnosis, type Diagnosis } from "./diagnosis"
@@ -18,7 +18,7 @@ export function siteBaselineOf(overview: GscRow[]): SiteBaseline | null {
   } : null
 }
 
-export function experimentFor(signal: Signal, detail: AdviceDetail | null, diag: Diagnosis, targetRow: Reconciled["targetRow"], site: SiteBaseline | null, description: string, merged: Signal[] = [], changeType?: ChangeType) {
+export function experimentFor(signal: Signal, detail: AdviceDetail | null, diag: Diagnosis, targetRow: Reconciled["targetRow"], site: SiteBaseline | null, description: string, merged: Signal[] = [], changeType?: ChangeType | ChangeType[]) {
   const target = diag.target
   // Samengevoegde kaarten: hun zoekwoorden en pagina's horen bij deze meting
   const extraQueries = merged.map(m => m.query).filter((x): x is string => !!x && x !== signal.query)
@@ -29,7 +29,7 @@ export function experimentFor(signal: Signal, detail: AdviceDetail | null, diag:
     baseline: {
       ...baselineFrom(signal, detail, diag, targetRow), site,
       // Type wijziging en (bewust geaccepteerde) overlap met een lopende meting op dezelfde pagina
-      changeType: changeType || inferChangeType(description, diag.actionType),
+      ...changeTypeFields(Array.isArray(changeType) && changeType.length ? changeType : changeType && !Array.isArray(changeType) ? [changeType] : [inferChangeType(description, diag.actionType)]),
       ...(signal.overlap ? { overlapWith: signal.overlap } : {}),
     },
     hypothesis: `${diag.steps[0]?.title || signal.action || ""}. Verwacht: ${diag.importance.gainText.toLowerCase()}. ${diag.plan.success}`,
@@ -54,7 +54,7 @@ export async function prepareExecution(task: Task, ctx: {
   pages: Parameters<typeof buildDiagnosis>[2]["pages"]
   signalCount: number
   overview: GscRow[]
-}, description: string, changeType?: ChangeType): Promise<{ ok: true; signal: Signal; experiment: ReturnType<typeof experimentFor> } | { ok: false; reason: string }> {
+}, description: string, changeType?: ChangeType | ChangeType[]): Promise<{ ok: true; signal: Signal; experiment: ReturnType<typeof experimentFor> } | { ok: false; reason: string }> {
   const raw = task.signal
   let detail: AdviceDetail | null = null
   if (needsDetail(raw)) {
