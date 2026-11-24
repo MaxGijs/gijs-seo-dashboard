@@ -5,7 +5,7 @@ import type { AdviceDetail, AdviceRecord, DataCheck, Experiment, GscRow, Level, 
 import { ROUTE_LABEL, toTries, type RouteTry } from "./routes"
 import { buildSiteAdvice, planFor, type SiteAdvice } from "./siteadvice"
 import { buildCtrModel, type CtrModel } from "./ctr"
-import { buildAdhocSignal, signalKey, toPath } from "./signals"
+import { buildAdhocSignal, kansSignal, signalKey, toPath } from "./signals"
 import { columnOf, isVisible, mergeTasks } from "./workflow"
 import { runningMeasurements, type RunningHit } from "./running"
 import { today } from "./format"
@@ -134,6 +134,9 @@ interface WorkspaceValue {
   // Kaarten samenvoegen tot één opdracht (en weer splitsen). Telt niet als afwijzing.
   mergeTasks: (main: Task, others: Task[], groupTitle?: string | null) => Promise<boolean>
   splitTask: (child: Task) => Promise<boolean>
+  // Zoekwoorden zelf op Mijn taken zetten (Bijna op pagina 1); meerdere tegelijk worden één kaart
+  pinKeywords: (queries: string[], groupTitle?: string | null) => Promise<boolean>
+  taskForQuery: (q: string) => Task | null
   setGroupTitle: (main: Task, title: string | null) => Promise<boolean>
   runningWarning: RunningWarning | null
   answerRunningWarning: (goOn: boolean) => void
@@ -649,6 +652,49 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [records, saveRecord, toast])
 
+  // De kaart waar een zoekwoord nu in zit: een eigen kaart, of de hoofdkaart waarin hij is samengevoegd
+  const taskForQuery = useCallback((q: string): Task | null => {
+    const own = (t: Task) => t.signal.query === q && !t.signal.reminder && !["afgewezen", "onvoldoende_bewijs"].includes(t.status)
+    return tasks.find(t => own(t) && t.status !== "samengevoegd" && isVisible(t))
+      || tasks.find(t => isVisible(t) && (t.merged || []).some(own))
+      || null
+  }, [tasks])
+
+  const pinKeywords = useCallback(async (queries: string[], groupTitle?: string | null) => {
+    const rows = queries.map(q => keywords.find(k => k.keys[0] === q)).filter((k): k is GscRow => !!k)
+    if (!rows.length) return false
+    const asTask = (k: GscRow): Task => ({ key: signalKey("kans", k.keys[0]), signal: kansSignal(k, ctrModel), status: "nieuw", note: null, snoozeUntil: null, snoozed: false, current: true, updatedAt: null, experiments: [] })
+    // Bestaande kaart (Te beoordelen) gebruiken; wat al gepland of gemeten wordt, blijft waar het is
+    const items = rows.map(k => ({ k, t: taskForQuery(k.keys[0]) }))
+    const loose = items.filter(x => !x.t).map(x => asTask(x.k))
+    const existing = [...new Map(items.filter(x => x.t).map(x => [x.t!.key, x.t!])).values()]
+    try {
+      if (rows.length === 1 || !groupTitle) {
+        for (const t of loose) await saveRecord(t.key, t.signal, "nieuw")
+        toast(loose.length ? `${loose.length === 1 ? `"${rows[0].keys[0]}" staat` : `${loose.length} zoekwoorden staan`} op Mijn taken` : "Staat al op Mijn taken")
+        return true
+      }
+      const step = (t: Task) => ["beoordelen", "gepland", "uitvoering", "evalueren", "afgerond"].indexOf(columnOf(t.status))
+      const usable = existing.filter(t => step(t) <= 2)
+      // Hoofdkaart: die het verst is, anders het zoekwoord met de meeste vertoningen
+      const pool = [...usable, ...loose].sort((a, b) => step(b) - step(a) || (b.signal.metrics.impressions || 0) - (a.signal.metrics.impressions || 0))
+      const [main, ...others] = pool
+      if (!main) { toast("Deze zoekwoorden worden al gemeten of zijn afgerond"); return false }
+      // Alleen kaarten die nog beoordeeld moeten worden, gaan op in de hoofdkaart
+      const join = others.filter(t => step(t) === 0)
+      if (!join.length) {
+        if (loose.includes(main)) await saveRecord(main.key, main.signal, "nieuw")
+        toast(loose.includes(main) ? `"${main.signal.query}" staat op Mijn taken` : "Staat al op Mijn taken")
+        return true
+      }
+      return await mergeTasksInto(main, join, groupTitle)
+    } catch (e: any) {
+      if (e instanceof HttpError && e.status === 401) setAuthError(true)
+      toast(`Op Mijn taken zetten mislukt: ${e?.message || "onbekende fout"}`, "error")
+      return false
+    }
+  }, [keywords, ctrModel, taskForQuery, saveRecord, mergeTasksInto, toast])
+
   const splitTask = useCallback(async (child: Task) => {
     try {
       const { mergedInto: _a, mergedFrom, ...clean } = child.signal
@@ -690,7 +736,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     keywords, prevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, setGroupTitle, runningWarning, answerRunningWarning, addReminder, snoozeReminder, openTask,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, pinKeywords, taskForQuery, setGroupTitle, runningWarning, answerRunningWarning, addReminder, snoozeReminder, openTask,
     siteAdvice, siteDecisions, decideSiteAdvice, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,

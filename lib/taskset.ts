@@ -27,7 +27,9 @@ export function signalsFrom(d: TaskInputs, ctrModel: CtrModel): Signal[] {
   for (const f of feedbackAll) counts.set(groupKey(f), (counts.get(groupKey(f)) || 0) + 1)
   const confirmed = new Set(d.lessons.filter(l => l.confirmed_at && l.status === "actief").map(l => l.key))
   const feedback = feedbackAll.filter(f => (counts.get(groupKey(f)) || 0) >= PREFERENCE_MIN || confirmed.has(groupKey(f)))
-  return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: [...toTries(d.experiments), ...(d.contentTries || [])] }, ctrModel)
+  // Zelf op de takenlijst gezette zoekwoorden (SEO-kansen › Bijna op pagina 1) blijven actuele kaarten
+  const pinned = d.records.filter(r => r.advice_key.startsWith("kans:") && !["afgewezen", "onvoldoende_bewijs"].includes(r.status)).map(r => r.advice_key)
+  return buildSignals({ keywords: d.keywords, prevKeywords: d.prevKeywords, pages: d.pages, streaks: d.streaks, inventory: d.inventory, ga4Pages: d.ga4Pages || undefined, feedback, lessons: d.lessons, checks: d.checks, tries: [...toTries(d.experiments), ...(d.contentTries || [])], pinned }, ctrModel)
 }
 
 export function sortByPriority(a: Task, b: Task) {

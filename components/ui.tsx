@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 import { Activity, AlertCircle, CheckCircle2, Info, Sparkle, X, XCircle } from "lucide-react"
 import type { Priority, Signal, Status, Task } from "@/lib/types"
 import { KIND_META, STATUS_META, type Tone } from "@/lib/workflow"
+import { lostPage1 } from "@/lib/signals"
 import { dateShort, pos } from "@/lib/format"
 import { useWorkspace } from "@/lib/workspace"
 
@@ -13,6 +14,7 @@ export function Badge({ tone = "neutral", children, dot = false, title }: { tone
 
 export function KindLabel({ signal }: { signal: Signal }) {
   if (signal.reminder) return <span className="kind-label tone-warning">Herinnering</span>
+  if (lostPage1(signal)) return <span className="kind-label tone-error">Van pagina 1 af</span>
   const meta = KIND_META[signal.kind]
   return <span className={`kind-label tone-${meta.tone}`}>{meta.label}</span>
 }

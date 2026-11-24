@@ -1720,3 +1720,40 @@ tr.is-picked td { background: var(--accent-050); }
 .idea-card .idea-check { position: absolute; top: 10px; right: 10px; }
 .idea-card .merged-banner { align-self: flex-start; }
 .plan-check { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; margin-bottom: 4px; }
+
+/* SEO-kansen › Bijna op pagina 1 */
+.near-p1 { margin-top: 28px; }
+.near-p1-head { padding: 20px 22px 8px; }
+.near-p1-head .chip-count { margin-left: 6px; }
+.near-p1-short { display: none; }
+.near-p1-add { white-space: nowrap; }
+.near-p1-mob { display: none; font-size: var(--fs-xs); font-weight: 400; margin-top: 2px; }
+.near-p1-head .section-sub { margin: 4px 0 0; max-width: 72ch; }
+.near-p1-groups { margin: 8px 22px 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--white); }
+.near-p1-sub { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; font-size: var(--fs-sm); font-weight: 600; }
+.near-p1-groups > p { margin: 0 0 10px; }
+.near-p1-grouplist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.near-p1-group { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+.near-p1-group:first-child { border-top: 0; padding-top: 2px; }
+.near-p1-group .bulk-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.near-p1-group .btn { flex: none; }
+.near-p1-table th[scope="row"] { font-weight: 500; text-align: left; }
+.near-pos { white-space: nowrap; }
+.near-move { display: block; font-size: var(--fs-xs); margin-top: 1px; }
+.near-move svg { display: inline; width: 12px; height: 12px; vertical-align: -2px; margin-right: 2px; }
+.near-move.tone-up { color: var(--success); }
+.near-move.tone-down { color: var(--error); }
+.near-p1-sub svg { display: inline; }
+.near-p1-task { border: 0; background: none; padding: 0; display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; text-align: left; cursor: pointer; }
+.near-p1-task:hover .badge { text-decoration: underline; }
+.near-p1-foot { padding: 8px 22px 14px; }
+@media (max-width: 640px) {
+  .near-p1-group { flex-direction: column; align-items: stretch; }
+  .near-p1-groups { margin: 8px 12px 14px; }
+  .near-p1-head { padding: 16px 16px 6px; }
+  .near-p1-wide { display: none; }
+  .near-p1-mob { display: block; }
+  .near-p1-long { display: none; }
+  .near-p1-short { display: inline; }
+  .near-p1-table th, .near-p1-table td { padding-left: 10px; padding-right: 10px; }
+}

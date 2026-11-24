@@ -7,15 +7,18 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowDown, ArrowUp, Inbox, TrendingUp, Wrench } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import type { SignalKind, Task } from "@/lib/types"
+import type { Signal, SignalKind, Task } from "@/lib/types"
+import { lostPage1 } from "@/lib/signals"
+import NearPage1 from "./NearPage1"
 import { columnOf, KIND_META } from "@/lib/workflow"
 import { gainShort, num, pos } from "@/lib/format"
 import { Badge, EmptyState, PageHeader, PriorityMeter, SectionTabs, Skeleton, StatusBadge, type StatusTone } from "@/components/ui"
 
 type Tab = "beoordelen" | "lopend" | "meting" | "afgerond"
 const TAB_COLS: Record<Tab, string[]> = { beoordelen: ["beoordelen"], lopend: ["gepland", "uitvoering"], meting: ["evalueren"], afgerond: ["afgerond"] }
-const TYPES: { id: string; label: string; kinds: SignalKind[] }[] = [
+const TYPES: { id: string; label: string; kinds: SignalKind[]; test?: (s: Signal) => boolean }[] = [
   { id: "alle", label: "Alle", kinds: [] },
+  { id: "pagina1", label: "Van pagina 1 af", kinds: ["daler"], test: lostPage1 },
   { id: "kans", label: "Kansen", kinds: ["kans"] },
   { id: "ctr", label: "Lage doorklik", kinds: ["ctr"] },
   { id: "daling", label: "Dalingen", kinds: ["daler", "trend-dalend"] },
@@ -24,6 +27,7 @@ const TYPES: { id: string; label: string; kinds: SignalKind[] }[] = [
   { id: "techniek", label: "Techniek", kinds: ["techniek"] },
   { id: "eigen", label: "Eigen", kinds: ["eigen", "analyse"] },
 ]
+const fits = (ty: (typeof TYPES)[number], t: Task) => ty.kinds.includes(t.signal.kind) && (!ty.test || ty.test(t.signal))
 type Sort = "prioriteit" | "winst" | "vertoningen"
 
 export default function SeoKansenView() {
@@ -38,8 +42,7 @@ export default function SeoKansenView() {
   const inTab = (t: Task, x: Tab) => TAB_COLS[x].includes(columnOf(t.status))
   const counts = useMemo(() => Object.fromEntries((Object.keys(TAB_COLS) as Tab[]).map(x => [x, all.filter(t => inTab(t, x)).length])) as Record<Tab, number>, [all])
   const list = useMemo(() => {
-    const kinds = TYPES.find(t => t.id === type)!.kinds
-    const rows = all.filter(t => inTab(t, tab) && (type === "alle" || kinds.includes(t.signal.kind)))
+    const rows = all.filter(t => inTab(t, tab) && (type === "alle" || fits(TYPES.find(x => x.id === type)!, t)))
     const val = (t: Task) => sort === "winst" ? t.signal.gain : sort === "vertoningen" ? t.signal.metrics.impressions || 0 : -(t.signal.priorityRank || 9999)
     return rows.sort((a, b) => (desc ? val(b) - val(a) : val(a) - val(b)))
   }, [all, tab, type, sort, desc])
@@ -70,7 +73,7 @@ export default function SeoKansenView() {
         </div>
         <div className="table-tools" style={{ paddingTop: 0 }}>
           <div className="toolbar-left" role="group" aria-label="Soort">
-            {TYPES.filter(t => t.id === "alle" || all.some(x => inTab(x, tab) && t.kinds.includes(x.signal.kind))).map(t => (
+            {TYPES.filter(t => t.id === "alle" || all.some(x => inTab(x, tab) && fits(t, x))).map(t => (
               <button key={t.id} className={`chip${type === t.id ? " is-active" : ""}`} aria-pressed={type === t.id} onClick={() => setType(t.id)}>{t.label}</button>
             ))}
           </div>
@@ -102,6 +105,8 @@ export default function SeoKansenView() {
           </section>
         </div>
       )}
+
+      <NearPage1 />
     </>
   )
 }
@@ -118,7 +123,7 @@ function SeoCard({ t, onOpen }: { t: Task; onOpen: () => void }) {
       <span className="idea-main">
         <span className="idea-tags">
           <PriorityMeter priority={s.priority} />
-          <Badge tone="neutral">{KIND_META[s.kind].label}</Badge>
+          {lostPage1(s) ? <Badge tone="error">Van pagina 1 af</Badge> : <Badge tone="neutral">{KIND_META[s.kind].label}</Badge>}
           {columnOf(t.status) !== "beoordelen" && <StatusBadge task={t} />}
         </span>
         <span className="idea-title">{s.query ? `"${s.query}"` : s.headline}</span>

@@ -49,6 +49,37 @@ function evidenceFromImpressions(impressions: number, strong: number, fair: numb
   return ["zwak", `Slechts ${num(impressions)} vertoningen in 28 dagen: te weinig om harde conclusies te trekken.`]
 }
 
+// Stond de vorige periode op pagina 1 (≤ 10), nu niet meer
+export const lostPage1 = (s: Pick<Signal, "kind" | "metrics">) =>
+  s.kind === "daler" && (s.metrics.prevPosition ?? 99) <= 10 && (s.metrics.position == null || s.metrics.position > 10)
+
+// Kans net onder of net buiten pagina 1 (ook gebruikt als je zelf een zoekwoord op de lijst zet)
+function kansDraft(k: GscRow, model: CtrModel): Draft {
+  const q = k.keys[0]
+  const target = k.position <= 10.5 ? 5 : 8
+  const [evidence, reason] = evidenceFromImpressions(k.impressions, 150, 40)
+  return {
+    key: signalKey("kans", q),
+    kind: "kans",
+    query: q,
+    headline: q,
+    title: k.position <= 10.5
+      ? `Onderaan pagina 1 (positie ${pos(k.position)})`
+      : `Net buiten pagina 1 (positie ${pos(k.position)})`,
+    summary: `${num(k.impressions)} vertoningen en ${num(k.clicks)} clicks in 28 dagen. Een paar posities stijgen maakt hier het verschil tussen onzichtbaar en aangeklikt worden.`,
+    metrics: { position: k.position, impressions: k.impressions, clicks: k.clicks, ctr: k.ctr },
+    gain: gainFromMove(model, k.impressions, k.position, target),
+    evidence, evidenceReason: reason,
+  }
+}
+
+// Momentopname om een zoekwoord zelf op de takenlijst te zetten. De volgende berekening vervangt hem
+// door het actuele advies (pinned), met verse cijfers, intentie en actie.
+export function kansSignal(k: GscRow, model: CtrModel): Signal {
+  const d = kansDraft(k, model)
+  return { ...d, ...EFFORT_RISK.kans, legacyType: LEGACY_TYPE.kans, priority: "middel", priorityRank: 0, score: 0, generatedAt: new Date().toISOString() }
+}
+
 interface Draft extends Omit<Signal, "priority" | "priorityRank" | "score" | "legacyType" | "generatedAt"> {
   urgency?: number
 }
@@ -64,6 +95,7 @@ export interface SignalInput {
   lessons?: Pick<Lesson, "key" | "title" | "effect" | "status" | "confidence">[]  // wat we geleerd hebben (Wat hebben we geleerd?)
   checks?: DataCheck[]     // metingen of koppelingen die niet goed werken (controletaken)
   tries?: RouteTry[]       // eerder geprobeerde routes per pagina/zoekwoord (uit experimenten)
+  pinned?: string[]        // zelf op de takenlijst gezet (bv. "bijna op pagina 1"): blijft een actuele taak
 }
 
 // Inspanning en wijzigingsrisico per soort signaal (in het zijpaneel verfijnd per aanpassing)
@@ -96,6 +128,33 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
   const prevMap = new Map(input.prevKeywords.map(k => [k.keys[0], k]))
   const drafts: Draft[] = []
   const covered = new Set<string>() // één signaal per zoekwoord
+
+  // 0. Van pagina 1 af: stond de vorige 28 dagen in de top 10, nu niet meer. Altijd een taak, ook bij een
+  //    kleine stap (9 → 11): onder positie 10 vallen de klikken weg.
+  for (const prev of input.prevKeywords) {
+    const q = prev.keys[0]
+    if (prev.position > 10 || prev.impressions < 10 || covered.has(q)) continue
+    const k = kwMap.get(q)
+    if (k && k.position <= 10) continue
+    if (!k && prev.impressions < 20) continue
+    const imp = k?.impressions ?? 0
+    const [evidence, reason] = k
+      ? evidenceFromImpressions(Math.min(k.impressions, prev.impressions), 100, 25)
+      : (["redelijk", `Stond met ${num(prev.impressions)} vertoningen op pagina 1 en heeft nu geen vertoningen meer.`] as [Evidence, string])
+    drafts.push({
+      key: signalKey("daler", q),
+      kind: "daler",
+      query: q,
+      headline: q,
+      title: k ? `Van pagina 1 af: positie ${pos(prev.position)} → ${pos(k.position)}` : `Van pagina 1 af: geen vertoningen meer (was positie ${pos(prev.position)})`,
+      summary: `Stond de vorige 28 dagen op pagina 1. ${k ? `${num(prev.impressions)} → ${num(k.impressions)} vertoningen, ${num(prev.clicks)} → ${num(k.clicks)} klikken.` : ""} Onder positie 10 klikt bijna niemand meer door: kijk wat er veranderde en of de pagina terug kan.`.replace(/\s+/g, " ").trim(),
+      metrics: { position: k?.position, prevPosition: prev.position, impressions: imp, prevImpressions: prev.impressions, clicks: k?.clicks ?? 0, prevClicks: prev.clicks, ctr: k?.ctr },
+      gain: Math.max(gainFromMove(model, Math.max(imp, prev.impressions), k?.position ?? 20, prev.position), prev.clicks * 0.5),
+      evidence, evidenceReason: reason,
+      urgency: 1.5,
+    })
+    covered.add(q)
+  }
 
   // 1. Meerweken-trends: een patroon dat je nooit uit één periodevergelijking haalt
   for (const s of input.streaks) {
@@ -183,27 +242,15 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
 
   // 4. Kansen: net onder of net buiten pagina 1
   const kansDrafts: Draft[] = []
+  const pinned = new Set(input.pinned || [])
   for (const k of input.keywords) {
     const q = k.keys[0]
-    if (covered.has(q) || k.position < 8.5 || k.position > 20 || k.impressions < 20) continue
-    const target = k.position <= 10.5 ? 5 : 8
-    const [evidence, reason] = evidenceFromImpressions(k.impressions, 150, 40)
-    kansDrafts.push({
-      key: signalKey("kans", q),
-      kind: "kans",
-      query: q,
-      headline: q,
-      title: k.position <= 10.5
-        ? `Onderaan pagina 1 (positie ${pos(k.position)})`
-        : `Net buiten pagina 1 (positie ${pos(k.position)})`,
-      summary: `${num(k.impressions)} vertoningen en ${num(k.clicks)} clicks in 28 dagen. Een paar posities stijgen maakt hier het verschil tussen onzichtbaar en aangeklikt worden.`,
-      metrics: { position: k.position, impressions: k.impressions, clicks: k.clicks, ctr: k.ctr },
-      gain: gainFromMove(model, k.impressions, k.position, target),
-      evidence, evidenceReason: reason,
-    })
+    if (covered.has(q) || k.position < 8.5 || k.position > 20 || k.impressions < (pinned.has(signalKey("kans", q)) ? 5 : 20)) continue
+    kansDrafts.push(kansDraft(k, model))
   }
+  // De 8 sterkste worden vanzelf een taak; wat je zelf op de lijst zette (SEO-kansen › Bijna pagina 1) blijft er ook op
   kansDrafts.sort((a, b) => b.gain - a.gain || (b.metrics.impressions || 0) - (a.metrics.impressions || 0))
-    .slice(0, 8).forEach(d => { drafts.push(d); covered.add(d.query!) })
+    .filter((d, i) => i < 8 || pinned.has(d.key)).forEach(d => { drafts.push(d); covered.add(d.query!) })
 
   // 5. Pagina's die op een klikbare positie staan maar geen enkele click krijgen
   const pageDrafts: Draft[] = []
@@ -378,6 +425,8 @@ export function buildSignals(input: SignalInput, ctrModel?: CtrModel): Signal[] 
     if (isBrandQuery(d.query) && priority === "hoog") priority = "middel"
     if (d.resolved) priority = "laag"
     if (d.kind !== "techniek" && d.gain < 0.2 && priority !== "laag") priority = d.evidence === "sterk" ? "middel" : "laag"
+    // Van pagina 1 af: altijd hoog, ongeacht de rangorde (geen merknamen, niet als het al is opgelost)
+    if (lostPage1(d) && !d.resolved && !isBrandQuery(d.query)) priority = "hoog"
     const { urgency, ...rest } = d
     void urgency
     return { ...rest, legacyType: LEGACY_TYPE[d.kind], priority, priorityRank: i + 1, generatedAt: now }
