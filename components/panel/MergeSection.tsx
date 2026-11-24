@@ -11,15 +11,17 @@ import { normalize } from "@/lib/format"
 import type { Task } from "@/lib/types"
 import MergeDialog, { label } from "@/components/views/MergeDialog"
 import { KindLabel } from "@/components/ui"
+import { topicOf } from "@/lib/nearPage1"
 
 const OPEN = new Set(["beoordelen", "gepland", "uitvoering"])
-const pageOf = (t: Task) => t.signal.page || t.signal.conversions?.page || null
+import { pageOfTask as pageOf } from "@/lib/mergeSuggest"
 const words = (q?: string) => new Set(normalize(q || "").split(/\s+/).filter(w => w.length > 2))
 
 // Waarom lijkt deze kaart op de open kaart? Alleen duidelijke, uitlegbare redenen.
 export function similarity(a: Task, b: Task): string | null {
   const pa = pageOf(a), pb = pageOf(b)
   if (pa && pa === pb) return `zelfde pagina (${pa})`
+  if (a.signal.place && a.signal.place === b.signal.place && a.signal.query && b.signal.query && topicOf(a.signal.query) && topicOf(a.signal.query) === topicOf(b.signal.query)) return `zelfde plaats (${a.signal.place}) en onderwerp`
   if (a.signal.place && a.signal.place === b.signal.place && a.signal.kind === b.signal.kind) return `zelfde plaats (${a.signal.place}) en soort`
   const wa = words(a.signal.query), wb = words(b.signal.query)
   if (wa.size && wb.size) {

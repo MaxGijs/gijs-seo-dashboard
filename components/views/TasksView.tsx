@@ -15,6 +15,7 @@ import AddTaskDialog from "./AddTaskDialog"
 import ReminderDialog from "@/components/reminders/ReminderDialog"
 import BulkExecuteDialog from "./BulkExecuteDialog"
 import MergeDialog from "./MergeDialog"
+import MergeSuggestions from "./MergeSuggestions"
 import SiteAdviceStrip from "@/components/siteadvice/SiteAdviceStrip"
 import ContentMeasureStrip from "@/components/content/ContentMeasureStrip"
 import BoardLegend from "./BoardLegend"
@@ -332,6 +333,8 @@ export default function TasksView() {
           {filtersActive && <button className="btn btn-ghost btn-sm" onClick={() => { setType("alle"); setPrio("alle"); setText(""); setOwnerFilter("alle") }}>Filters wissen</button>}
         </div>
       </div>
+
+      {!selecting && <MergeSuggestions />}
 
       {loading ? (
         <div className="board">

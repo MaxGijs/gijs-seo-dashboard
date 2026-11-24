@@ -21,12 +21,12 @@ export function defaultMain(tasks: Task[]) {
   return [...tasks].sort((a, b) => STAGE[columnOf(a.status)] - STAGE[columnOf(b.status)] || prio[a.signal.priority] - prio[b.signal.priority] || b.signal.gain - a.signal.gain)[0]
 }
 
-export default function MergeDialog({ tasks, initialMain, onClose, onDone }: { tasks: Task[]; initialMain?: string; onClose: () => void; onDone?: (mainKey: string) => void }) {
+export default function MergeDialog({ tasks, initialMain, initialGroup, onClose, onDone }: { tasks: Task[]; initialMain?: string; initialGroup?: string; onClose: () => void; onDone?: (mainKey: string) => void }) {
   const { mergeTasks, openTask } = useWorkspace()
   const [main, setMain] = useState(initialMain || defaultMain(tasks).key)
   const [busy, setBusy] = useState(false)
   // Eigen groepsnaam; bestaat er al een (in een van de kaarten), dan die als begin
-  const [group, setGroup] = useState(() => tasks.find(t => t.key === (initialMain || defaultMain(tasks).key))?.signal.groupTitle || tasks.find(t => t.signal.groupTitle)?.signal.groupTitle || "")
+  const [group, setGroup] = useState(() => tasks.find(t => t.key === (initialMain || defaultMain(tasks).key))?.signal.groupTitle || tasks.find(t => t.signal.groupTitle)?.signal.groupTitle || initialGroup || "")
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose() }
     window.addEventListener("keydown", onKey)
