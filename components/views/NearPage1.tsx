@@ -5,7 +5,7 @@
 // met één klik op. Zoekwoorden over hetzelfde onderwerp in dezelfde plaats worden één kaart.
 
 import { useMemo, useState } from "react"
-import { ArrowDown, ArrowUp, Layers, Minus, Plus } from "lucide-react"
+import { ArrowDown, ArrowUp, Layers, Minus, Plus, Search } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { regionSegments } from "@/lib/intent"
 import { toPath } from "@/lib/signals"
@@ -15,6 +15,7 @@ import { StatusBadge } from "@/components/ui"
 import type { Task } from "@/lib/types"
 
 const SHOW = 10
+const fold = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
 
 function Move({ r }: { r: NearRow }) {
   if (r.prevPosition == null) return null
@@ -27,20 +28,25 @@ export default function NearPage1() {
   const { loading, keywords, prevKeywords, longKeywords, longPrevKeywords, pages, inventory, taskForQuery, pinKeywords, openTask } = useWorkspace()
   const [more, setMore] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
   const rows = useMemo(() => {
     const regions = regionSegments([...pages.map(p => toPath(p.keys[0])), ...inventory.map(p => p.path)])
     // De lange lijst (tot 1000 zoekwoorden) zodra hij binnen is; tot die tijd de top 250
     return nearPage1(longKeywords || keywords, longPrevKeywords || prevKeywords, regions)
   }, [keywords, prevKeywords, longKeywords, longPrevKeywords, pages, inventory])
   const groups = useMemo(() => nearGroups(rows), [rows])
+  // Zoeken: alle woorden moeten voorkomen (hoofdletters en accenten maken niet uit)
+  const words = useMemo(() => fold(search).split(/\s+/).filter(Boolean), [search])
+  const hit = (text: string) => { const t = fold(text); return words.every(w => t.includes(w)) }
   if (loading || !rows.length) return null
+  const found = words.length ? rows.filter(r => hit(r.q)) : rows
 
   const taskOf = (q: string) => taskForQuery(q)
   // Een groep staat al samen op één kaart als alle zoekwoorden in dezelfde kaart zitten
   const together = (g: NearGroup) => { const ts = g.rows.map(r => taskOf(r.q)); return ts.every(t => t && t.key === ts[0]!.key) ? ts[0] : null }
-  const open = groups.filter(g => !together(g))
+  const open = groups.filter(g => !together(g) && (!words.length || hit(g.title) || g.rows.some(r => hit(r.q))))
   const run = async (id: string, qs: string[], title?: string) => { setBusy(id); await pinKeywords(qs, title); setBusy(null) }
-  const shown = more ? rows : rows.slice(0, SHOW)
+  const shown = more || words.length ? found : found.slice(0, SHOW)
   const onList = rows.filter(r => taskOf(r.q)).length
 
   return (
@@ -48,6 +54,12 @@ export default function NearPage1() {
       <div className="near-p1-head">
         <h2 className="section-title" id="near-p1-title">Bijna op pagina 1<span className="chip-count">{rows.length}</span></h2>
         <p className="section-sub">Zoekwoorden op positie 11–20 (pagina 2) met minstens {NEAR_MIN_IMPRESSIONS} vertoningen in 28 dagen. {onList} staan al op Mijn taken; zet de rest erop als je ermee aan de slag wilt.</p>
+      </div>
+
+      <div className="near-p1-search">
+        <Search aria-hidden />
+        <input className="input" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Zoek een zoekwoord, bv. borne of spouwmuur" aria-label="Zoek in Bijna op pagina 1" />
+        {words.length > 0 && <span className="subtle small" aria-live="polite">{found.length} van {rows.length}</span>}
       </div>
 
       {open.length > 0 && (
@@ -70,6 +82,9 @@ export default function NearPage1() {
         </div>
       )}
 
+      {words.length > 0 && !found.length ? (
+        <p className="near-p1-empty subtle">Geen zoekwoord op pagina 2 met &quot;{search.trim()}&quot;. Staat het al op pagina 1, of heeft het minder dan {NEAR_MIN_IMPRESSIONS} vertoningen?</p>
+      ) : (
       <div className="table-wrap">
         <table className="table near-p1-table">
           <thead>
@@ -99,7 +114,8 @@ export default function NearPage1() {
           </tbody>
         </table>
       </div>
-      {rows.length > SHOW && (
+      )}
+      {!words.length && rows.length > SHOW && (
         <div className="near-p1-foot"><button className="btn btn-ghost btn-sm" onClick={() => setMore(m => !m)}>{more ? "Toon minder" : `Toon alle ${rows.length}`}</button></div>
       )}
     </section>

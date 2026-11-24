@@ -1791,3 +1791,9 @@ tr.is-picked td { background: var(--accent-050); }
   .mr-facts div { grid-template-columns: 1fr; }
   .mr-pages th:nth-child(2), .mr-pages td:nth-child(2) { display: none; }
 }
+.near-p1-search { position: relative; display: flex; align-items: center; gap: 10px; margin: 4px 22px 12px; max-width: 460px; }
+.near-p1-search svg { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--text-subtle); pointer-events: none; }
+.near-p1-search .input { padding-left: 34px; flex: 1; min-width: 0; }
+.near-p1-search span { white-space: nowrap; }
+.near-p1-empty { margin: 4px 22px 18px; font-size: var(--fs-sm); }
+@media (max-width: 640px) { .near-p1-search { margin: 4px 12px 12px; } .near-p1-empty { margin: 4px 12px 16px; } }
