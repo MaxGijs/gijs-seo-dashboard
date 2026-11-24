@@ -144,11 +144,10 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
 
   const copyToClaude = async () => {
     if (!diag) return
-    const prompt = buildClaudePrompt(signal, diag)
+    const prompt = buildClaudePrompt(signal, diag, (task.merged || []).map(m => m.signal), task.signal.groupTitle)
     try {
       await navigator.clipboard.writeText(prompt)
-      window.open("https://claude.ai/new", "_blank", "noopener")
-      toast("Analyse gekopieerd. Plak hem in het geopende Claude-tabblad.", "info")
+      toast(task.merged?.length ? `Prompt gekopieerd, met alle ${task.merged.length + 1} zoekwoorden. Plak hem in Claude.` : "Prompt gekopieerd. Plak hem in Claude.", "info")
     } catch {
       setPromptText(prompt)
       setMode("copy-fallback")
@@ -554,7 +553,6 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
               <textarea id="prompt-text" className="textarea" readOnly value={promptText} style={{ minHeight: 140 }} onFocus={e => e.currentTarget.select()} autoFocus />
               <div className="inline-form-actions">
                 <button className="btn btn-ghost btn-sm" onClick={() => setMode(null)}>Sluiten</button>
-                <a className="btn btn-secondary btn-sm" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Claude openen <ExternalLink aria-hidden /></a>
               </div>
             </div>
           )}
@@ -598,7 +596,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
                   <button className="link-btn" disabled={busy} onClick={() => run("onvoldoende_bewijs", {}, "Gemarkeerd als onvoldoende bewijs")} title="Te weinig data om nu iets te veranderen"><CircleSlash aria-hidden />Onvoldoende bewijs</button>
                 )}
                 <button className="link-btn" onClick={() => { setText(task.note || ""); setMode("note") }}><PencilLine aria-hidden />{task.note ? "Notitie bewerken" : "Notitie toevoegen"}</button>
-                <button className="link-btn" onClick={copyToClaude}><Copy aria-hidden />Tweede mening van Claude</button>
+                <button className="link-btn" onClick={copyToClaude}><Copy aria-hidden />Prompt kopiëren voor tweede mening</button>
                 {raw.kind === "eigen" && <button className="link-btn link-danger" onClick={() => setMode("delete")}><Trash2 aria-hidden />Taak verwijderen</button>}
                 {task.updatedAt && <span className="meta-line" style={{ marginLeft: "auto" }}>Gewijzigd {dateShort(task.updatedAt)}</span>}
               </div>

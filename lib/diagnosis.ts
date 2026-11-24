@@ -697,16 +697,33 @@ export function baselineFrom(signal: Signal, detail: AdviceDetail | null, diag: 
   return base
 }
 
-export function buildClaudePrompt(signal: Signal, diag: Diagnosis) {
+// Samengevoegde kaart: één opdracht voor meerdere zoekwoorden. De prompt noemt ze allemaal, met cijfers.
+export function buildClaudePrompt(signal: Signal, diag: Diagnosis, merged: Signal[] = [], groupTitle?: string | null) {
+  const members = [signal, ...merged.filter(m => m.key !== signal.key)]
+  const multi = members.length > 1
+  const fmtPos = (p?: number | null) => (p == null ? "—" : String(Math.round(p * 10) / 10).replace(".", ","))
+  const pct = (c?: number | null, i?: number | null) => (i ? `${String(Math.round(((c || 0) / i) * 1000) / 10).replace(".", ",")}%` : "—")
+  const pageOf = (s: Signal) => s.page || s.conversions?.page || null
+  const totImp = members.reduce((a, m) => a + (m.metrics.impressions || 0), 0)
+  const totClicks = members.reduce((a, m) => a + (m.metrics.clicks || 0), 0)
+  const wPos = totImp ? members.reduce((a, m) => a + (m.metrics.position || 0) * (m.metrics.impressions || 0), 0) / totImp : null
+  const group = multi ? [
+    `SAMENGEVOEGD${groupTitle ? `: "${groupTitle}"` : ""} — ${members.length} zoekwoorden, één opdracht (dezelfde aanpassing moet ze allemaal helpen)`,
+    ...members.map((m, i) => `${i + 1}. ${m.query ? `"${m.query}"` : m.headline}${pageOf(m) ? ` · ${pageOf(m)}` : ""} · positie ${fmtPos(m.metrics.position)} · ${m.metrics.impressions ?? 0} vertoningen · ${m.metrics.clicks ?? 0} clicks · CTR ${pct(m.metrics.clicks, m.metrics.impressions)}${i === 0 ? " (hoofdkaart; de bevindingen hieronder gaan over dit zoekwoord)" : ""} — ${m.title}`),
+    `Samen: ${totImp} vertoningen, ${totClicks} clicks, gewogen gemiddelde positie ${fmtPos(wPos)}.`,
+  ] : []
   const lines = [
     "Ik beheer het SEO-dashboard van groeninjestraat.nl (Gijs: verduurzaming van woningen — isolatie, zonnepanelen, warmtepompen — met regiopagina's in vooral Overijssel en Gelderland).",
     "Help me met een kritische tweede blik op dit advies. Gebruik alleen de cijfers hieronder en zeg het als iets niet uit de data volgt.",
     "",
-    `ONDERWERP: ${signal.query ? `zoekwoord "${signal.query}"` : `pagina ${signal.page}`}${diag.target ? ` · pagina ${diag.target}` : ""}`,
+    multi
+      ? `ONDERWERP: ${groupTitle ? `groep "${groupTitle}": ` : ""}${members.map(m => (m.query ? `"${m.query}"` : m.headline)).join(", ")}${diag.target ? ` · pagina ${diag.target}` : ""}`
+      : `ONDERWERP: ${signal.query ? `zoekwoord "${signal.query}"` : `pagina ${signal.page}`}${diag.target ? ` · pagina ${diag.target}` : ""}`,
     `SIGNAAL: ${signal.title}`,
     `WAT SPEELT ER: ${diag.situation}`,
     "",
-    "CIJFERS (laatste 28 dagen)",
+    ...(group.length ? [...group, ""] : []),
+    multi ? `CIJFERS HOOFDKAART "${signal.query || signal.headline}" (laatste 28 dagen)` : "CIJFERS (laatste 28 dagen)",
     ...diag.facts.map(f => `- ${f.label}: ${f.value}${f.sub ? ` (${f.sub})` : ""}`),
     "",
     "BEVINDINGEN",
@@ -717,8 +734,8 @@ export function buildClaudePrompt(signal: Signal, diag: Diagnosis) {
     "",
     "VRAAG",
     "1. Klopt de diagnose, of zie je een andere verklaring die beter bij deze cijfers past?",
-    "2. Welke stap zou jij als eerste doen, en waarom?",
-    "3. Schrijf voor de belangrijkste stap een concreet voorstel (bijvoorbeeld de nieuwe title en meta description).",
+    multi ? "2. Welke stap zou jij als eerste doen, en waarom? Helpt die alle zoekwoorden hierboven, of moet een zoekwoord apart?" : "2. Welke stap zou jij als eerste doen, en waarom?",
+    multi ? "3. Schrijf voor de belangrijkste stap een concreet voorstel dat alle zoekwoorden dekt (bijvoorbeeld een tussenkop en alinea per zoekwoord, of de nieuwe title en meta description)." : "3. Schrijf voor de belangrijkste stap een concreet voorstel (bijvoorbeeld de nieuwe title en meta description).",
   ]
   return lines.join("\n")
 }

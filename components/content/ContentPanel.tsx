@@ -119,7 +119,6 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
     const prompt = `Gebruik de Gijs-koppeling. Haal met artikel_opzet alles op voor contentkans ${idea.id} ("${idea.title}") en maak de opzet volgens de instructie. Laat hem mij zien en sla hem daarna op met artikel_opzet_opslaan.`
     try {
       await navigator.clipboard.writeText(prompt)
-      window.open("https://claude.ai/new", "_blank", "noopener")
       toast("Opdracht gekopieerd. Plak hem in Claude (met de connector Gijs aan).")
     } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
   }
@@ -154,8 +153,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   const copyBriefing = async () => {
     try {
       await navigator.clipboard.writeText(briefing)
-      window.open("https://claude.ai/new", "_blank", "noopener")
-      toast("Briefing gekopieerd. Plak hem in claude.ai en zet het concept daarna hier terug.")
+      toast("Briefing gekopieerd. Plak hem in Claude en zet het concept daarna hier terug.")
     } catch { toast("Kopiëren lukte niet; selecteer de tekst handmatig.", "error") }
   }
 
@@ -371,7 +369,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                 <>
                   <textarea className="textarea mono" rows={10} value={briefing} onChange={e => setBriefing(e.target.value)} aria-label="Briefing" />
                   <div className="inline-form-actions" style={{ justifyContent: "flex-start", marginTop: 8 }}>
-                    <button className="btn btn-primary btn-sm" onClick={copyBriefing}><Copy aria-hidden />Kopiëren en Claude openen</button>
+                    <button className="btn btn-primary btn-sm" onClick={copyBriefing}><Copy aria-hidden />Briefing kopiëren</button>
                     {briefing !== idea.briefing && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act({ action: "edit", fields: { briefing } }, "Briefing opgeslagen")}>Wijzigingen opslaan</button>}
                   </div>
                 </>
