@@ -16,6 +16,8 @@ import ReminderDialog from "@/components/reminders/ReminderDialog"
 import BulkExecuteDialog from "./BulkExecuteDialog"
 import MergeDialog from "./MergeDialog"
 import MergeSuggestions from "./MergeSuggestions"
+import RunningLabel from "./RunningLabel"
+import RunningSearch from "./RunningSearch"
 import SiteAdviceStrip from "@/components/siteadvice/SiteAdviceStrip"
 import ContentMeasureStrip from "@/components/content/ContentMeasureStrip"
 import BoardLegend from "./BoardLegend"
@@ -168,7 +170,7 @@ export default function TasksView() {
       (type === "alle" || (type === "content" ? e.kind === "content" : e.kind === "seo" && kinds.includes(e.t.signal.kind))) &&
       (prio === "alle" || e.prio === prio) &&
       (owner === "alle" || (() => { const o = (e.kind === "seo" ? e.t.owner : e.i.owner) || null; return owner === "niemand" ? !o : owner === "ik" ? o === me : o === owner })()) &&
-      (!n || normalize(e.kind === "seo" ? `${e.t.signal.query || ""} ${e.t.signal.page || ""} ${e.t.signal.headline}` : `${e.i.title} ${e.i.service || ""} ${e.i.target_page || ""}`).includes(n))
+      (!n || normalize(e.kind === "seo" ? [e.t, ...(e.t.merged || [])].map(t => `${t.signal.query || ""} ${t.signal.page || ""} ${t.signal.conversions?.page || ""} ${t.signal.headline}`).join(" ") + ` ${e.t.signal.groupTitle || ""}` : `${e.i.title} ${e.i.service || ""} ${e.i.target_page || ""}`).includes(n))
     )
   }, [entries, type, prio, text, owner, me])
 
@@ -321,8 +323,8 @@ export default function TasksView() {
             <option value="middel">Middel</option>
             <option value="laag">Laag</option>
           </select>
-          <label className="sr-only" htmlFor="text-filter">Filter op zoekwoord of pagina</label>
-          <input id="text-filter" className="input" style={{ width: 240, height: 36, borderRadius: 999, paddingLeft: 14 }} placeholder="Filter op zoekwoord of pagina" value={text} onChange={e => setText(e.target.value)} />
+          <label className="sr-only" htmlFor="text-filter">Zoek op plaats, zoekwoord of pagina (ook lopende metingen)</label>
+          <input id="text-filter" className="input" style={{ width: 240, height: 36, borderRadius: 999, paddingLeft: 14 }} placeholder="Zoek op plaats, zoekwoord of pagina" value={text} onChange={e => setText(e.target.value)} />
           <label className="sr-only" htmlFor="owner-filter">Eigenaar</label>
           <select id="owner-filter" className="select" style={{ width: 170, height: 36, borderRadius: 999 }} value={owner} onChange={e => setOwnerFilter(e.target.value)}>
             <option value="alle">Iedereen</option>
@@ -334,7 +336,8 @@ export default function TasksView() {
         </div>
       </div>
 
-      {!selecting && <MergeSuggestions />}
+      <RunningSearch text={text} />
+      {!selecting && !text.trim() && <MergeSuggestions />}
 
       {loading ? (
         <div className="board">
@@ -419,6 +422,7 @@ export default function TasksView() {
                         <span className="merged-names">{t.merged.slice(0, 3).map(m => <span key={m.key}>+ {m.signal.query ? `"${m.signal.query}"` : m.signal.headline}</span>)}{t.merged.length > 3 ? <span>en nog {t.merged.length - 3}</span> : null}</span>
                       ) : null}
                       <span className="tcard-sub clamp2" title={t.signal.action || t.signal.title}>{t.signal.action || t.signal.title}</span>
+                      {["beoordelen", "gepland", "uitvoering"].includes(c.id) && <RunningLabel task={t} />}
                       {t.note && <span className="tcard-note" title={t.note}><StickyNote aria-hidden /><span>{t.note}</span></span>}
                       <span className="tcard-foot">
                         <span>{meta.icon}{meta.text}</span>

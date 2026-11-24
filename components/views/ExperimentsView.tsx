@@ -212,7 +212,7 @@ export default function ExperimentsView() {
   const kindTab = (["experiment", "meting", "validatie"].includes(params.get("soort") || "") ? params.get("soort") : "experiment") as ExpKind
   const { loading, experiments, tasks, openTask } = useWorkspace()
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const [q, setQ] = useState("")
+  const [q, setQ] = useState(() => params.get("q") || "")
   const byKey = useMemo(() => new Map(tasks.map(t => [t.key, t])), [tasks])
   const units = useMemo(() => unitsOf(experiments), [experiments])
   const byKind = (k: ExpKind) => units.filter(u => u.kind === k)

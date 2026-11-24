@@ -202,9 +202,11 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const experimentsRef = useRef<Experiment[]>([])
   experimentsRef.current = experiments
+  const contentTriesRef = useRef<RouteTry[]>([])
   const [runningWarning, setRunningWarning] = useState<RunningWarning | null>(null)
   const runningResolve = useRef<((goOn: boolean) => void) | null>(null)
   const [contentTries, setContentTries] = useState<RouteTry[]>([])
+  contentTriesRef.current = contentTries
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [checks, setChecks] = useState<DataCheck[]>([])
   const [users, setUsers] = useState<{ email: string; name: string | null; image: string | null }[]>([])
@@ -412,7 +414,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
   const setStatus = useCallback(async (task: Task, to: Status, opts: StatusOptions = {}) => {
     let overlapAck: Signal["overlap"] | null = null
     if (!opts.ignoreRunning && columnOf(task.status) === "beoordelen" && (to === "goedgekeurd" || to === "in_uitvoering")) {
-      const hits = runningMeasurements(task, experimentsRef.current)
+      const hits = runningMeasurements(task, experimentsRef.current, undefined, contentTriesRef.current)
       if (hits.length) {
         const goOn = await new Promise<boolean>(resolve => { runningResolve.current = resolve; setRunningWarning({ task, to, hits }) })
         setRunningWarning(null)

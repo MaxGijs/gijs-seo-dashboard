@@ -159,12 +159,8 @@ export function MeasurementReport({ e, compact = false }: { e: Experiment; compa
 }
 
 // Wat, waarom, waar en wanneer: de vaste gegevens van een experiment
-// Paden die in de omschrijving genoemd worden (bv. /regio/overijssel/zwolle/brinkhoek)
-export function pathsIn(text: string): string[] {
-  const out: string[] = []
-  for (const m of text.matchAll(/(?:^|[\s("'“‘])(\/[a-z][a-z0-9-]*(?:\/[a-z0-9-]+)*)/gi)) out.push(m[1].replace(/\/+$/, "").toLowerCase())
-  return [...new Set(out)]
-}
+export { pathsIn } from "@/lib/paths"
+import { pathsIn } from "@/lib/paths"
 const capW = (s: string) => s.split("-").map(w => (["van", "de", "den", "aan", "op", "en"].includes(w) ? w : w[0]?.toUpperCase() + w.slice(1))).join(" ")
 // Leesbare plaats bij een regiopagina: "Zwolle (Overijssel)" of "Brinkhoek, Zwolle"
 export function placeLabel(path: string): string | null {

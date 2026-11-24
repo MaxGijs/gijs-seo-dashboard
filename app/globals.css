@@ -1814,3 +1814,25 @@ tr.is-picked td { background: var(--accent-050); }
   .merge-suggest-item { flex-direction: column; align-items: stretch; }
   .merge-suggest-actions { justify-content: flex-start; flex-wrap: wrap; }
 }
+
+/* Label: er loopt al een meting op deze pagina / in deze plaats */
+.tcard-running { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; max-width: 100%; margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; line-height: 1.4; color: var(--warning); background: var(--warning-bg); }
+.tcard-running svg { width: 12px; height: 12px; flex: none; }
+.tcard-running.level-plaats { color: var(--grey-600); background: var(--grey-100, #eef0ee); font-weight: 500; }
+.tcard-running.is-compact { margin-top: 4px; }
+
+/* Mijn taken: lopende metingen bij zoeken */
+.running-search { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 12px; background: var(--white); }
+.running-search h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: var(--fs-sm); font-weight: 600; }
+.running-search h2 svg { width: 16px; height: 16px; color: var(--warning); }
+.running-search > p { margin: 0 0 8px; }
+.running-search-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.running-search-list li { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; padding: 9px 0; border-top: 1px solid var(--border-subtle); }
+.running-search-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.running-search-when { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; text-align: right; }
+.running-search-when .link-btn { padding: 0; font-size: var(--fs-xs); color: var(--green-800); }
+.running-search-all { margin-top: 6px; font-size: var(--fs-xs); color: var(--green-800); }
+@media (max-width: 640px) {
+  .running-search-list li { flex-direction: column; gap: 6px; }
+  .running-search-when { align-items: flex-start; text-align: left; flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+}

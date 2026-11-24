@@ -10,6 +10,7 @@ import { useWorkspace } from "@/lib/workspace"
 import type { Signal, SignalKind, Task } from "@/lib/types"
 import { lostPage1 } from "@/lib/signals"
 import NearPage1 from "./NearPage1"
+import RunningLabel from "./RunningLabel"
 import { columnOf, KIND_META } from "@/lib/workflow"
 import { gainShort, num, pos } from "@/lib/format"
 import { Badge, EmptyState, PageHeader, PriorityMeter, SectionTabs, Skeleton, StatusBadge, type StatusTone } from "@/components/ui"
@@ -128,6 +129,7 @@ function SeoCard({ t, onOpen }: { t: Task; onOpen: () => void }) {
         </span>
         <span className="idea-title">{s.query ? `"${s.query}"` : s.headline}</span>
         <span className="idea-why">{s.action || s.title}</span>
+        {["beoordelen", "gepland", "uitvoering"].includes(columnOf(t.status)) && <RunningLabel task={t} compact />}
         <span className="idea-meta">
           {s.page && <span>{s.page}</span>}
           {m.impressions ? <span>{num(m.impressions)} vertoningen</span> : null}

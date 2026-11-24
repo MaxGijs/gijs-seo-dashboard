@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react"
 import { AlertTriangle, X } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
-import { waitsForFirst, waitUntil } from "@/lib/running"
+import { overlapText, waitsForFirst, waitUntil } from "@/lib/running"
 import { dateShort } from "@/lib/format"
 import { groupName } from "@/lib/workflow"
 
@@ -24,6 +24,10 @@ export default function RunningWarningDialog() {
   if (!w) return null
 
   const until = waitUntil(w.hits)
+  // Kop en uitleg naar de sterkste overlap: zelfde pagina, pagina genoemd, of dezelfde plaats
+  const top = w.hits[0]
+  const where = top.level === "plaats" ? `In ${top.on[0]}` : top.level === "zoekwoord" ? "Op dit zoekwoord" : top.level === "genoemd" ? "Op een meting die deze pagina raakt" : "Op deze pagina"
+  const what = top.source === "content" ? "een contentmeting" : "een SEO-experiment"
   const first = waitsForFirst(w.hits)
   const name = groupName(w.task) || (w.task.signal.query ? `"${w.task.signal.query}"` : w.task.signal.headline)
   const postpone = async () => {
@@ -39,21 +43,21 @@ export default function RunningWarningDialog() {
       <div className="panel-overlay" style={{ zIndex: 320 }} onClick={() => answerRunningWarning(false)} aria-hidden />
       <div className="modal running-warning" style={{ zIndex: 330 }} role="alertdialog" aria-modal="true" aria-labelledby="rw-title" aria-describedby="rw-text">
         <div className="modal-head">
-          <h2 id="rw-title"><AlertTriangle aria-hidden className="rw-icon" />Op deze pagina loopt al een SEO-experiment</h2>
+          <h2 id="rw-title"><AlertTriangle aria-hidden className="rw-icon" />{top.level === "genoemd" ? "Er loopt al een meting die deze pagina raakt" : `${where} loopt al ${what}`}</h2>
           <button className="icon-btn" onClick={() => answerRunningWarning(false)} aria-label="Sluiten"><X /></button>
         </div>
         <div className="modal-body">
-          <p id="rw-text" style={{ marginTop: 0 }}>Je zet <b>{name}</b> op {TO_LABEL[w.to] || w.to}. Op deze pagina loopt al een SEO-experiment. Een nieuwe wijziging kan de interpretatie van de resultaten beïnvloeden.</p>
+          <p id="rw-text" style={{ marginTop: 0 }}>Je zet <b>{name}</b> op {TO_LABEL[w.to] || w.to}. {top.level === "plaats" ? `In dezelfde plaats loopt al ${what} op een andere pagina. Zoekwoorden en interne links in ${top.on[0]} hangen vaak samen, dus een nieuwe wijziging kan de interpretatie van de resultaten beïnvloeden.` : top.level === "genoemd" ? "Deze pagina wordt genoemd in een meting die nog loopt. Een nieuwe wijziging kan de interpretatie van de resultaten beïnvloeden." : `${where} loopt al ${what}. Een nieuwe wijziging kan de interpretatie van de resultaten beïnvloeden.`}</p>
           <ul className="rw-list">
             {w.hits.slice(0, 3).map(h => (
               <li key={h.experiment.id}>
                 <b>{h.experiment.family_title || h.experiment.description}</b>
                 <span className="subtle small">
                   Aangepast op {dateShort(h.experiment.changed_at)}
-                  {h.on.length ? ` · ${h.on.some(o => o.startsWith('"')) ? "zelfde zoekwoord" : "zelfde pagina"}: ${h.on.slice(0, 3).join(", ")}` : h.sameCard ? " · deze kaart zelf" : ""}
+                  {` · ${overlapText(h)}`}{h.on.length && h.level !== "plaats" ? `: ${h.on.slice(0, 3).join(", ")}` : ""}
                   {h.assessed ? ` · eerste beoordeling gedaan · eindmeting rond ${dateShort(h.end)}` : ` · eerste beoordeling rond ${dateShort(h.firstAssessment)} · eindmeting rond ${dateShort(h.end)}`}
                 </span>
-                <button type="button" className="link-btn small" onClick={() => { const k = h.experiment.advice_key; answerRunningWarning(false); openTask(k) }}>Bekijk die meting</button>
+                {h.source === "seo" && <button type="button" className="link-btn small" onClick={() => { const k = h.experiment.advice_key; answerRunningWarning(false); openTask(k) }}>Bekijk die meting</button>}
               </li>
             ))}
             {w.hits.length > 3 && <li className="subtle small">en nog {w.hits.length - 3} {w.hits.length - 3 === 1 ? "meting" : "metingen"}</li>}
