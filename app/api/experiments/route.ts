@@ -4,6 +4,9 @@ import { getSupabase, requireUser, supabaseConfigured } from "@/lib/server/guard
 import { updateTry } from "@/lib/content/update"
 import type { RouteTry } from "@/lib/routes"
 import { prepareStart } from "@/lib/server/experimentStart"
+import { baselineAt, normPath } from "@/lib/server/scopedMeasure"
+import { addDaysIso } from "@/lib/measureLogic"
+import { CHANGE_TYPES } from "@/lib/experiment"
 
 // GET /api/experiments — gelogde experimenten (optioneel gefilterd op advice_key)
 export async function GET(request: Request) {
@@ -134,4 +137,63 @@ export async function DELETE(request: Request) {
   const { error } = await sb.from("seo_experiments").delete().in("id", rows.map(r => r.id))
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true, removed: rows.length })
+}
+
+// PUT /api/experiments — opzet corrigeren (verkeerd ingevuld), alleen vóór het eerste meetpunt.
+// Body: { id, description?, changed_at?, changed_pages?, change_type? }
+// De opzet is onveranderlijk zodra hij is vastgelegd (databaseregel). Corrigeren vervangt daarom de
+// meting door een nieuwe regel met de juiste opzet, net als "stap terug" en opnieuw starten. Bij een
+// andere live-datum wordt de nulmeting opnieuw opgehaald over de 28 dagen vóór die datum. Wat er stond,
+// blijft bewaard in baseline.correction.
+export async function PUT(request: Request) {
+  const guard = await requireUser()
+  if (guard.error) return guard.error
+  if (!supabaseConfigured()) return NextResponse.json({ error: "Opslag niet geconfigureerd" }, { status: 500 })
+  const bad = (error: string, status = 400) => NextResponse.json({ error }, { status })
+  try {
+    const body = await request.json()
+    const sb = getSupabase()
+    const { data: old, error: e0 } = await sb.from("seo_experiments").select("*").eq("id", String(body.id || "")).maybeSingle()
+    if (e0) throw e0
+    if (!old) return bad("Meting niet gevonden", 404)
+    if (old.outcome || old.result_7d || old.result_14d || old.result_28d || old.result_56d || old.result_84d) {
+      return bad("Er is al een meetpunt geweest. Corrigeren kan alleen vóór het eerste meetpunt, anders klopt de vergelijking niet meer. Rond deze meting af en start een nieuwe.", 409)
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    const date = body.changed_at === undefined ? old.changed_at : String(body.changed_at)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(Date.parse(date))) return bad("Ongeldige datum")
+    if (date > today) return bad("De live-datum kan niet in de toekomst liggen")
+    if (date < addDaysIso(today, -90)) return bad("De live-datum ligt meer dan 90 dagen terug")
+    const description = body.description === undefined ? old.description : String(body.description).trim().slice(0, 4000)
+    if (!description) return bad("Omschrijving is verplicht")
+    const pages = body.changed_pages === undefined ? old.changed_pages
+      : (Array.isArray(body.changed_pages) ? body.changed_pages : []).map((p: unknown) => normPath(String(p))).filter((p: string) => p.startsWith("/")).slice(0, 100)
+    const changeType = body.change_type === undefined ? old.baseline?.changeType : String(body.change_type)
+    if (changeType && !(changeType in CHANGE_TYPES)) return bad("Onbekend soort wijziging")
+    const dateChanged = date !== old.changed_at
+    if (!dateChanged && description === old.description && JSON.stringify(pages || []) === JSON.stringify(old.changed_pages || []) && changeType === old.baseline?.changeType) {
+      return NextResponse.json({ ok: true, experiment: old, unchanged: true })
+    }
+
+    const baseline = { ...(old.baseline || {}), ...(changeType ? { changeType } : {}) }
+    if (dateChanged) {
+      // Nulmeting over de 28 dagen vóór de juiste datum; lukt dat niet, dan niets wijzigen (anders meet hij verkeerd)
+      const fresh = await baselineAt({ ...old, changed_pages: pages }, date)
+      if (!fresh) return bad("De nulmeting voor de nieuwe datum kon niet uit Search Console worden opgehaald. Er is niets gewijzigd; probeer het later opnieuw.", 502)
+      Object.assign(baseline, fresh)
+    }
+    const who = guard.session.user?.name || guard.session.user?.email || "medewerker"
+    baseline.correction = [...(Array.isArray(old.baseline?.correction) ? old.baseline.correction : []),
+      { at: new Date().toISOString(), by: who, from: { changed_at: old.changed_at, description: old.description, changed_pages: old.changed_pages, changeType: old.baseline?.changeType ?? null, ...(dateChanged ? { baseline: old.baseline } : {}) } }]
+
+    // Zelfde id houden (koppelingen, open detail): oude regel weg, gecorrigeerde regel erin. Lukt het
+    // invoegen niet, dan komt de oude regel ongewijzigd terug.
+    const { error: e1 } = await sb.from("seo_experiments").delete().eq("id", old.id)
+    if (e1) throw e1
+    const { data: created, error: e2 } = await sb.from("seo_experiments").insert({ ...old, description, changed_at: date, changed_pages: pages, baseline }).select().single()
+    if (e2) { await sb.from("seo_experiments").insert(old); throw e2 }
+    return NextResponse.json({ ok: true, experiment: created, replaced: old.id })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
 }

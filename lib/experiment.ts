@@ -219,3 +219,24 @@ export function inferChangeType(description: string, actionType?: string | null)
   if (/redirect|doorverwijz|404|sitemap|canonical|noindex|index|schema|laadtijd|techni/.test(d) || actionType === "technisch" || actionType === "indexering" || actionType === "consolidatie") return "technisch"
   return "tekst"
 }
+
+// ── Opzet corrigeren ───────────────────────────────────────────────────────
+
+// Kan alleen vóór het eerste meetpunt: daarna klopt de vergelijking met de nulmeting niet meer
+export function canCorrect(e: { outcome?: unknown; result_7d?: unknown; result_14d?: unknown; result_28d?: unknown; result_56d?: unknown; result_84d?: unknown }) {
+  return !e.outcome && !e.result_7d && !e.result_14d && !e.result_28d && !e.result_56d && !e.result_84d
+}
+
+// "Live op 20-11-2026" (of 20-11-26, 20/11/2026, 2026-11-20) in de omschrijving → ISO-datum
+export function liveDateIn(text: string): string | null {
+  const iso = text.match(/live (?:op|sinds|vanaf)\s+(\d{4})-(\d{2})-(\d{2})/i)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  const m = text.match(/live (?:op|sinds|vanaf)\s+(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/i)
+  if (!m) return null
+  const y = m[3].length === 2 ? `20${m[3]}` : m[3]
+  const d = `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`
+  return isNaN(Date.parse(d)) ? null : d
+}
+
+export interface Correction { at: string; by?: string; from: { changed_at: string; description: string; changed_pages?: string[] | null; changeType?: string | null } }
+export const correctionsOf = (e: { baseline?: Record<string, any> | null }): Correction[] => (Array.isArray(e.baseline?.correction) ? e.baseline!.correction : [])

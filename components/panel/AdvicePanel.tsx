@@ -1,5 +1,6 @@
 "use client"
 
+import { CorrectButton, CorrectionNote } from "./ExperimentCorrect"
 import { MeasurementReport, MeasureTimeline } from "@/components/panel/MeasurementReport"
 import { conclusionOf } from "@/lib/measureLogic"
 import ChangeTypeSelect from "@/components/panel/ChangeTypeSelect"
@@ -629,8 +630,9 @@ function capitalizeFirst(t: string) { return t ? t[0].toUpperCase() + t.slice(1)
 function ExperimentSummary({ exp }: { exp: Experiment }) {
   return (
     <div className="card" style={{ padding: 14 }}>
-      <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.kind && exp.kind !== "experiment" && <Badge tone="neutral">{EXP_KIND[exp.kind].label}</Badge>}</div>
+      <div className="meta-line" style={{ marginBottom: 6 }}><FlaskConical aria-hidden />Aangepast op {dateLong(exp.changed_at)}{exp.kind && exp.kind !== "experiment" && <Badge tone="neutral">{EXP_KIND[exp.kind].label}</Badge>}<CorrectButton e={exp} /></div>
       <p style={{ fontSize: "var(--fs-sm)", marginBottom: 10 }}>{exp.description}</p>
+      <CorrectionNote e={exp} />
       <MeasureTimeline e={exp} />
       <div style={{ marginTop: 10 }}><MeasurementReport e={exp} compact /></div>
     </div>

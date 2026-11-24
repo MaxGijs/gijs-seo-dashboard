@@ -1758,3 +1758,15 @@ tr.is-picked td { background: var(--accent-050); }
   .near-p1-short { display: inline; }
   .near-p1-table th, .near-p1-table td { padding-left: 10px; padding-right: 10px; }
 }
+
+/* Opzet van een meting corrigeren */
+.exp-correct-btn { margin-left: auto; font-size: var(--fs-xs); padding: 2px 0; }
+.exp-correct-btn svg { width: 13px; height: 13px; }
+.meta-line .exp-correct-btn { margin-left: auto; }
+.xcorr-warn { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--warning-bg, #fff6e5); font-size: var(--fs-sm); }
+.xcorr-warn .link-btn { padding: 0; color: var(--green-800); font-size: inherit; }
+.exp-correction { margin: 0 0 10px; font-size: var(--fs-sm); }
+.exp-correction summary { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--text-subtle); font-size: var(--fs-xs); }
+.exp-correction summary svg { width: 13px; height: 13px; }
+.exp-correction ul { list-style: none; margin: 6px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); display: grid; gap: 8px; }
+.exp-correction li { display: flex; flex-direction: column; gap: 2px; }

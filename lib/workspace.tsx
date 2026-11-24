@@ -139,6 +139,8 @@ interface WorkspaceValue {
   splitTask: (child: Task) => Promise<boolean>
   // Zoekwoorden zelf op Mijn taken zetten (Bijna op pagina 1); meerdere tegelijk worden één kaart
   pinKeywords: (queries: string[], groupTitle?: string | null) => Promise<boolean>
+  // Verkeerd ingevulde opzet van een meting corrigeren (alleen vóór het eerste meetpunt)
+  correctExperiment: (id: string, patch: { description?: string; changed_at?: string; changed_pages?: string[]; change_type?: string }) => Promise<string | null>
   taskForQuery: (q: string) => Task | null
   setGroupTitle: (main: Task, title: string | null) => Promise<boolean>
   runningWarning: RunningWarning | null
@@ -668,6 +670,21 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     }
   }, [records, saveRecord, toast])
 
+  const correctExperiment = useCallback(async (id: string, patch: { description?: string; changed_at?: string; changed_pages?: string[]; change_type?: string }) => {
+    try {
+      const res = await getJson<{ experiment: Experiment; replaced?: string; unchanged?: boolean }>(`/api/experiments`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }),
+      })
+      if (res.unchanged) { toast("Niets gewijzigd"); return null }
+      setExperiments(es => es.map(e => (e.id === (res.replaced || id) ? res.experiment : e)))
+      toast("Opzet gecorrigeerd")
+      return null
+    } catch (e: any) {
+      if (e instanceof HttpError && e.status === 401) setAuthError(true)
+      return e?.message || "Corrigeren mislukt"
+    }
+  }, [toast])
+
   // De kaart waar een zoekwoord nu in zit: een eigen kaart, of de hoofdkaart waarin hij is samengevoegd
   const taskForQuery = useCallback((q: string): Task | null => {
     const own = (t: Task) => t.signal.query === q && !t.signal.reminder && !["afgewezen", "onvoldoende_bewijs"].includes(t.status)
@@ -752,7 +769,7 @@ export function WorkspaceProvider({ children, user }: { children: ReactNode; use
     keywords, prevKeywords, longKeywords, longPrevKeywords, pages, overview, prevOverview, dataUntil, listWindow, inventory, ga4Pages,
     ctrModel, signals, tasks, visibleTasks, experiments, contentTries,
     newSinceLastVisit, lastVisit,
-    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, pinKeywords, taskForQuery, setGroupTitle, runningWarning, answerRunningWarning, addReminder, snoozeReminder, openTask,
+    setStatus, setOwner, setGoal, removeTask, undoExecution, addTask, mergeTasks: mergeTasksInto, splitTask, pinKeywords, taskForQuery, correctExperiment, setGroupTitle, runningWarning, answerRunningWarning, addReminder, snoozeReminder, openTask,
     siteAdvice, siteDecisions, decideSiteAdvice, openSubject, closePanel, panelTask, panelIntent,
     getDetail, getAnalytics,
     toast, toasts, dismissToast,

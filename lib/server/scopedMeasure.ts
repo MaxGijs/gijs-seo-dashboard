@@ -128,3 +128,40 @@ export async function measureScoped(exp: any, day: number, metric: "position" | 
     return null
   }
 }
+
+// Nulmeting opnieuw vastleggen voor een andere live-datum (opzet corrigeren vóór het eerste meetpunt).
+// Zelfde velden als bij de start (baselineFrom), nu over de 28 dagen vóór de gecorrigeerde datum.
+export async function baselineAt(exp: any, changedAt: string): Promise<Record<string, unknown> | null> {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return null
+  const { before: w } = windowsFor(changedAt, 28)
+  const range = { startDate: w.start, endDate: w.end }
+  const { pages } = targetsOf(exp)
+  try {
+    const q = typeof exp.query === "string" && exp.query ? exp.query.toLowerCase() : null
+    const main = empty()
+    if (q) { const [r] = await rows({ ...range, dimensions: ["query"], dimensionFilterGroups: [{ filters: [queryFilter(q)] }], rowLimit: 1 }); if (r) add(main, r) }
+    else for (const p of pages) { const [r] = await rows({ ...range, dimensions: ["page"], dimensionFilterGroups: [{ filters: [pageFilter(p)] }], rowLimit: 1 }); if (r) add(main, r) }
+    const out: Record<string, unknown> = {
+      position: main.impressions ? pos(main) : null, impressions: main.impressions, clicks: main.clicks,
+      ctr: main.impressions ? Math.round((main.clicks / main.impressions) * 10000) / 10000 : 0,
+      windowStart: w.start, windowEnd: w.end, capturedAt: new Date().toISOString(),
+    }
+    const target = exp.baseline?.targetPage
+    if (q && typeof target === "string" && target) {
+      const pair = empty()
+      const [r] = await rows({ ...range, dimensions: ["query"], dimensionFilterGroups: [{ filters: [pageFilter(normPath(target)), queryFilter(q)] }], rowLimit: 1 })
+      if (r) add(pair, r)
+      out.pairPosition = pair.impressions ? pos(pair) : null
+      out.pairImpressions = pair.impressions
+    }
+    const days = await rows({ ...range, dimensions: ["date"] })
+    if (days.length) out.site = {
+      impressionsPerDay: Math.round(days.reduce((a, r) => a + r.impressions, 0) / days.length),
+      clicksPerDay: Math.round((days.reduce((a, r) => a + r.clicks, 0) / days.length) * 10) / 10,
+      days: days.length,
+    }
+    return out
+  } catch {
+    return null
+  }
+}

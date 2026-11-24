@@ -1,5 +1,6 @@
 "use client"
 
+import { CorrectButton, CorrectionNote } from "@/components/panel/ExperimentCorrect"
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -359,7 +360,8 @@ function FragmentRow({ children }: { children: React.ReactNode }) { return <>{ch
 function ExpDetail({ e, task, openTask }: { e: Experiment; task?: Task; openTask: (k: string) => void }) {
   return (
     <div className="exp-detail-v2">
-      <div className="meta-line" style={{ marginBottom: 6 }}>{task && <KindLabel signal={task.signal} />}{task && <button className="link-btn" onClick={() => openTask(task.key)}>Taak openen</button>}<span className="subtle small"><CalendarClock aria-hidden /> Aangepast op {dateLong(e.changed_at)}</span></div>
+      <div className="meta-line" style={{ marginBottom: 6 }}>{task && <KindLabel signal={task.signal} />}{task && <button className="link-btn" onClick={() => openTask(task.key)}>Taak openen</button>}<span className="subtle small"><CalendarClock aria-hidden /> Aangepast op {dateLong(e.changed_at)}</span><CorrectButton e={e} /></div>
+      <CorrectionNote e={e} />
       <ExperimentFacts e={e} pages={pagesOf(e)} />
       <MeasureTimeline e={e} />
       <div style={{ marginTop: 10 }}><MeasurementReport e={e} /></div>
