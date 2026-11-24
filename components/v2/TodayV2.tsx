@@ -203,7 +203,7 @@ export default function TodayV2() {
             <CardHeader>
               <div>
                 <CardTitle id="v2-lopend">Lopend werk</CardTitle>
-                <CardDescription>Ingepland of in uitvoering. Zet een taak op uitgevoerd zodra het staat; dan start de meting.</CardDescription>
+                <CardDescription>Gepland of in uitvoering. Zet een taak op Live zodra hij online staat; dan start de meting.</CardDescription>
               </div>
             </CardHeader>
             {active.length === 0 ? (
@@ -213,12 +213,12 @@ export default function TodayV2() {
                 {active.slice(0, 6).map(t => (
                   <li key={t.key}>
                     <button onClick={() => openTask(t.key)} className="grid w-full cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-5 py-2.5 text-left outline-none transition-colors hover:bg-canvas focus-visible:bg-accent-soft">
-                      {t.status === "in_uitvoering" ? <Play className="size-4 text-accent" aria-label="In uitvoering" /> : <CalendarClock className="size-4 text-subtle" aria-label="Gepland" />}
+                      {t.status === "in_uitvoering" ? <Play className="size-4 text-accent" aria-label="In uitvoering, nog niet live" /> : <CalendarClock className="size-4 text-subtle" aria-label="Gepland" />}
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-heading">{subject(t)}</span>
                         <span className="block truncate text-xs text-muted">{t.signal.action || t.signal.title}</span>
                       </span>
-                      <span className="text-xs whitespace-nowrap text-subtle">{t.status === "in_uitvoering" ? "In uitvoering" : "Gepland"}{t.owner ? `, ${who(t.owner)}` : ""}</span>
+                      <span className="text-xs whitespace-nowrap text-subtle">{t.status === "in_uitvoering" ? "In uitvoering, nog niet live" : "Gepland"}{t.owner ? `, ${who(t.owner)}` : ""}</span>
                     </button>
                   </li>
                 ))}

@@ -1836,3 +1836,5 @@ tr.is-picked td { background: var(--accent-050); }
   .running-search-list li { flex-direction: column; gap: 6px; }
   .running-search-when { align-items: flex-start; text-align: left; flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
 }
+/* Langere kolomnamen: koppen even hoog houden */
+.board .col-head { min-height: 62px; }

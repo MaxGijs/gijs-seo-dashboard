@@ -68,7 +68,7 @@ export default function SeoKansenView() {
           <SectionTabs label="Status" value={tab} onChange={setTab} tabs={[
             { id: "beoordelen", label: "Te beoordelen", count: counts.beoordelen },
             { id: "lopend", label: "Ingepland", count: counts.lopend },
-            { id: "meting", label: "Wordt gemeten", count: counts.meting },
+            { id: "meting", label: "Live, wordt gemeten", count: counts.meting },
             { id: "afgerond", label: "Afgerond", count: counts.afgerond },
           ]} />
         </div>

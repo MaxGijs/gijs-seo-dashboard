@@ -306,7 +306,7 @@ export const TOOLS: Tool[] = [
         page: (rec.targetRow ? target : null) ?? (signal.kind === "dubbel" ? signal.page ?? null : signal.query ? null : signal.page ?? null),
       })
       invalidate()
-      return { ok: true, key: t.key, kolom: "Evalueren", gemeten_op: diag.plan.label, nulmeting: diag.plan.baselineText, geslaagd_als: diag.plan.success, metingen: [7, 14, 28].map(d => addDays(today(), d)), eindmeting_verlengd_tot_56_bij_te_weinig_data: true }
+      return { ok: true, key: t.key, kolom: "Live, wordt gemeten", gemeten_op: diag.plan.label, nulmeting: diag.plan.baselineText, geslaagd_als: diag.plan.success, metingen: [7, 14, 28].map(d => addDays(today(), d)), eindmeting_verlengd_tot_56_bij_te_weinig_data: true }
     },
   },
   {
@@ -489,7 +489,7 @@ async function diagnose(ws: Workspace, t: Task) {
 }
 
 export const INSTRUCTIONS = `Dit is het Gijs-dashboard van groeninjestraat.nl (verduurzaming van woningen in Overijssel en Gelderland).
-Het takenbord heeft vijf kolommen: Te beoordelen → Gepland → In uitvoering → Evalueren → Afgerond.
+Het takenbord heeft vijf kolommen: Te beoordelen → Gepland → In uitvoering, nog niet live → Live, wordt gemeten → Afgerond, gemeten.
 - Begin met "vandaag" als iemand vraagt wat er moet gebeuren; gebruik "taak_bekijken" voor de stappen van één taak.
 - Elke uitgevoerde aanpassing wordt gemeten na 7 dagen (signalering), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindmeting; 56 alleen bij te weinig data). Na 14 dagen is er een voorlopige beoordeling, geen eindoordeel. Meld een taak pas als uitgevoerd ("taak_uitgevoerd") als de gebruiker bevestigt dat het live staat, en vraag wat er precies is aangepast.
 - Eigen taken hebben een doel: seo (gemeten in Google), conversie (gemeten op energiescanaanvragen in GA4) of overig. Kies conversie voor alles rond leads en gebruiksgemak.

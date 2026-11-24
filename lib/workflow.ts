@@ -6,9 +6,9 @@ export type ColumnId = "beoordelen" | "gepland" | "uitvoering" | "evalueren" | "
 export const COLUMNS: { id: ColumnId; label: string; hint: string }[] = [
   { id: "beoordelen", label: "Te beoordelen", hint: "Nieuwe signalen: inplannen, uitstellen of afwijzen" },
   { id: "gepland", label: "Gepland", hint: "Goedgekeurd, nog niet begonnen" },
-  { id: "uitvoering", label: "In uitvoering", hint: "Je bent ermee bezig" },
-  { id: "evalueren", label: "Evalueren", hint: "Aangepast; metingen na 7, 14 en 28 dagen" },
-  { id: "afgerond", label: "Afgerond", hint: "Beoordeeld of afgesloten" },
+  { id: "uitvoering", label: "In uitvoering, nog niet live", hint: "Je bent ermee bezig, of het is klaar maar staat nog niet online. Sleep naar Live zodra het online staat" },
+  { id: "evalueren", label: "Live, wordt gemeten", hint: "Staat online; metingen na 7, 14 en 28 dagen" },
+  { id: "afgerond", label: "Afgerond, gemeten", hint: "Gemeten en beoordeeld, of afgesloten zonder meting" },
 ]
 
 export function columnOf(status: Status): ColumnId {
@@ -31,7 +31,7 @@ export const STATUS_META: Record<Status, { label: string; tone: Tone }> = {
   onderzoeken: { label: "In onderzoek", tone: "warning" },
   uitgesteld: { label: "Uitgesteld", tone: "neutral" },
   goedgekeurd: { label: "Gepland", tone: "info" },
-  in_uitvoering: { label: "In uitvoering", tone: "accent" },
+  in_uitvoering: { label: "In uitvoering, nog niet live", tone: "accent" },
   uitgevoerd: { label: "Wordt gemeten", tone: "accent" },
   in_evaluatie: { label: "Wordt gemeten", tone: "accent" },
   succesvol: { label: "Succesvol", tone: "success" },

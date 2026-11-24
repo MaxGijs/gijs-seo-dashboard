@@ -453,7 +453,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
             <div className={`submit-box${attCount ? " is-ready" : ""}`}>
               <div>
                 <b>{attCount ? "Klaar om in te leveren?" : "Concept inleveren"}</b>
-                <p className="subtle small">{attCount ? "Het dashboard leest de tekst uit de PDF en controleert hem. Daarna gaat de kans naar Evalueren, waar een collega hem beoordeelt." : "Upload eerst het concept als PDF (of Word) bij Bijlagen. Daarna lever je het hier in ter beoordeling."}</p>
+                <p className="subtle small">{attCount ? "Het dashboard leest de tekst uit de PDF en controleert hem. Daarna beoordeelt een collega hem; na publicatie staat hij in Live, wordt gemeten." : "Upload eerst het concept als PDF (of Word) bij Bijlagen. Daarna lever je het hier in ter beoordeling."}</p>
               </div>
               <div className="submit-actions">
                 {attCount > 0 && <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => act({ action: "textcheck" }, "Tekst gecontroleerd")}><ClipboardCheck aria-hidden />Tekst controleren</button>}

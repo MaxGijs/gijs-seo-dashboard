@@ -10,7 +10,7 @@ import { overlapText, waitsForFirst, waitUntil } from "@/lib/running"
 import { dateShort } from "@/lib/format"
 import { groupName } from "@/lib/workflow"
 
-const TO_LABEL: Record<string, string> = { goedgekeurd: "Gepland", in_uitvoering: "In uitvoering" }
+const TO_LABEL: Record<string, string> = { goedgekeurd: "Gepland", in_uitvoering: "In uitvoering, nog niet live" }
 
 export default function RunningWarningDialog() {
   const { runningWarning: w, answerRunningWarning, setStatus, openTask } = useWorkspace()

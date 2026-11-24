@@ -70,7 +70,7 @@ export default function BulkExecuteDialog({ tasks, onClose }: { tasks: Task[]; o
         </div>
         {results ? (
           <div className="modal-body">
-            <p>{results.filter(r => r.ok).length} van de {results.length} taken staan nu in Evalueren. Deze lukten niet:</p>
+            <p>{results.filter(r => r.ok).length} van de {results.length} taken staan nu in Live, wordt gemeten. Deze lukten niet:</p>
             <ul className="bulk-list">
               {results.filter(r => !r.ok).map(r => { const t = tasks.find(x => x.key === r.key)!; return (
                 <li key={r.key}><span className="bulk-main"><b>{label(t)}</b><span className="field-error" style={{ margin: 0 }}>{r.reason}</span></span>

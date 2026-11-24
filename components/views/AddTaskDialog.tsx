@@ -209,7 +209,7 @@ export default function AddTaskDialog({ onClose }: { onClose: () => void }) {
             <div>
               <label className="field-label" htmlFor="t-status">Kolom</label>
               <select id="t-status" className="select" value={status} onChange={e => setStatusValue(e.target.value as NewTask["status"])}>
-                <option value="nieuw">Te beoordelen</option><option value="goedgekeurd">Gepland</option><option value="in_uitvoering">In uitvoering</option>
+                <option value="nieuw">Te beoordelen</option><option value="goedgekeurd">Gepland</option><option value="in_uitvoering">In uitvoering, nog niet live</option>
               </select>
             </div>
           </div>

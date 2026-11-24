@@ -70,7 +70,7 @@ const PRIO_RANK: Record<Priority, number> = { hoog: 0, middel: 1, laag: 2 }
 
 function contentMeta(i: ContentIdea, col: ColumnId) {
   if (col === "beoordelen") return { icon: <TrendingUp aria-hidden />, text: `Score ${effectiveScore(i)}` }
-  if (col === "evalueren" && i.status !== "gepubliceerd") return { icon: <ClipboardCheck aria-hidden />, text: i.status === "goedgekeurd" ? "Goedgekeurd: publiceren" : "Ingeleverd: beoordelen" }
+  if (i.status === "review" || i.status === "goedgekeurd") return { icon: <ClipboardCheck aria-hidden />, text: i.status === "goedgekeurd" ? "Goedgekeurd: publiceren" : "Ingeleverd: beoordelen" }
   if (col === "evalueren" && isPageUpdate(i)) {
     if (!i.published_at) return { icon: <CalendarClock aria-hidden />, text: "Wordt gemeten" }
     const n = nextMilestone(i.evals?.update || { points: {} }, i.published_at)
@@ -223,19 +223,25 @@ export default function TasksView() {
       if (from === "afgerond" && (to === "uitvoering" || to === "evalueren")) { toast("Zet een afgewezen kans eerst terug naar Te beoordelen of Gepland.", "info"); return }
       if (to === "beoordelen") return patch("nieuw", "Terug naar te beoordelen")
       if (to === "gepland") return patch(i.briefing ? "briefing" : "geaccepteerd", "Terug naar Gepland")
-      if (to === "uitvoering") return patch("concept", "Terug naar In uitvoering")
-      if (to === "evalueren") return patch("review", "Terug naar Evalueren")
+      if (to === "uitvoering" && (i.status === "review" || i.status === "goedgekeurd")) return
+      if (to === "uitvoering") return patch("concept", "Terug naar In uitvoering, nog niet live")
+    }
+    if (to === "evalueren" && (i.status === "review" || i.status === "goedgekeurd")) {
+      // Live = gepubliceerd: dat leg je vast in het paneel (URL en datum)
+      setOpenIdea(i.id)
+      toast(i.status === "goedgekeurd" ? "Leg in het paneel de publicatie vast (URL en datum); daarna staat hij in Live en start de meting." : "Eerst beoordelen en goedkeuren; na publicatie staat hij in Live.", "info")
+      return
     }
     if (to === "evalueren" && (from === "gepland" || from === "uitvoering")) {
-      // Inleveren: alleen als het concept als bijlage is geüpload
+      // Inleveren: alleen als het concept als bijlage is geüpload. Tot publicatie blijft hij "nog niet live".
       const res = await fetch(`/api/content/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "submit" }) })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) { setOpenIdea(i.id); toast(json.error || "Inleveren mislukt", "info"); return }
-      content.update(json.idea); toast("Ingeleverd ter beoordeling"); return
+      content.update(json.idea); toast("Ingeleverd ter beoordeling. Hij blijft in In uitvoering, nog niet live tot hij gepubliceerd is."); return
     }
     if (to === "afgerond" && from !== "evalueren") { setOpenIdea(i.id); toast("Geef aan waarom je deze kans afwijst (knop Afwijzen of Stoppen).", "info"); return }
     setOpenIdea(i.id)
-    toast(to === "uitvoering" ? "Content gaat naar In uitvoering zodra het concept binnen is. Maak eerst de briefing." : to === "evalueren" ? "Na goedkeuring leg je de publicatie vast (URL en datum); daarna start de meting." : "Deze stap volgt uit de contentworkflow in het paneel.", "info")
+    toast(to === "uitvoering" ? "Content gaat naar In uitvoering, nog niet live zodra het concept binnen is. Maak eerst de briefing." : to === "evalueren" ? "Na goedkeuring leg je de publicatie vast (URL en datum); daarna start de meting." : "Deze stap volgt uit de contentworkflow in het paneel.", "info")
   }
 
   const drop = async (t: Task, to: ColumnId) => {
@@ -251,7 +257,7 @@ export default function TasksView() {
     }
     if (back && from === "afgerond") {
       if (t.experiments.some(e => e.outcome)) { toast("Deze taak is gemeten en afgerond; terugzetten zou de uitkomst weggooien.", "info"); return }
-      if (!DROP_STATUS[to]) { toast("Zet een afgesloten taak terug naar Te beoordelen, Gepland of In uitvoering.", "info"); return }
+      if (!DROP_STATUS[to]) { toast("Zet een afgesloten taak terug naar Te beoordelen, Gepland of In uitvoering, nog niet live.", "info"); return }
       const ok = await setStatus(t, DROP_STATUS[to]!, { note: t.note, snoozeUntil: null })
       if (ok) toast(`Terug naar ${label}`)
       return
@@ -376,7 +382,7 @@ export default function TasksView() {
                   <button className="col-action" onClick={() => setBulk(true)} title="Meerdere taken tegelijk op uitgevoerd zetten, met één toelichting"><CheckCheck aria-hidden />Meerdere tegelijk afronden</button>
                 )}
                 {items.length === 0 ? (
-                  <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "evalueren" ? "Sleep een taak hierheen als hij is aangepast; de meting start dan" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.id === "gepland" ? "Sleep een taak hierheen om hem in te plannen" : "Sleep een taak hierheen als je ermee begint"}</p>
+                  <p className="col-empty">{c.id === "beoordelen" ? "Niets te beoordelen" : c.id === "evalueren" ? "Sleep een taak hierheen zodra hij online staat; de meting start dan" : c.id === "afgerond" ? "Sleep hierheen om af te sluiten met een uitkomst" : c.id === "gepland" ? "Sleep een taak hierheen om hem in te plannen" : "Sleep een taak hierheen als je ermee begint of als hij klaar is maar nog niet live staat"}</p>
                 ) : visible.map(en => {
                   const dragProps = {
                     draggable: true,

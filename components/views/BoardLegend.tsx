@@ -6,9 +6,9 @@ import { NewBadge, RejectedBadge } from "@/components/ui"
 const STEPS = [
   { id: "beoordelen", label: "Te beoordelen", text: "Nieuwe signalen uit Search Console, GA4 en de nachtelijke controles, plus taken die je zelf toevoegt. Jij beslist: inplannen, uitstellen of afwijzen (met reden, daar leert het systeem van)." },
   { id: "gepland", label: "Gepland", text: "Goedgekeurd, nog niet begonnen. Wijs een eigenaar toe, zodat duidelijk is wie het oppakt." },
-  { id: "uitvoering", label: "In uitvoering", text: "Iemand is ermee bezig. Gebruik de notitie voor tussenstanden (\"half af\", \"wacht op livegang\")." },
-  { id: "evalueren", label: "Evalueren", text: "Het staat live. Bij het verplaatsen vul je in wat je hebt aangepast; het systeem legt een nulmeting vast en meet zelf na 7 dagen (signalering), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindmeting). Jij hoeft niets te doen." },
-  { id: "afgerond", label: "Afgerond", text: "Er is een oordeel: geslaagd, niet geslaagd, geen duidelijk effect of afgewezen. De uitkomst telt mee in \"Wat hebben we geleerd?\" en bepaalt welke adviezen later voorrang krijgen." },
+  { id: "uitvoering", label: "In uitvoering, nog niet live", text: "Iemand is ermee bezig, of het is klaar maar staat nog niet online (bijvoorbeeld: wacht op de volgende deploy). Gebruik de notitie voor tussenstanden (\"half af\", \"wacht op livegang\")." },
+  { id: "evalueren", label: "Live, wordt gemeten", text: "Het staat online. Bij het verplaatsen vul je in wat je hebt aangepast; het systeem legt een nulmeting vast en meet zelf na 7 dagen (signalering), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindmeting). Jij hoeft niets te doen." },
+  { id: "afgerond", label: "Afgerond, gemeten", text: "Er is een oordeel: geslaagd, niet geslaagd, geen duidelijk effect of afgewezen. De uitkomst telt mee in \"Wat hebben we geleerd?\" en bepaalt welke adviezen later voorrang krijgen." },
 ]
 
 export default function BoardLegend({ onClose }: { onClose: () => void }) {
@@ -50,7 +50,7 @@ export default function BoardLegend({ onClose }: { onClose: () => void }) {
               <tbody>
                 <tr><td><b>Kans, daling, dubbele pagina&apos;s</b></td><td>SEO-adviezen uit Search Console</td><td>Positie en klikken in Google</td></tr>
                 <tr><td><b>Technisch</b></td><td>Fouten, indexering en controletaken (zoals de meting van aanvragen)</td><td>Of het probleem weg is</td></tr>
-                <tr><td><b>Content</b></td><td>Contentkansen uit nieuws en zoekdata. Concept als PDF uploaden en inleveren: de kans gaat naar Evalueren voor beoordeling; na publicatie wordt hij daar gemeten.</td><td>Bezoek en posities na publicatie</td></tr>
+                <tr><td><b>Content</b></td><td>Contentkansen uit nieuws en zoekdata. Concept als PDF uploaden en inleveren: de kans staat in In uitvoering, nog niet live tot hij is beoordeeld en gepubliceerd; daarna staat hij in Live, wordt gemeten.</td><td>Bezoek en posities na publicatie</td></tr>
                 <tr><td><b>Eigen taak</b></td><td>Zelf toegevoegd, met een doel</td><td>Doel &quot;meer aanvragen&quot;: energiescanaanvragen in GA4. Doel &quot;beter gevonden worden&quot;: Google. Doel &quot;overig&quot;: niet automatisch</td></tr>
               </tbody>
             </table>

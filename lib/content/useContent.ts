@@ -29,8 +29,8 @@ export function contentColumn(i: Pick<ContentIdea, "status" | "evals"> & { advic
   if (s === "nieuw" || s === "later") return "beoordelen"
   if (s === "geaccepteerd" || s === "briefing") return "gepland"
   if (s === "concept") return "uitvoering"
-  // Ingeleverd en in beoordeling, goedgekeurd (wacht op publicatie) en gepubliceerd (wordt gemeten)
-  if (s === "review" || s === "goedgekeurd") return "evalueren"
+  // Ingeleverd en in beoordeling, of goedgekeurd en wacht op publicatie: nog niet live
+  if (s === "review" || s === "goedgekeurd") return "uitvoering"
   // Bijgewerkte bestaande pagina: klaar na het eindoordeel van de voor/na-meting (28 dagen, 56 bij verlenging)
   if (s === "gepubliceerd" && i.advice === "bijwerken") return i.evals?.update?.outcome ? "afgerond" : "evalueren"
   // Nieuw artikel: klaar na het eindoordeel (28 dagen, of 56 bij SEO-doel of te weinig data)
