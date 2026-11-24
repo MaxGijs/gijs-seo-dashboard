@@ -4,6 +4,7 @@
 // status en signaal, één kernzin, het vervolgadvies. Daaronder de cijfers (nulmeting, nu, verschil),
 // het onderscheid waargenomen / mogelijke bijdrage / oorzaak, en uitklapbaar alle onderliggende gegevens.
 
+import { useState } from "react"
 import { Badge } from "@/components/ui"
 import { dateShort, num, pct, pos } from "@/lib/format"
 import { ADVICE, CRAWL_DAY, EARLY_DAY, EXTENDED_DAY, FINAL_DAY, measureDate, SIGNAL, STATUS, latestReport, statusOf, summarizeSignals, type Report, type Row } from "@/lib/measureLogic"
@@ -158,14 +159,75 @@ export function MeasurementReport({ e, compact = false }: { e: Experiment; compa
 }
 
 // Wat, waarom, waar en wanneer: de vaste gegevens van een experiment
+// Paden die in de omschrijving genoemd worden (bv. /regio/overijssel/zwolle/brinkhoek)
+export function pathsIn(text: string): string[] {
+  const out: string[] = []
+  for (const m of text.matchAll(/(?:^|[\s("'“‘])(\/[a-z][a-z0-9-]*(?:\/[a-z0-9-]+)*)/gi)) out.push(m[1].replace(/\/+$/, "").toLowerCase())
+  return [...new Set(out)]
+}
+const capW = (s: string) => s.split("-").map(w => (["van", "de", "den", "aan", "op", "en"].includes(w) ? w : w[0]?.toUpperCase() + w.slice(1))).join(" ")
+// Leesbare plaats bij een regiopagina: "Zwolle (Overijssel)" of "Brinkhoek, Zwolle"
+export function placeLabel(path: string): string | null {
+  const s = path.split("/").filter(Boolean)
+  if (s[0] !== "regio" || s.length < 2) return null
+  if (s.length === 2) return capW(s[1])
+  if (s.length === 3) return `${capW(s[2])} (${capW(s[1])})`
+  return `${capW(s[s.length - 1])}, ${capW(s[2])}`
+}
+
+type PageRole = "gemeten" | "google" | "genoemd"
+const ROLE: Record<PageRole, { label: string; hint: string }> = {
+  gemeten: { label: "Gemeten", hint: "Hierop wordt de meting gedaan" },
+  google: { label: "Google toonde", hint: "De URL die Google bij de nulmeting voor het zoekwoord liet zien" },
+  genoemd: { label: "Genoemd in omschrijving", hint: "Staat in de omschrijving; hierop wordt niet apart gemeten" },
+}
+export function pageRows(e: Experiment, measured: string[]): { path: string; role: PageRole }[] {
+  const norm = (p: string) => p.replace(/^https?:\/\/[^/]+/i, "").replace(/\/+$/, "").toLowerCase() || "/"
+  const seen = new Set<string>()
+  const rows: { path: string; role: PageRole }[] = []
+  const push = (p: string | null | undefined, role: PageRole) => { if (!p) return; const n = norm(p); if (seen.has(n)) return; seen.add(n); rows.push({ path: n, role }) }
+  measured.forEach(p => push(p, "gemeten"))
+  push(e.baseline?.targetPage, "google")
+  pathsIn(e.description || "").forEach(p => push(p, "genoemd"))
+  return rows
+}
+
+// Lange tekst: eerst een paar regels, met "Lees alles"
+function LongText({ text, lines = 3 }: { text: string; lines?: number }) {
+  const [open, setOpen] = useState(false)
+  const long = text.length > 220
+  return (
+    <span className="mr-long">
+      <span className={long && !open ? "mr-clamp" : undefined} style={long && !open ? { WebkitLineClamp: lines } : undefined}>{text}</span>
+      {long && <button type="button" className="link-btn mr-more" onClick={() => setOpen(o => !o)} aria-expanded={open}>{open ? "Minder" : "Lees alles"}</button>}
+    </span>
+  )
+}
+
 export function ExperimentFacts({ e, pages }: { e: Experiment; pages: string[] }) {
   const ct = e.baseline?.changeType as ChangeType | undefined
+  const rows = pageRows(e, pages)
+  const queries = [...new Set([e.query, ...(e.target_queries || [])].filter((q): q is string => !!q))]
   return (
     <dl className="mr-facts">
-      <div><dt>Wat is aangepast</dt><dd>{e.description}{ct && CHANGE_TYPES[ct] ? <Badge tone="neutral">{CHANGE_TYPES[ct]}</Badge> : null}</dd></div>
-      {e.hypothesis && <div><dt>Waarom (hypothese en doel)</dt><dd>{e.hypothesis}</dd></div>}
-      <div><dt>Op welke pagina&apos;s</dt><dd>{pages.length ? pages.join(", ") : e.query ? `zoekwoord "${e.query}"` : "—"}</dd></div>
-      <div><dt>Wanneer</dt><dd>{dateShort(e.changed_at)}</dd></div>
+      <div><dt>Wat is aangepast</dt><dd>{ct && CHANGE_TYPES[ct] ? <span className="mr-type"><Badge tone="neutral">{CHANGE_TYPES[ct]}</Badge></span> : null}<LongText text={e.description} /></dd></div>
+      {e.hypothesis && <div><dt>Waarom (hypothese en doel)</dt><dd><LongText text={e.hypothesis} lines={2} /></dd></div>}
+      <div><dt>Pagina&apos;s</dt><dd>
+        {rows.length ? (
+          <table className="mr-pages">
+            <thead><tr><th scope="col">Pagina</th><th scope="col">Plaats</th><th scope="col">Rol</th></tr></thead>
+            <tbody>{rows.map(r => (
+              <tr key={r.path} className={`is-${r.role}`}>
+                <td className="mr-path">{r.path}</td>
+                <td>{placeLabel(r.path) || <span className="subtle">—</span>}</td>
+                <td title={ROLE[r.role].hint}>{r.role === "gemeten" ? <Badge tone="info">{ROLE[r.role].label}</Badge> : <span className="subtle">{ROLE[r.role].label}</span>}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        ) : <span className="subtle">Geen pagina; gemeten op het zoekwoord</span>}
+      </dd></div>
+      {queries.length > 0 && <div><dt>Zoekwoorden</dt><dd className="mr-chips">{queries.map(q => <span key={q} className="mr-chip">{q}</span>)}</dd></div>}
+      <div><dt>Wanneer</dt><dd>Live op {dateShort(e.changed_at)}</dd></div>
     </dl>
   )
 }
