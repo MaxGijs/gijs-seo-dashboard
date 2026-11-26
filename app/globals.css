@@ -1849,3 +1849,13 @@ tr.is-picked td { background: var(--accent-050); }
 .ct-chip:disabled { cursor: default; opacity: 1; }
 .ct-chip:focus-visible { outline: 2px solid var(--green-700); outline-offset: 2px; }
 .mr-type { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+
+/* Contentkans: titel aanpassen in elke fase */
+.cp-title-row { display: flex; align-items: flex-start; gap: 6px; }
+.cp-title-btn { flex: none; margin-top: 2px; width: 30px; height: 30px; opacity: .65; }
+.cp-title-btn:hover, .cp-title-btn:focus-visible { opacity: 1; }
+.cp-title-btn svg { width: 15px; height: 15px; }
+.cp-title-edit { margin: 4px 0 6px; display: grid; gap: 6px; }
+.cp-title-edit .input { font-size: var(--fs-lg, 18px); font-weight: 600; }
+.cp-title-edit .inline-form-actions { justify-content: flex-start; }
+.cp-title-edit .field-hint { margin: 0; }

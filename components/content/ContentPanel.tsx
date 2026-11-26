@@ -9,7 +9,7 @@ import { articleVerdict } from "@/lib/content/verdict"
 import { compare, isPageUpdate, judgeUpdate, nextMilestone, OUTCOME_META, UPDATE_MILESTONES, UPDATE_RULE, updateNeeds56, type UpdatePoint } from "@/lib/content/update"
 import { ownerName } from "@/components/OwnerSelect"
 import { Fragment, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, HelpCircle, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft } from "lucide-react"
+import { AlertTriangle, BarChart3, Check, ClipboardCheck, Copy, ExternalLink, FileText, Gauge, HelpCircle, Lightbulb, MessageSquareText, Newspaper, PenLine, Send, Sparkles, StickyNote, Trash2, X, ArrowLeft, Pencil } from "lucide-react"
 import { useWorkspace } from "@/lib/workspace"
 import { Alert, Badge } from "@/components/ui"
 import OwnerSelect from "@/components/OwnerSelect"
@@ -94,6 +94,15 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
   const issues = consistencyIssues(idea)
   const kwTotal = idea.keywords.reduce((s, k) => s + k.impressions, 0)
 
+  // Titel aanpassen kan in elke fase (ook na accepteren); de werktitel in de briefing gaat mee
+  const [titleEdit, setTitleEdit] = useState<string | null>(null)
+  const saveTitle = async () => {
+    const title = (titleEdit || "").trim()
+    if (!title || title === idea.title) { setTitleEdit(null); return }
+    const fields: Record<string, string> = { title }
+    if (idea.briefing?.includes(`Werktitel: ${idea.title}`)) fields.briefing = idea.briefing.split(`Werktitel: ${idea.title}`).join(`Werktitel: ${title}`)
+    if (await act({ action: "edit", fields }, fields.briefing ? "Titel aangepast, ook in de briefing" : "Titel aangepast")) setTitleEdit(null)
+  }
   const act = async (body: Record<string, unknown>, ok?: string) => {
     setBusy(true)
     try {
@@ -172,7 +181,22 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
             </div>
             {!isPage && <button className="icon-btn" onClick={onClose} aria-label="Sluiten"><X /></button>}
           </div>
-          <h2 className="panel-title" id="cp-title">{idea.title}</h2>
+          {titleEdit !== null ? (
+            <form className="cp-title-edit" onSubmit={e => { e.preventDefault(); saveTitle() }}>
+              <label className="sr-only" htmlFor="cp-title-input">Titel</label>
+              <input id="cp-title-input" className="input" value={titleEdit} maxLength={200} autoFocus disabled={busy} onChange={e => setTitleEdit(e.target.value)} onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); setTitleEdit(null) } }} />
+              <div className="inline-form-actions">
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTitleEdit(null)} disabled={busy}>Annuleren</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !titleEdit.trim() || titleEdit.trim() === idea.title}>Titel opslaan</button>
+              </div>
+              {idea.briefing && <p className="field-hint">De werktitel in de briefing gaat mee.{step >= 3 ? " Het concept zelf pas je aan in de tekst." : ""}</p>}
+            </form>
+          ) : (
+            <h2 className="panel-title cp-title-row" id="cp-title">
+              <span>{idea.title}</span>
+              {idea.status !== "samengevoegd" && <button type="button" className="icon-btn cp-title-btn" onClick={() => setTitleEdit(idea.title)} aria-label="Titel aanpassen" title="Titel aanpassen"><Pencil aria-hidden /></button>}
+            </h2>
+          )}
           <p className="panel-subtitle">{idea.format} · {serviceLabel(idea.service)}{idea.regions.length ? ` · ${idea.regions.map(r => r[0].toUpperCase() + r.slice(1)).join(", ")}` : ""} · gevonden {ago(idea.created_at)}</p>
           {step >= 0 && (
             <ol className="flow" aria-label="Voortgang">
@@ -328,7 +352,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                     <tr key={o.title} className={o.title === idea.title ? "is-chosen" : ""}>
                       <td className="nowrap"><Badge tone={o.title === idea.title ? "success" : "neutral"}>{ANGLE_META[o.angle].label}</Badge></td>
                       <td>{o.title === idea.title ? <b>{o.title}</b> : o.title}</td>
-                      <td className="nowrap">{o.title === idea.title ? <span className="subtle small">gekozen</span> : step <= 2 && step >= 0 ? <button className="link-btn" disabled={busy} onClick={() => act({ action: "edit", fields: { title: o.title, angle: o.angle } }, "Titel en invalshoek aangepast")}>Kiezen</button> : null}</td>
+                      <td className="nowrap">{o.title === idea.title ? <span className="subtle small">gekozen</span> : step >= 0 && step < 6 ? <button className="link-btn" disabled={busy} onClick={() => act({ action: "edit", fields: { title: o.title, angle: o.angle, ...(idea.briefing?.includes(`Werktitel: ${idea.title}`) ? { briefing: idea.briefing.split(`Werktitel: ${idea.title}`).join(`Werktitel: ${o.title}`) } : {}) } }, "Titel en invalshoek aangepast")}>Kiezen</button> : null}</td>
                     </tr>
                   ))}</tbody>
                 </table>
