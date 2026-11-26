@@ -1,5 +1,6 @@
 "use client"
 
+import PageBehavior from "./PageBehavior"
 import { CorrectButton, CorrectionNote } from "./ExperimentCorrect"
 import { MeasurementReport, MeasureTimeline } from "@/components/panel/MeasurementReport"
 import { conclusionOf } from "@/lib/measureLogic"
@@ -323,6 +324,7 @@ function PanelContent({ task, onClose, intent }: { task: Task; onClose: () => vo
             {signal.kind === "techniek" && signal.tech?.type === "niet-geindexeerd" && signal.tech.pages.length > 0 && <PageTimeline paths={signal.tech.pages.map(p => p.path)} />}
             {signal.kind !== "techniek" && signal.page && ["goedgekeurd", "in_uitvoering", "uitgevoerd", "in_evaluatie"].includes(task.status) && <PageTimeline paths={[signal.page]} title="Deze pagina bij Google" />}
             {diag.history.length >= 2 && <Sparkline points={diag.history} />}
+            {signal.kind !== "techniek" && <PageBehavior path={diag.target || signal.page || signal.conversions?.page} />}
             {detail && (detail.queryPages?.cur?.length || detail.pageQueries?.length) ? (
               <details className="evidence-details">
                 <summary>Pagina&apos;s en zoekwoorden achter deze cijfers</summary>

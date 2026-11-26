@@ -1859,3 +1859,34 @@ tr.is-picked td { background: var(--accent-050); }
 .cp-title-edit .input { font-size: var(--fs-lg, 18px); font-weight: 600; }
 .cp-title-edit .inline-form-actions { justify-content: flex-start; }
 .cp-title-edit .field-hint { margin: 0; }
+
+/* Gedrag op een pagina (Clarity) */
+.pb-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 0; }
+.pb-grid div { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--white); }
+.pb-grid dt { font-size: var(--fs-xs); color: var(--text-subtle); }
+.pb-grid dd { margin: 2px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pb-notes { margin: 10px 0 0; padding-left: 18px; font-size: var(--fs-sm); display: grid; gap: 4px; }
+.pb-notes .is-warn { color: var(--warning); }
+@media (max-width: 520px) { .pb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Snelheid echte bezoekers (CrUX) */
+.crux-card { margin-bottom: 20px; }
+.crux-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.crux-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.crux-mini { margin: 0; min-width: 0; }
+.crux-mini figcaption { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.crux-label { font-size: var(--fs-xs); color: var(--text-subtle); font-weight: 600; }
+.crux-value { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+.crux-when { font-size: 11.5px; }
+.crux-mini svg { width: 100%; height: auto; display: block; overflow: visible; cursor: crosshair; }
+.crux-line { fill: none; stroke: var(--green-700); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.crux-dot { fill: var(--green-700); stroke: var(--white); stroke-width: 2; }
+.crux-limit { stroke: var(--grey-400, #9aa39c); stroke-width: 1; stroke-dasharray: 3 3; }
+.crux-limit-label, .crux-axis { font-size: 9.5px; fill: var(--text-subtle); }
+.crux-cross { stroke: var(--grey-400, #9aa39c); stroke-width: 1; }
+.crux-what { font-size: 11.5px; margin: 2px 0 0; }
+.crux-table { margin-top: 12px; font-size: var(--fs-sm); }
+.crux-table summary { cursor: pointer; color: var(--green-800); font-size: var(--fs-xs); }
+@media (max-width: 760px) { .crux-grid { grid-template-columns: 1fr; } .crux-card .card-head { flex-wrap: wrap; } }
+.speed-around { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: var(--warning-bg); color: var(--text); font-size: var(--fs-sm); }
+.speed-around svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--warning); }

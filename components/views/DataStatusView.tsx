@@ -23,6 +23,8 @@ const JOB_META: Record<string, { label: string; what: string; maxAgeH: number }>
   indexering: { label: "Indexeringscontrole", what: "URL-inspectie van Google (max. 2.000 per dag)", maxAgeH: 30 },
   experimenten: { label: "Experimentmetingen", what: "Metingen na 7, 14 en 28 dagen (56 bij verlenging)", maxAgeH: 30 },
   actualiteiten: { label: "Contentkansen", what: "Nieuws van Rijksoverheid en Milieu Centraal, webtrends (maandag), zoekdata en seizoen", maxAgeH: 30 },
+  "gedrag-clarity": { label: "Gedrag (Microsoft Clarity)", what: "Scrolldiepte, actieve tijd en klikproblemen per pagina, elke ochtend de afgelopen 24 uur", maxAgeH: 30 },
+  "snelheid-historie": { label: "Snelheid echte bezoekers (CrUX)", what: "Laadsnelheid van Chrome-bezoekers per week, tot 40 weken terug; Google ververst wekelijks", maxAgeH: 24 * 8 },
   "content-metingen": { label: "Contentmetingen", what: "Gepubliceerde artikelen en bijgewerkte pagina's na 7, 14 en 28 dagen (56 bij SEO-doel of verlenging)", maxAgeH: 30 },
 }
 
@@ -45,6 +47,7 @@ function jobState(j: Job): { tone: "success" | "warning" | "error" | "neutral"; 
     return { tone: "neutral", label: j.job === "content-metingen" || j.job === "experimenten" ? "Nog niets te meten" : "Nog niet gedraaid" }
   }
   if (!j.last.ok) return { tone: "error", label: "Laatste run mislukt" }
+  if (typeof j.last.details?.overgeslagen === "string" && j.last.details.overgeslagen.startsWith("Geen")) return { tone: "neutral", label: "Nog niet gekoppeld" }
   const ageH = (Date.now() - new Date(j.last.run_at).getTime()) / 3600000
   if (ageH > (JOB_META[j.job]?.maxAgeH ?? 30)) return { tone: "warning", label: "Verouderd" }
   return { tone: "success", label: "In orde" }
@@ -60,6 +63,8 @@ function summary(job: string, d: any): string {
     case "experimenten": return `${num(d.checked)} bekeken, ${num(d.measured)} metingen, ${num(d.finalized)} afgerond`
     case "actualiteiten": return `${num(d.bronnen - (d.bronnenMislukt || 0))}/${num(d.bronnen)} bronnen, ${num(d.relevant)} relevante berichten${d.webVondsten ? `, ${num(d.webVondsten)} webvondsten` : ""}, ${num(d.nieuweKansen)} nieuwe kansen`
     case "content-metingen": return `${num(d.gepubliceerd)} gepubliceerd, ${num(d.metingen)} nieuwe metingen`
+    case "gedrag-clarity": return d.overgeslagen ? d.overgeslagen : `${dateShort(d.dag)}: ${num(d.paginas)} pagina's, ${num(d.sessies)} sessies`
+    case "snelheid-historie": return d.overgeslagen ? d.overgeslagen : `${num(d.perioden)} weken site-data, ${num(d.paginasMetData)} van ${num(d.paginasGeprobeerd)} pagina's met eigen data`
     default: return ""
   }
 }

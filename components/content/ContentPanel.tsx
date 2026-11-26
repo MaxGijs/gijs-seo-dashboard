@@ -1,5 +1,6 @@
 "use client"
 
+import PageBehavior from "@/components/panel/PageBehavior"
 import Attachments from "@/components/Attachments"
 import ContentMergeSection from "./ContentMergeSection"
 import PageTimeline from "@/components/panel/PageTimeline"
@@ -554,6 +555,7 @@ export default function ContentPanel({ idea, all, onClose, onUpdate, onDeleted, 
                   <ArticleResults idea={idea} all={all} onPlan={isPageUpdate(idea) ? undefined : (p: PlanDraft) => act({ action: "plan", plan: planBody(idea, all, p) }, p.threshold === null ? "Doel vastgelegd (zonder succesgrens)" : "Doel en succesgrens vastgelegd")} busy={busy} />
                   <p className="field-hint">{isPageUpdate(idea) ? "Meetmomenten: 7 dagen (signalering), 14 dagen (eerste beoordeling) en 28 dagen (eindoordeel), telkens dezelfde pagina vóór en na de aanpassing. Bij te weinig data volgt nog een meting na 56 dagen." : "Meetmomenten na publicatie: 7 dagen (signalering: staat het in Google, eerste bezoekers), 14 dagen (eerste beoordeling met advies) en 28 dagen (eindoordeel voor bereik en aanvragen). Bij het doel SEO-groei of zichtbaarheid, of bij te weinig data na 28 dagen, volgt nog een meting na 56 dagen: een nieuw artikel heeft 6 à 8 weken nodig om zijn plek in Google te vinden."}</p>
                   <PageTimeline paths={[(idea.published_url || "").replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "").replace(/(.)\/$/, "$1")]} title="Deze pagina bij Google" />
+                  <PageBehavior path={(idea.published_url || "").replace(/^https?:\/\/(www\.)?groeninjestraat\.nl/i, "").replace(/(.)\/$/, "$1").toLowerCase() || null} />
                 </>
               )}
             </section>

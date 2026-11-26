@@ -1,5 +1,6 @@
 "use client"
 
+import CruxTrend from "@/components/dashboard/CruxTrend"
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { AlertCircle, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Award, BellRing, BookOpenCheck, CircleHelp, ExternalLink, Eye, FileBarChart, Filter, Gauge, Hourglass, Lightbulb, LineChart, MapPin, Minus, MousePointerClick, Radio, RefreshCw, Swords, Target, TrendingDown, TrendingUp, Users, X } from "lucide-react"
@@ -296,7 +297,7 @@ function Deeper({ data }: { data: DashboardData | null }) {
         {tab === "ontwikkeling" && <GoogleDevelopment data={data} loading={!data} />}
         {tab === "zoekwoorden" && <KeywordRanking data={data} />}
         {tab === "paginas" && <div className="dash-grid"><Drivers data={data} /><TopPages data={data} /><Channels data={data} /><Local data={data} /></div>}
-        {tab === "snelheid" && <CwvBlock />}
+        {tab === "snelheid" && <><CruxTrend /><CwvBlock /></>}
         {tab === "concurrentie" && <Competitors data={data} />}
       </div>
       <DeepLinks />

@@ -1,5 +1,6 @@
 "use client"
 
+import SpeedAround from "@/components/panel/SpeedAround"
 import { CorrectButton, CorrectionNote } from "@/components/panel/ExperimentCorrect"
 import Link from "next/link"
 import { useMemo, useState } from "react"
@@ -362,6 +363,7 @@ function ExpDetail({ e, task, openTask }: { e: Experiment; task?: Task; openTask
     <div className="exp-detail-v2">
       <div className="meta-line" style={{ marginBottom: 6 }}>{task && <KindLabel signal={task.signal} />}{task && <button className="link-btn" onClick={() => openTask(task.key)}>Taak openen</button>}<span className="subtle small"><CalendarClock aria-hidden /> Aangepast op {dateLong(e.changed_at)}</span><CorrectButton e={e} /></div>
       <CorrectionNote e={e} />
+      <SpeedAround date={e.changed_at} />
       <ExperimentFacts e={e} pages={pagesOf(e)} />
       <MeasureTimeline e={e} />
       <div style={{ marginTop: 10 }}><MeasurementReport e={e} /></div>
